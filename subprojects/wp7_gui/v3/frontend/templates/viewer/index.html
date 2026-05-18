@@ -65,7 +65,7 @@
 
 <script>
     const VIEWER_API = "/viewer/api";
-    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260518";
+    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260518_4";
     const DISCOVERED_DEFAULT_VISIBLE = false;
     const PANEL_DEFAULTS = {
         runs: {
@@ -190,6 +190,17 @@
     function bust(url) {
         const sep = url.includes("?") ? "&" : "?";
         return `${url}${sep}t=${Date.now()}`;
+    }
+
+    function paintSliderBar(slider) {
+        if (!slider) {
+            return;
+        }
+        slider.style.accentColor = "#c33531";
+        slider.style.height = "14px";
+        slider.style.background = "transparent";
+        slider.style.padding = "0";
+        slider.style.margin = "0";
     }
 
     function clearMeshGroups() {
@@ -372,6 +383,7 @@
         state.placeholder = placeholder;
         state.statusDiv = statusDiv;
         state.glbControlsDiv = glbControlsDiv;
+        paintSliderBar(slider);
 
         slider.addEventListener("input", (e) => {
             if (state.playing) {
@@ -380,6 +392,7 @@
                 playBtn.textContent = "Play";
             }
             state.idx = parseInt(e.target.value, 10);
+            paintSliderBar(slider);
             loadPlyForGroup(label, container, placeholder, statusDiv);
         });
 
@@ -396,6 +409,7 @@
             state.playInterval = setInterval(() => {
                 state.idx = (state.idx + 1) % state.files.length;
                 slider.value = String(state.idx);
+                paintSliderBar(slider);
                 loadPlyForGroup(label, container, placeholder, statusDiv);
                 if (state.idx === state.files.length - 1) {
                     state.playing = false;

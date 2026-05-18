@@ -61,6 +61,35 @@ export function initMeshViewer(containerEl) {
     let suppressControlsCallback = false;
     let glbControlsHost = null;
 
+    function ensureOpacitySliderStyles() {
+        const styleId = "glb-opacity-slider-styles";
+        if (document.getElementById(styleId)) {
+            return;
+        }
+        const style = document.createElement("style");
+        style.id = styleId;
+        style.textContent = `
+            .glb-opacity-slider {
+                -webkit-appearance: auto;
+                appearance: auto;
+                height: 14px;
+                background: transparent;
+                padding: 0;
+                margin: 0;
+                outline: none;
+                accent-color: #c33531;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    function paintOpacitySliderBar(slider) {
+        if (!slider) {
+            return;
+        }
+        slider.style.accentColor = "#c33531";
+    }
+
     scene.add(new HemisphereLight(0xffffff, 0x444444, 1.0));
     scene.add(new AmbientLight(0xffffff, 0.6));
     const dl = new DirectionalLight(0xffffff, 0.8);
@@ -182,21 +211,33 @@ export function initMeshViewer(containerEl) {
         if (!glbControlsHost) {
             return;
         }
+        ensureOpacitySliderStyles();
         glbControlsHost.innerHTML = "";
         const components = getMeshComponents();
         if (!components.length) {
             glbControlsHost.style.display = "none";
             return;
         }
-        glbControlsHost.style.display = "block";
+        glbControlsHost.style.display = "grid";
+        glbControlsHost.style.gridTemplateColumns = "repeat(3, minmax(0, 1fr))";
+        glbControlsHost.style.gap = "8px";
 
-        components.forEach((component) => {
-            const row = document.createElement("div");
-            row.style.display = "grid";
-            row.style.gridTemplateColumns = "auto 1fr";
-            row.style.alignItems = "center";
-            row.style.columnGap = "8px";
-            row.style.rowGap = "4px";
+        const order = ["inner_assembly", "sdf_mesh", "outer_bbox"];
+        const sorted = components.slice().sort((a, b) => {
+            const ai = order.indexOf(a.name);
+            const bi = order.indexOf(b.name);
+            const aRank = ai === -1 ? 99 : ai;
+            const bRank = bi === -1 ? 99 : bi;
+            return aRank - bRank;
+        });
+
+        sorted.forEach((component) => {
+            const cell = document.createElement("div");
+            cell.style.display = "grid";
+            cell.style.gridTemplateColumns = "auto 1fr";
+            cell.style.columnGap = "6px";
+            cell.style.rowGap = "4px";
+            cell.style.alignItems = "center";
 
             const visible = document.createElement("input");
             visible.type = "checkbox";
@@ -204,16 +245,11 @@ export function initMeshViewer(containerEl) {
             visible.title = "Visible";
 
             const name = document.createElement("span");
-            name.textContent = component.name;
-            name.style.fontSize = "0.72rem";
+            name.textContent = component.name.replace(/_/g, " ");
+            name.style.fontSize = "0.68rem";
             name.style.whiteSpace = "nowrap";
             name.style.overflow = "hidden";
             name.style.textOverflow = "ellipsis";
-
-            const opacityLabel = document.createElement("span");
-            opacityLabel.textContent = "Opacity";
-            opacityLabel.style.fontSize = "0.68rem";
-            opacityLabel.style.opacity = "0.8";
 
             const opacity = document.createElement("input");
             opacity.type = "range";
@@ -221,19 +257,23 @@ export function initMeshViewer(containerEl) {
             opacity.max = "1";
             opacity.step = "0.01";
             opacity.value = String(component.opacity);
+            opacity.className = "glb-opacity-slider";
+            opacity.style.gridColumn = "1 / span 2";
+            opacity.style.width = "100%";
+            paintOpacitySliderBar(opacity);
 
             visible.addEventListener("change", () => {
                 setMeshComponentState(component.key, { visible: visible.checked });
             });
             opacity.addEventListener("input", () => {
                 setMeshComponentState(component.key, { opacity: parseFloat(opacity.value) });
+                paintOpacitySliderBar(opacity);
             });
 
-            row.appendChild(visible);
-            row.appendChild(name);
-            row.appendChild(opacityLabel);
-            row.appendChild(opacity);
-            glbControlsHost.appendChild(row);
+            cell.appendChild(visible);
+            cell.appendChild(name);
+            cell.appendChild(opacity);
+            glbControlsHost.appendChild(cell);
         });
     }
 

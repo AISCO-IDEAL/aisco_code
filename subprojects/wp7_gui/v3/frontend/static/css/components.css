@@ -241,42 +241,13 @@
 input[type="range"] {
   width: 100%;
   cursor: pointer;
-  -webkit-appearance: none;
-  appearance: none;
+  -webkit-appearance: auto;
+  appearance: auto;
   background: transparent;
-}
-
-input[type="range"]::-webkit-slider-track {
-  background: #FFB3B3;
-  height: 8px;
-  border-radius: 4px;
-  border: 2px solid #ff9999;
-}
-
-input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #c82121;
-  cursor: pointer;
-  margin-top: -5px;
-}
-
-input[type="range"]::-moz-range-track {
-  background: #FFB3B3;
-  height: 8px;
-  border-radius: 4px;
-  border: 2px solid #ff9999;
-}
-
-input[type="range"]::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #c82121;
-  cursor: pointer;
-  border: none;
+  accent-color: #c33531;
+  height: 14px;
+  padding: 0;
+  margin: 0;
 }
 
 input[type="range"]:disabled {
