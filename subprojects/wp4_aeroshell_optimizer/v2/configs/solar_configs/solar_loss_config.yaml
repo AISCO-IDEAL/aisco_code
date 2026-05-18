@@ -174,6 +174,8 @@ SolarLossConfigSR:
   soft_mask_full_selection_threshold: 0.95
   eps: 1e-12
   smooth_gradient_iters: 3  # Laplacian smoothing passes on dL/dv before SDF projection; 0 = off
+  exclude_vision_cone_faces: true  # set to true to mask out faces inside the vision cone from solar selection
+  # assembly_id comes from bb_config.assembly_id in losses_v0_config.yaml (or AISCO_ASSEMBLY_ID env var)
 
 SolarLossConfigSRRT:
   method: "mesh_sdf" # Do not touch
@@ -193,6 +195,8 @@ SolarLossConfigSRRT:
   skip_backface_receivers: true  # Skip RT for back-facing faces (normal · sun_dir ≤ 0); requires full occluder coverage
   raytracing_version: "v4"  # Uses RaytracingConfigV3 from raytracing_config.yaml
   smooth_gradient_iters: 8  # Laplacian smoothing passes on dL/dv before SDF projection; 0 = off
+  exclude_vision_cone_faces: false  # set to true to mask out faces inside the vision cone from solar selection
+  # assembly_id comes from bb_config.assembly_id in losses_v0_config.yaml (or AISCO_ASSEMBLY_ID env var)
 
 SolarLossConfigMR:
   method: "mesh_sdf"  # Do not touch
@@ -210,6 +214,8 @@ SolarLossConfigMR:
   custom_vectors_key: route_test  # key in test_solar_vectors.yaml; only used when solar_vector_source=custom
   subsample_n: null  # integer to subsample route vectors; null = use all
   smooth_gradient_iters: 6
+  exclude_vision_cone_faces: false
+  # assembly_id comes from bb_config.assembly_id in losses_v0_config.yaml (or AISCO_ASSEMBLY_ID env var)
 
 SolarLossConfigMRRT:
   method: "mesh_sdf"  # Do not touch
@@ -232,4 +238,5 @@ SolarLossConfigMRRT:
   custom_vectors_key: minimal_4  # key in test_solar_vectors.yaml; only used when solar_vector_source=custom
   subsample_n: null  # integer to subsample route vectors; null = use all
   smooth_gradient_iters: 8
-
+  exclude_vision_cone_faces: false
+  # assembly_id comes from bb_config.assembly_id in losses_v0_config.yaml (or AISCO_ASSEMBLY_ID env var)

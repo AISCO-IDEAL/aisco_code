@@ -624,6 +624,14 @@ class CentralVisManagerV2(_BaseVisManager):
             vt, epoch, verts_np, faces_np, _to_f64(receiver_mask).astype(np.float32).reshape(-1), type_cfg
         )
 
+    def vis_solar_vision_cone_mask(self, epoch: int, verts: Any, faces: Any, mask: Any) -> None:
+        vt = self._slotted("solar/vision_cone_mask")
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
+        if type_cfg is None:
+            return
+        verts_np, faces_np = _to_f64(verts), _to_i32(faces)
+        self._submit_ply_flat_faces(vt, epoch, verts_np, faces_np, _to_f64(mask).astype(np.float32).reshape(-1), type_cfg)
+
     def vis_bb_constraint(self, epoch: int, verts: Any, distances: Any) -> None:
         """Bounding-box constraint violations. verts is a point cloud (no faces)."""
         vt = self._slotted("bb_constraint")

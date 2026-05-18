@@ -5,7 +5,9 @@ import torch
 import trimesh
 from torch import nn
 
+from subprojects.wp3_solar_estimator.rollout_losses.SR_SolarLoss import solar_loss_sr
 from subprojects.wp3_solar_estimator.utils.wp3_vision_cone import (
+    get_vision_cone_face_mask,
     get_vision_cone_mesh,
     mesh_intersection,
     render_intersection,
@@ -177,6 +179,85 @@ def test_vision_cone_intersects_15_wp4_real_meshes() -> None:
         assert len(sel_mesh.faces) + len(not_sel_mesh.faces) == total, (
             f"{epoch}: face count mismatch — {len(sel_mesh.faces)} + {len(not_sel_mesh.faces)} != {total}"
         )
+
+
+def test_solar_loss_sr_cone_mask_reduces_power() -> None:
+    """Faces masked by cone_face_mask should contribute ~0 power — masked power < unmasked power."""
+    # Flat grid of upward-facing triangles, all perfectly aligned with sun_dir=[0,0,1]
+    N = 10
+    verts_list = []
+    faces_list = []
+    face_idx = 0
+    for i in range(N):
+        for j in range(N):
+            x, y = float(i) * 100.0, float(j) * 100.0
+            verts_list += [[x, y, 0.0], [x + 100.0, y, 0.0], [x, y + 100.0, 0.0]]
+            faces_list.append([face_idx, face_idx + 1, face_idx + 2])
+            face_idx += 3
+    vertices = torch.tensor(verts_list, dtype=torch.float32)
+    faces = torch.tensor(faces_list, dtype=torch.long)
+    sun_dir = torch.tensor([0.0, 0.0, 1.0])
+
+    power_full, _ = solar_loss_sr(vertices, faces, sun_dir, area_budget_mm2=1e12)
+
+    all_masked = torch.ones(len(faces), dtype=torch.bool)
+    power_masked, _ = solar_loss_sr(vertices, faces, sun_dir, area_budget_mm2=1e12, cone_face_mask=all_masked)
+
+    half_masked = torch.zeros(len(faces), dtype=torch.bool)
+    half_masked[: len(faces) // 2] = True
+    power_half, _ = solar_loss_sr(vertices, faces, sun_dir, area_budget_mm2=1e12, cone_face_mask=half_masked)
+
+    assert power_masked.item() < 1e-3, f"All-masked power should be ~0, got {power_masked.item()}"
+    assert power_half.item() < power_full.item(), "Half-masked power should be less than unmasked"
+    assert power_half.item() > power_masked.item(), "Half-masked power should be greater than all-masked"
+
+
+_SCRATCH_DIR = Path("/cluster/scratch/fsanche/wp3_vision_cone_solar")
+
+
+def test_solar_loss_sr_cone_mask_with_real_vision_cone() -> None:
+    """End-to-end: cone face mask from the real vision cone geometry reduces solar power on the aero mesh.
+
+    Saves selected/excluded face GLBs to /cluster/scratch/fsanche/wp3_vision_cone_solar/ for visual inspection.
+    """
+    import numpy as np  # noqa: PLC0415
+
+    wp4_verts, wp4_faces = _extract_wp4_generated_aero_mesh()
+    cone_verts, cone_faces = get_vision_cone_mesh(0, device="cpu")
+    sun_dir = torch.tensor([-1.0, 0.0, 1.0])
+
+    cone_mask = get_vision_cone_face_mask(cone_verts, cone_faces, wp4_verts, wp4_faces)
+
+    power_full, diag_full = solar_loss_sr(wp4_verts, wp4_faces, sun_dir, area_budget_mm2=6_000_000.0)
+    power_masked, diag_masked = solar_loss_sr(wp4_verts, wp4_faces, sun_dir, area_budget_mm2=6_000_000.0, cone_face_mask=cone_mask)
+
+    n_masked = int(cone_mask.sum().item())
+    print(f"  Cone mask: {n_masked}/{len(wp4_faces)} faces excluded")
+    print(f"  Power full:   {diag_full['total_power_watts']:.1f} W")
+    print(f"  Power masked: {diag_masked['total_power_watts']:.1f} W")
+
+    # Save GLBs for visual inspection
+    _SCRATCH_DIR.mkdir(parents=True, exist_ok=True)
+    verts_np = wp4_verts.numpy()
+    faces_np = wp4_faces.numpy()
+    mask_np = cone_mask.numpy()
+
+    def _save_glb(path: Path, face_indices: "np.ndarray", rgb: tuple[int, int, int]) -> None:
+        import trimesh  # noqa: PLC0415
+
+        used_idx = np.unique(face_indices)
+        remap = np.zeros(len(verts_np), dtype=np.int64)
+        remap[used_idx] = np.arange(len(used_idx))
+        mesh = trimesh.Trimesh(vertices=verts_np[used_idx], faces=remap[face_indices], process=False)
+        mesh.visual.face_colors = np.tile(np.array([*rgb, 255], dtype=np.uint8), (len(face_indices), 1))
+        mesh.export(str(path))
+        print(f"  Saved {len(face_indices)} faces → {path}")
+
+    _save_glb(_SCRATCH_DIR / "cone_excluded_faces.glb", faces_np[mask_np], (230, 50, 50))
+    _save_glb(_SCRATCH_DIR / "solar_selectable_faces.glb", faces_np[~mask_np], (50, 200, 80))
+
+    assert n_masked > 0, "Expected at least some faces inside the vision cone"
+    assert power_masked.item() <= power_full.item() + 1e-3, "Masked power should not exceed unmasked power"
 
 
 def test_vision_cone_intersects_wp4_generated_aero_mesh() -> None:

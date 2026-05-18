@@ -81,6 +81,17 @@ def _face_inside_mask(cone_verts: torch.Tensor, cone_faces: torch.Tensor, verts:
     return inside[faces.detach().cpu().numpy()].all(axis=1)
 
 
+def get_vision_cone_face_mask(
+    cone_verts: torch.Tensor,
+    cone_faces: torch.Tensor,
+    mesh_verts: torch.Tensor,
+    mesh_faces: torch.Tensor,
+) -> torch.Tensor:
+    """Return a bool tensor of shape (num_faces,) — True for faces fully inside the vision cone."""
+    mask_np = _face_inside_mask(cone_verts, cone_faces, mesh_verts, mesh_faces)
+    return torch.as_tensor(mask_np, device=mesh_faces.device, dtype=torch.bool)
+
+
 def render_vis_cone(
     id_number: int,
     out_path: str | Path = "vision_cone.glb",

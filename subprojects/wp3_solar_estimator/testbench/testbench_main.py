@@ -1,4 +1,6 @@
 import hashlib
+import math
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -176,51 +178,44 @@ def get_device() -> str:
     return "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def single_solar_test():
-    cfg = load_config()
-    loss_class = cfg["solar_loss"]["class"]
-    vis_enabled = cfg["vis_manager"]["enabled"]
-    print("=== Solar Testbench ===")
-    print(f"Loss class : {loss_class}")
-    print(f"Vis enabled: {vis_enabled}")
-
-    device = get_device()
-    print(f"Device     : {device}")
-
-    ply_path = cfg["loading"]["ply_path"]
-    ply_scaling = cfg["loading"]["ply_scaling_factor"]
-    print(f"\nLoading PLY: {ply_path}  (scale={ply_scaling})")
-    verts, faces = load_ply_file(ply_path, ply_scaling)
-    print(f"  {verts.shape[0]} vertices, {faces.shape[0]} faces")
-
-    vis_manager, save_dir = setup_vis_manager(cfg, loss_class=loss_class)
-
-    if save_dir is not None:
-        print(f"\nVisualizer will save files to: {save_dir}")
-
-    print(f"\nInitialising {loss_class}...")
-    loss_cls = SOLAR_LOSS_REGISTRY[loss_class]
-    solar_loss = loss_cls(device=device, weight=[1.0, 1.0])
-    solar_loss._vis_manager = vis_manager
-
+def _build_sdf_model(cfg: dict, verts: torch.Tensor, faces: torch.Tensor, device: str) -> "MeshSDFCallable":
     sdf_cfg = cfg.get("sdf_model", {})
     grid_resolution = int(sdf_cfg.get("grid_resolution", 128))
     cache_dir_str = sdf_cfg.get("cache_dir", "sdf_cache")
     cache_dir = Path(__file__).parent / cache_dir_str if cache_dir_str else None
-    sdf_model = MeshSDFCallable(verts.to(device), faces.to(device), grid_resolution=grid_resolution, cache_dir=cache_dir)
+    n_cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", "4"))
+    precompute_chunk_size = int(sdf_cfg.get("precompute_chunk_size", n_cpus * 4096))
+    return MeshSDFCallable(
+        verts.to(device),
+        faces.to(device),
+        grid_resolution=grid_resolution,
+        cache_dir=cache_dir,
+        precompute_chunk_size=precompute_chunk_size,
+    )
+
+
+def run_one(loss_class: str, cfg: dict, sdf_model: "MeshSDFCallable", device: str, losses_config: dict) -> None:
+    vis_enabled = cfg["vis_manager"]["enabled"]
+    true_scale = cfg["vis_manager"]["true_scale"]
+
+    vis_manager, save_dir = setup_vis_manager(cfg, loss_class=loss_class)
+    if save_dir is not None:
+        print(f"  vis → {save_dir}")
+
+    loss_cls = SOLAR_LOSS_REGISTRY[loss_class]
+    solar_loss = loss_cls(device=device, weight=[1.0, 1.0], losses_config=losses_config)
+    solar_loss._vis_manager = vis_manager
 
     skip_telemetry = not vis_enabled
-    print(f"\nRunning loss evaluation (skip_telemetry={skip_telemetry})...")
     t0 = time.perf_counter()
-    result = solar_loss.get_loss(model=sdf_model, epoch_name=-42, skip_telemetry=skip_telemetry)
+    result = solar_loss.get_loss(model=sdf_model, epoch_name=0, skip_telemetry=skip_telemetry)
     elapsed = time.perf_counter() - t0
 
-    print(f"\nSolar loss : {result.item():.4f} W")
-    print(f"Elapsed    : {elapsed:.2f}s")
-    true_scale = cfg["vis_manager"]["true_scale"]
+    print(f"  loss={result.item():.2f} W  elapsed={elapsed:.2f}s")
+
     if vis_enabled and hasattr(solar_loss, "extractor") and solar_loss.extractor.last_dL_dv is not None:
         vis_manager.vis_mesh_gradient(
-            -42,
+            0,
             loss_class.lower(),
             solar_loss.extractor.last_verts,
             solar_loss.extractor.last_faces,
@@ -231,5 +226,75 @@ def single_solar_test():
     vis_manager.finalize()
 
 
+def single_solar_test() -> None:
+    cfg = load_config()
+    loss_class = cfg["solar_loss"]["class"]
+    device = get_device()
+
+    print("=== Solar Testbench ===")
+    print(f"Loss class : {loss_class}")
+    print(f"Vis enabled: {cfg['vis_manager']['enabled']}")
+    print(f"Device     : {device}")
+
+    ply_path = cfg["loading"]["ply_path"]
+    ply_scaling = cfg["loading"]["ply_scaling_factor"]
+    print(f"\nLoading PLY: {ply_path}  (scale={ply_scaling})")
+    verts, faces = load_ply_file(ply_path, ply_scaling)
+    print(f"  {verts.shape[0]} vertices, {faces.shape[0]} faces")
+
+    from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config as _load_wp4_config  # noqa: PLC0415
+    losses_config = _load_wp4_config(v="v2", cfg_name="losses_v0_config.yaml")
+
+    sdf_model = _build_sdf_model(cfg, verts, faces, device)
+
+    print(f"\nRunning {loss_class}...")
+    run_one(loss_class, cfg, sdf_model, device, losses_config)
+
+
+# Losses that support vision cone exclusion — skips legacy V3B/V5/V6/V7
+CONE_LOSS_CLASSES = ["SolarSR", "SolarSRRT", "SolarMR", "SolarMRRT"]
+
+
+def all_solar_tests() -> None:
+    cfg = load_config()
+    device = get_device()
+
+    print("=== Solar Testbench — all cone-compatible losses ===")
+    print(f"Vis enabled: {cfg['vis_manager']['enabled']}")
+    print(f"Device     : {device}")
+
+    ply_path = cfg["loading"]["ply_path"]
+    ply_scaling = cfg["loading"]["ply_scaling_factor"]
+    print(f"\nLoading PLY: {ply_path}  (scale={ply_scaling})")
+    verts, faces = load_ply_file(ply_path, ply_scaling)
+    print(f"  {verts.shape[0]} vertices, {faces.shape[0]} faces")
+
+    from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config as _load_wp4_config  # noqa: PLC0415
+    losses_config = _load_wp4_config(v="v2", cfg_name="losses_v0_config.yaml")
+
+    # SDF grid is built once and reused across all losses (cached after first call)
+    sdf_model = _build_sdf_model(cfg, verts, faces, device)
+
+    results: list[tuple[str, float, float]] = []
+    for loss_class in CONE_LOSS_CLASSES:
+        print(f"\n--- {loss_class} ---")
+        try:
+            t0 = time.perf_counter()
+            run_one(loss_class, cfg, sdf_model, device, losses_config)
+            results.append((loss_class, time.perf_counter() - t0, float("nan")))
+        except Exception as e:
+            print(f"  FAILED: {e}")
+            results.append((loss_class, float("nan"), float("nan")))
+
+    print("\n=== Summary ===")
+    for loss_class, elapsed, _ in results:
+        status = f"{elapsed:.1f}s" if math.isfinite(elapsed) else "FAILED"
+        print(f"  {loss_class:12s}  {status}")
+
+
 if __name__ == "__main__":
-    single_solar_test()
+    import sys
+    if "--all" in sys.argv:
+        all_solar_tests()
+    else:
+        single_solar_test()
