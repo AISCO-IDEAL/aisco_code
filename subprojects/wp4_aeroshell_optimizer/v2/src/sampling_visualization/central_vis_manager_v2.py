@@ -693,6 +693,8 @@ class CentralVisManagerV2(_BaseVisManager):
         vert_n /= np.maximum(vert_n_norm, 1e-12)
 
         dot = optimizer_update_normal_scalar(vert_n, grads_np)
+        if "solar" in loss_key.lower():
+            dot = -dot
 
         # Symmetric range around zero so the diverging colormap is centred on
         # neutral/no normal update. vmin/vmax in the YAML override this; null

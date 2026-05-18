@@ -1465,7 +1465,8 @@ class DiversityTrainer:
                         if _mesh_entry is None:
                             continue
                         _v, _f = _mesh_entry
-                        self._vis_manager.vis_mesh_gradient(epoch, _loss_key, _v, _f, _grads)
+                        _true_scale = "solar" not in _loss_key.lower()
+                        self._vis_manager.vis_mesh_gradient(epoch, _loss_key, _v, _f, _grads, true_scale=_true_scale)
                     self._vis_manager.set_active_slot(None)
             else:
                 # Default: reference-shape gradient (Z[0] perspective, no slot tag).
@@ -1474,7 +1475,8 @@ class DiversityTrainer:
                     if _mesh_entry is None:
                         continue
                     _v, _f = _mesh_entry
-                    self._vis_manager.vis_mesh_gradient(epoch, _loss_key, _v, _f, _grads)
+                    _true_scale = "solar" not in _loss_key.lower()
+                    self._vis_manager.vis_mesh_gradient(epoch, _loss_key, _v, _f, _grads, true_scale=_true_scale)
 
         # Circle survey: every N optimisation epochs, sweep the pretrained z-circle.
         if isinstance(self._vis_manager, CentralVisManagerV2):
