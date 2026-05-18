@@ -247,6 +247,7 @@ export function initMeshViewer(containerEl) {
             const name = document.createElement("span");
             name.textContent = component.name.replace(/_/g, " ");
             name.style.fontSize = "0.68rem";
+            name.style.color = "#000000";
             name.style.whiteSpace = "nowrap";
             name.style.overflow = "hidden";
             name.style.textOverflow = "ellipsis";
