@@ -1,0 +1,90 @@
+# sdf_slice_viz.yaml
+# Configuration for sdf_slice_viz.py
+# ---------------------------------------------------------------------------
+# Run:
+#   python scripts/sdf_slice_viz.py [--config configs/sdf_slice_viz.yaml]
+#   python scripts/sdf_slice_viz.py --interactive   # opens a window
+# ---------------------------------------------------------------------------
+
+# --- Input ---
+mesh_path: /cluster/work/fuge/AISCO/wp1_cfd_ai/FLUENT/GEOMETRY/RUN_004.ply   # PLY, OBJ, STL supported
+
+# --- Output ---
+output_path: /cluster/work/fuge/AISCO/wp9/rollout_viz/sdf_slice.png
+image_width: 1600    # pixels (logical layout size)
+image_height: 1600   # pixels
+render_scale: 3      # pixel density multiplier for write_image (3 → 4800x2400 output)
+
+# --- Background ---
+# RGBA values 0.0–1.0.  Set alpha to 0 for a fully transparent background
+# (useful when compositing the output over another image).
+background_color: [1.0, 1.0, 1.0, 0]   # white, transparent
+
+# --- Camera (3-D mesh panel) ---
+camera:
+  azimuth: -15        # degrees; 0 = pure front (YZ face), -45 = front-left corner
+  elevation: 20       # degrees above horizontal
+  distance_factor: 1.75  # Plotly camera eye distance (unitless; larger = more zoomed out)
+
+# --- Mesh rendering ---
+mesh:
+  face_color: [0.365, 0.678, 0.886, 1.0]  # RGBA #5DADE2; alpha forced to 1.0 (fully opaque)
+  edge_color: [0.3,  0.3,  0.3,  1]   # RGBA; set alpha=0 to hide edges
+  linewidth: 0.3
+
+# --- Lighting ---------------------------------------------------------------
+lighting:
+  shading: true   # true = diffuse/specular shading; false = flat (unaffected by light)
+  ambient:    0.4
+  diffuse:    0.8
+  specular:   0.3
+  roughness:  0.5
+  fresnel:    0.2
+  position_x: 1.0
+  position_y: 1.0
+  position_z: 2.0
+
+# --- SDF slice ---
+slice:
+  axis: x            # axis perpendicular to the slice plane: x | y | z
+  #   x → YZ plane, y → XZ plane, z → XY plane
+  # position is a *fraction* of the bounding box along that axis:
+  #   0.0 = minimum face, 0.5 = middle, 1.0 = maximum face
+  position: 0.7
+  resolution: 400    # grid points per axis in the slice plane
+  plane_scale: 2.5   # expand the slice plane by this factor around its centre
+                     # (1.0 = exactly mesh bounds, 5.0 = 5x larger)
+  colormap: inferno      # any valid matplotlib colormap name
+  colormap_invert: false  # true = reverse the colormap direction
+  vmin: null         # null = auto-scale from data
+  vmax: null         # null = auto-scale from data
+  alpha: 0.8      # opacity of the SDF plane (0=transparent, 1=opaque)
+  occlude_back: true  # true = cull mesh faces behind the slice plane (prevents bleed-through)
+  surface_stride: 2  # subsample factor for plot_surface (1=full res, 2=half, ...)
+  show_zero_contour: false  # draw the iso-line where SDF == 0 (mesh boundary)
+  zero_contour_color: "white"
+  zero_contour_linewidth: 1.5
+
+# --- SDF computation ---
+sdf:
+  # "mesh" uses scipy KDTree on mesh vertices for distance + trimesh ray-casting
+  #  for the sign — no rtree required.  Accurate enough for slice visualisation.
+  # "sphere" uses a test sphere SDF centred at the mesh centroid (useful for
+  #  debugging when no real mesh is loaded yet).
+  source: mesh        # mesh | sphere
+  # Only used when source == sphere:
+  sphere_radius_factor: 0.35  # fraction of bounding-sphere radius
+
+# --- Layout ---
+layout:
+  # The figure is now a single 3-D panel + thin colorbar strip.
+  # left_panel_fraction is no longer used.
+  colorbar_width_fraction: 0.025
+  padding: 0.02
+
+# --- Labels ---
+labels:
+  mesh_panel_title: "Aeroshell mesh + SDF slice"
+  slice_panel_title: "SDF slice"  # unused in combined view, kept for reference
+  colorbar_label: "Signed distance [mm]"
+  font_size: 11

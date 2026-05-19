@@ -1,0 +1,86 @@
+# mesh_viz.yaml
+# Simple PLY mesh visualiser — color, lighting, camera
+# ---------------------------------------------------------------------------
+# Run:
+#   python scripts/mesh_viz.py                          # this config
+#   python scripts/mesh_viz.py --interactive            # write HTML
+#   python scripts/mesh_viz.py --mesh /path/to.ply
+#   python scripts/mesh_viz.py --out /tmp/out.png
+# ---------------------------------------------------------------------------
+
+# --- Input / Output ---------------------------------------------------------
+mesh_path: /cluster/work/fuge/AISCO/wp1_cfd_ai/FLUENT/GEOMETRY/RUN_156.ply
+
+output_dir: /cluster/work/fuge/AISCO/wp9/rollout_viz/mesh_viz
+image_width:  1600
+image_height:  1600
+render_scale:    3   # pixel density multiplier: 3 → writes 3200×1600
+
+# --- Mesh color -------------------------------------------------------------
+# RGBA, values 0.0–1.0.
+#
+# Presets:
+#   Steel blue:    [0.30, 0.55, 0.80, 1.0]  ← default
+#   Silver:        [0.75, 0.75, 0.75, 1.0]
+#   Carbon black:  [0.12, 0.12, 0.12, 1.0]
+#   Solar orange:  [0.95, 0.50, 0.10, 1.0]
+#   Race white:    [0.95, 0.95, 0.95, 1.0]
+color: [0.365, 0.678, 0.886, 1.0]  # #5DADE2
+opacity: 1.0
+
+# --- Background -------------------------------------------------------------
+background_color: [1.0, 1.0, 1.0, 0]   # transparent
+
+# --- Lighting ---------------------------------------------------------------
+# Tweak these to change how the surface shading looks.
+#
+# ambient   : flat fill light; raise to brighten shadowed areas   [0..1]
+# diffuse   : main directional shading; higher = more contrast    [0..1]
+# specular  : shiny highlight strength                            [0..1]
+# roughness : 0 = mirror-like highlight, 1 = broad matte spread  [0..1]
+# fresnel   : edge-glow effect                                    [0..5]
+#
+# position_x/y/z: where the light comes from (direction only — scale doesn't matter)
+#   e.g. position_z: 5 → light mostly overhead
+#        position_x: 3, position_y: -1 → front-right
+
+lighting:
+  ambient:    0.4
+  diffuse:    0.8
+  specular:   0.3
+  roughness:  0.5
+  fresnel:    0.2
+  position_x: 1.0
+  position_y: 1.0
+  position_z: 2.0
+
+# --- Camera -----------------------------------------------------------------
+# azimuth   : horizontal angle in degrees
+#               0   = head-on from the front (+X axis)
+#              90   = view from the left side
+#             -90   = view from the right side
+#             180   = view from the rear
+#              -30  = classic front-left corner  ← default
+#
+# elevation : vertical angle in degrees
+#               0   = level with the mesh
+#              20   = slight top-down angle       ← default
+#              89   = almost top-down
+#             -20   = slight bottom-up angle
+#
+# zoom      : controls how far the camera is from the scene.
+#             Plotly normalises the scene automatically, so this is a
+#             scene-space multiplier — it works for any mesh scale.
+#               2.0 = fits the mesh in the frame          ← default
+#               1.0 = zoomed in / close-up detail
+#               3.5 = zoomed out / showing more context
+
+camera:
+  azimuth:   90
+  elevation:  0
+  zoom:       3.5
+
+# --- Optional wireframe edges -----------------------------------------------
+# Set alpha > 0 to overlay edge lines on the mesh.
+edges:
+  color: [0.15, 0.15, 0.15, 0]   # RGBA — alpha 0 = off
