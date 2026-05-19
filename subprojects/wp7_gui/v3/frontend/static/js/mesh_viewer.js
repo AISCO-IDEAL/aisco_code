@@ -18,6 +18,14 @@ export function initMeshViewer(containerEl) {
     const scene = new Scene();
     scene.background = new Color(0xf1f7f3);
 
+    // Fetch vis-config from the GUI backend once and cache it.
+    // Falls back to {} when not available (e.g. assembly_selection page).
+    let _visConfig = {};
+    fetch("/viewer/api/vis-config")
+        .then((r) => r.ok ? r.json() : {})
+        .then((cfg) => { _visConfig = cfg || {}; })
+        .catch(() => {});
+
     const camera = new PerspectiveCamera(50, containerEl.clientWidth / containerEl.clientHeight, 0.1, 1000);
     camera.position.set(0, 0, 3);
 
@@ -363,6 +371,25 @@ export function initMeshViewer(containerEl) {
                         const srcMat = Array.isArray(node.material) ? node.material[0] : node.material;
                         const baseAlpha = typeof srcMat?.opacity === "number" ? srcMat.opacity : 1.0;
                         const hasVtxColors = node.geometry.hasAttribute("color");
+
+                        // Apply outer_lines_only style when configured for outer_bbox.
+                        const isOuterLinesOnly =
+                            node.name === "outer_bbox" &&
+                            (_visConfig.outer_render_style || null) === "outer_lines_only";
+                        if (isOuterLinesOnly) {
+                            const lc = _visConfig.outer_lines_color || [0.137, 0.157, 0.243];
+                            node.material = new MeshPhongMaterial({
+                                color: new Color(lc[0], lc[1], lc[2]),
+                                side: DoubleSide,
+                                transparent: false,
+                                opacity: 1.0,
+                                depthWrite: true,
+                                wireframe: true,
+                            });
+                            glbComponents.push({ key: node.uuid, name: node.name || `mesh_${node.id}`, mesh: node });
+                            return;
+                        }
+
                         if (hasVtxColors) {
                             hasVertexColors = true;
                             // Convert sRGB vertex colors to linear space (GLB colors are sRGB-encoded)

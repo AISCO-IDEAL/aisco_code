@@ -1,1 +1,2 @@
-OK: no check warnings.
+[WARNING] Out of bounds: wheel_0 bounding box extends outside the outer NBZ after clearance cut.
+[WARNING] Out of bounds: wheel_3 bounding box extends outside the outer NBZ after clearance cut.

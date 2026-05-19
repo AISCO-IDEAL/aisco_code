@@ -21,8 +21,7 @@ VENV_DIR="$PROJECT_ROOT/aisco_env"
 # 2. Print System Info (Simulating Slurm output)
 #------------------------------------------------------------------------------
 echo "=========================================="
-echo "Starting local execution on WSL: $(date)"
-echo "User: $USERNAME"
+echo "Starting local execution: $(date)"
 echo "Working directory: $PWD"
 echo "=========================================="
 

@@ -7,8 +7,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
+import yaml
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from subprojects.wp7_gui.v3.core.settings import SETTINGS
@@ -68,6 +69,20 @@ def viewer_pretraining(request: Request):
             "page_title": "Viewer — Pretraining GIFs",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Vis-config API — serves mesh_assembly_v4 style keys from vis_config.yaml so
+# mesh_viewer.js can apply outer_lines_only rendering without hardcoded values.
+# ---------------------------------------------------------------------------
+@router.get("/api/vis-config")
+def api_vis_config() -> JSONResponse:
+    try:
+        vis_cfg = yaml.safe_load((SETTINGS.wp4_configs_dir / "vis_config.yaml").read_text())
+        assembly_cfg: dict[str, Any] = vis_cfg.get("visual_types", {}).get("mesh_assembly_v4", {})
+    except Exception:
+        assembly_cfg = {}
+    return JSONResponse(content=assembly_cfg)
 
 
 # ---------------------------------------------------------------------------

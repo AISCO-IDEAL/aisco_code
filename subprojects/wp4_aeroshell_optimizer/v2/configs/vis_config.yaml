@@ -181,11 +181,14 @@ visual_types:
     vmax: null
     solid_color_rgb: [0.7608, 0.2078, 0.1922]
     # Per-component colours (RGB in [0, 1]) and opacities (in [0, 1]):
-    sdf_color: [1, 0.439, 0.263]  # aeroshell mesh — corporate large-surface red (#C33531)
-    sdf_alpha: 1                 # aeroshell opacity
-    inner_color: [0.5, 0.5, 0.5]  # inner assembly — corporate text-box blue (#D2E0F2)
-    outer_color: [0.471, 0.565, 0.612]     # outer bbox — corporate highlight red (#FF504D)
-    outer_alpha: 0.2                 # outer bbox opacity
+    sdf_color: [0.5, 0.5, 0.5]          # aeroshell mesh — corporate large-surface red (#C33531)
+    sdf_alpha: 1                        # aeroshell opacity
+    inner_color: [0.765, 0.208, 0.192]  # inner assembly — corporate text-box blue (#D2E0F2)
+    outer_color: [0.824, 0.878, 0.949]  # outer bbox — corporate highlight red (#FF504D)
+    outer_alpha: 0.2                    # outer bbox opacity (used by legacy solid mode)
+    outer_render_style: "outer_lines_only"  # outer_lines_only|solid+edges
+    outer_lines_color: [0.137, 0.157, 0.243] # dark corporate background tone for outlines
+    outer_lines_width: 0.6              # target line width in viewer (browser-dependent)
 
   # Per-loss gradient visualisation (`vis_mesh_gradient`). Each call writes
   # ``mesh_gradients/<loss_key>/epoch_XXXXX.ply`` and finalize() generates the
