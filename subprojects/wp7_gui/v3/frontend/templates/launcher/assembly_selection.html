@@ -352,6 +352,7 @@ endblock %}
     let hasUnsavedMapCloneChanges = false;
     let hasCheckWarnings = true;
     let maxAssemblyMapId = null;
+    let assemblyPlyColorRgb = null;
 
     const statusEl = document.getElementById("status");
     const sourceStatusEl = document.getElementById("source-status");
@@ -374,6 +375,37 @@ endblock %}
     const seatHalfX = 330;
     const seatHalfY = 180;
 
+    function parseRgbTriplet(rgb) {
+        if (!Array.isArray(rgb) || rgb.length !== 3) {
+            return null;
+        }
+        const parsed = rgb.map((value) => Number(value));
+        if (parsed.some((value) => !Number.isFinite(value))) {
+            return null;
+        }
+        return parsed.map((value) => Math.min(1, Math.max(0, value)));
+    }
+
+    async function loadAssemblyPlyColorConfig() {
+        try {
+            const r = await fetch(`/api/artifacts/glb-config?t=${Date.now()}`, { cache: "no-store" });
+            if (!r.ok) {
+                return;
+            }
+            const d = await r.json();
+            const nextColor = parseRgbTriplet(d?.inner_color);
+            if (!nextColor) {
+                return;
+            }
+            assemblyPlyColorRgb = nextColor;
+            if (meshViewer && typeof meshViewer.setPlyFallbackColorRgb === "function") {
+                meshViewer.setPlyFallbackColorRgb(assemblyPlyColorRgb);
+            }
+        } catch (_err) {
+            // Keep existing mesh viewer fallback color if config cannot be fetched.
+        }
+    }
+
     function loadAssemblyMesh() {
         const url = `${API}/assembly-selection/mesh?pipeline=${pipeline}&t=${Date.now()}`;
         meshMeta.textContent = "Loading assembly.ply...";
@@ -381,6 +413,9 @@ endblock %}
             const isFirstLoad = !meshViewer;
             if (!meshViewer) {
                 meshViewer = initMeshViewer(meshContainer);
+            }
+            if (assemblyPlyColorRgb && typeof meshViewer.setPlyFallbackColorRgb === "function") {
+                meshViewer.setPlyFallbackColorRgb(assemblyPlyColorRgb);
             }
             const savedView = isFirstLoad ? null : meshViewer.getViewState();
             meshViewer.loadMesh(url, () => {
@@ -954,6 +989,7 @@ endblock %}
         }
     });
 
+    loadAssemblyPlyColorConfig();
     loadAssemblyMapMeta();
     loadParams();
 </script>
