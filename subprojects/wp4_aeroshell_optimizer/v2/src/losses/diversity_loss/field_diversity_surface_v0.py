@@ -159,6 +159,9 @@ class FieldDiversitySurfaceV0:
         # signal.
         cached = self._cached_points or []
         common_pts = torch.cat([p for p in cached if p.shape[0] > 0], dim=0) if cached else torch.zeros((0, 3), device=Z.device)
+        if common_pts.shape[0] > self._surface_subsample_n:
+            idx = torch.randperm(common_pts.shape[0], device=common_pts.device)[: self._surface_subsample_n]
+            common_pts = common_pts[idx]
         if common_pts.shape[0] == 0:
             return torch.zeros((), device=Z.device, dtype=torch.float32)
 

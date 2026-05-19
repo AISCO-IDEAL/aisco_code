@@ -23,4 +23,5 @@ class BbOuterV0(BbV44):
 
             lower_sq = self._violation(self._outer_margin - sdf_outer).pow(2)
 
-            return torch.sqrt(lower_sq.sum() + 1e-12)
+            loss = torch.sqrt(lower_sq.sum() + 1e-12)
+            return torch.clamp(loss - self._outer_tolerance, min=0.0)
