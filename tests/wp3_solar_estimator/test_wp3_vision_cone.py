@@ -229,7 +229,9 @@ def test_solar_loss_sr_cone_mask_with_real_vision_cone() -> None:
     cone_mask = get_vision_cone_face_mask(cone_verts, cone_faces, wp4_verts, wp4_faces)
 
     power_full, diag_full = solar_loss_sr(wp4_verts, wp4_faces, sun_dir, area_budget_mm2=6_000_000.0)
-    power_masked, diag_masked = solar_loss_sr(wp4_verts, wp4_faces, sun_dir, area_budget_mm2=6_000_000.0, cone_face_mask=cone_mask)
+    power_masked, diag_masked = solar_loss_sr(
+        wp4_verts, wp4_faces, sun_dir, area_budget_mm2=6_000_000.0, cone_face_mask=cone_mask
+    )
 
     n_masked = int(cone_mask.sum().item())
     print(f"  Cone mask: {n_masked}/{len(wp4_faces)} faces excluded")

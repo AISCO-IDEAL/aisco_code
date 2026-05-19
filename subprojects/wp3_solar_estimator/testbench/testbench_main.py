@@ -289,6 +289,7 @@ def single_solar_test(ply_path: str | None = None, ply_scaling_factor: float | N
     print(f"  {verts.shape[0]} vertices, {faces.shape[0]} faces")
 
     from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config as _load_wp4_config  # noqa: PLC0415
+
     losses_config = _load_wp4_config(v="v2", cfg_name="losses_v0_config.yaml")
 
     sdf_model = _build_sdf_model(cfg, verts, faces, device)
@@ -320,6 +321,7 @@ def all_solar_tests(ply_path: str | None = None, ply_scaling_factor: float | Non
     print(f"  {verts.shape[0]} vertices, {faces.shape[0]} faces")
 
     from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config as _load_wp4_config  # noqa: PLC0415
+
     losses_config = _load_wp4_config(v="v2", cfg_name="losses_v0_config.yaml")
 
     # SDF grid is built once and reused across all losses (cached after first call)
