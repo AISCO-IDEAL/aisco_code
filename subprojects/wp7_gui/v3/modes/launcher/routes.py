@@ -287,7 +287,14 @@ async def run_stream_logs() -> StreamingResponse:
                     epoch = log_parser.parse_epoch(text)
                     if epoch >= 0:
                         active_cfg_folder = _runtime_state["active_cfg_folder"]
-                        yield sse.event("epoch", {"epoch": epoch, "total": _get_total_epochs(active_cfg_folder)})
+                        metrics = log_parser.parse_metrics(text)
+                        yield sse.event("epoch", {
+                            "epoch": epoch,
+                            "total": _get_total_epochs(active_cfg_folder),
+                            "drag_value": metrics.get("drag_value"),
+                            "solar_power_w": metrics.get("solar_power_w"),
+                            "cruising_speed_ms": metrics.get("cruising_speed_ms"),
+                        })
             if not state["running"]:
                 yield sse.event("done", {"return_code": state["return_code"]})
                 break
