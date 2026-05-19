@@ -227,15 +227,26 @@ def _ensure_wp4_model_imports() -> None:
     3. Directly load concat_baseclass, WIRE_v5, and concat_WIRE_v5 from their
        source files, bypassing the package import machinery entirely.
     """
+    # Stub parent packages for both models and sampling_visualization paths.
+    # The v2.src stub must have its __path__ set to the real directory to allow
+    # both subpackages (models, sampling_visualization) to be discovered.
     for pkg in [
         "subprojects.wp4_aeroshell_optimizer",
         "subprojects.wp4_aeroshell_optimizer.v2",
         "subprojects.wp4_aeroshell_optimizer.v2.src",
         "subprojects.wp4_aeroshell_optimizer.v2.src.models",
+        "subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization",
     ]:
         if pkg not in sys.modules:
             m = types.ModuleType(pkg)
-            m.__path__ = []  # type: ignore[attr-defined]
+            # Only set __path__ = [] for the leaf packages (models).
+            # For v2.src, we need to allow subpackage discovery, so we don't set __path__.
+            if pkg == "subprojects.wp4_aeroshell_optimizer.v2.src":
+                # Set __path__ to the real directory so Python can find both subpackages
+                src_dir = str(Path(__file__).parents[2] / "wp4_aeroshell_optimizer" / "v2" / "src")
+                m.__path__ = [src_dir]  # type: ignore[attr-defined]
+            else:
+                m.__path__ = []  # type: ignore[attr-defined]
             sys.modules[pkg] = m
 
     mb_key = "subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass"
