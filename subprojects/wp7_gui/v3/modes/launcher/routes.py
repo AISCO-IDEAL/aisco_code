@@ -377,6 +377,16 @@ def assembly_params(pipeline: str = "live") -> dict[str, dict[str, float]]:
     return _assembly(pipeline).get_params()
 
 
+@router.get("/api/assembly-selection/map-entry")
+def assembly_map_entry(assembly_id: int, pipeline: str = "live") -> dict[str, Any]:
+    return _assembly(pipeline).load_from_map_id(assembly_id)
+
+
+@router.get("/api/assembly-selection/map-meta")
+def assembly_map_meta(pipeline: str = "live") -> dict[str, int | None]:
+    return _assembly(pipeline).get_map_meta()
+
+
 @router.post("/api/assembly-selection/update")
 def assembly_update(payload: dict[str, Any], pipeline: str = "live") -> dict[str, Any]:
     return _assembly(pipeline).update_params(payload)

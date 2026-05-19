@@ -122,6 +122,7 @@
 
   function makeInput(param, current) {
     const t = param.type;
+    const isAssemblyIdParam = param.path === ASSEMBLY_ID_PATH;
     if (t === "bool" || t === "enum") {
       const sel = document.createElement("select");
       sel.className = "param-input";
@@ -133,6 +134,10 @@
         sel.appendChild(opt);
       });
       sel.addEventListener("change", checkValidity);
+      if (isAssemblyIdParam) {
+        sel.disabled = true;
+        sel.title = "Assembly ID is controlled from the assembly-selection page.";
+      }
       return sel;
     }
     const inp = document.createElement("input");
@@ -158,6 +163,10 @@
     } else {
       inp.type = "text";
       inp.addEventListener("input", checkValidity);
+    }
+    if (isAssemblyIdParam) {
+      inp.disabled = true;
+      inp.title = "Assembly ID is controlled from the assembly-selection page.";
     }
     return inp;
   }
@@ -209,6 +218,7 @@
         let mt = `${param.path} · ${param.type}`;
         if ("min" in param || "max" in param) mt += ` · [${param.min ?? "-∞"}, ${param.max ?? "+∞"}]`;
         if (param.choices) mt += ` · ${JSON.stringify(param.choices)}`;
+        if (param.path === ASSEMBLY_ID_PATH) mt += " · locked (set in assembly selection)";
         meta.textContent = mt; labelWrap.appendChild(meta);
         const inp = makeInput(param, cfgVals[param.path]);
         inp.dataset.cfg = cfgName; inp.dataset.path = param.path; inp.dataset.type = param.type;
@@ -223,6 +233,7 @@
     const updates = {};
     let invalid = false;
     formArea.querySelectorAll(".param-input").forEach(inp => {
+      if (inp.disabled) return;
       const { cfg, path, type: t } = inp.dataset;
       if (!cfg || !path) return;
       let value;
@@ -253,6 +264,25 @@
     } catch (err) { log(`ERROR: ${err.message}`, "error"); }
   }
 
+  async function applyPendingAssemblyId(folder) {
+    const pendingId = localStorage.getItem(PENDING_ID_KEY);
+    if (pendingId === null || !folder) return;
+    const mapId = parseInt(pendingId, 10);
+    if (isNaN(mapId)) return;
+    try {
+      const wr = await fetch(`${API}/config-overrides/values`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folder, updates: { [LOSSES_CFG]: { [ASSEMBLY_ID_PATH]: mapId } } }),
+      });
+      if (!wr.ok) { const wd = await wr.json(); throw new Error(wd.detail?.message || wr.status); }
+      log(`Assembly ID ${mapId} written to ${LOSSES_CFG}.`, "success");
+      localStorage.removeItem(PENDING_ID_KEY);
+    } catch (writeErr) {
+      log(`WARNING: Could not write pending assembly ID ${mapId}: ${writeErr.message}`, "error");
+    }
+  }
+
   btnInit?.addEventListener("click", async () => {
     btnInit.disabled = true;
     try {
@@ -262,27 +292,7 @@
       const d = await r.json();
       log(`Session: ${d.name} (${d.copied_files.length} files)`, "success");
       setFolder(d.folder);
-
-      // Apply pending assembly ID from assembly-selection page, if any
-      const pendingId = localStorage.getItem(PENDING_ID_KEY);
-      if (pendingId !== null) {
-        const mapId = parseInt(pendingId, 10);
-        if (!isNaN(mapId)) {
-          try {
-            const wr = await fetch(`${API}/config-overrides/values`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ folder: d.folder, updates: { [LOSSES_CFG]: { [ASSEMBLY_ID_PATH]: mapId } } }),
-            });
-            if (!wr.ok) { const wd = await wr.json(); throw new Error(wd.detail?.message || wr.status); }
-            log(`Assembly ID ${mapId} written to ${LOSSES_CFG}.`, "success");
-            localStorage.removeItem(PENDING_ID_KEY);
-          } catch (writeErr) {
-            log(`WARNING: Could not write pending assembly ID ${mapId}: ${writeErr.message}`, "error");
-          }
-        }
-      }
-
+      await applyPendingAssemblyId(d.folder);
       await loadSchemaAndValues();
     } catch (err) { log(`ERROR: ${err.message}`, "error"); }
     finally { btnInit.disabled = false; }
@@ -365,7 +375,9 @@
     try {
       const d = await (await fetch(`${API}/config-overrides/sessions`)).json();
       if ((d.sessions || []).some(s => s.folder === activeFolder)) {
-        setFolder(activeFolder); await loadSchemaAndValues();
+        setFolder(activeFolder);
+        await applyPendingAssemblyId(activeFolder);
+        await loadSchemaAndValues();
       } else { log("Stored session no longer exists; cleared.", "error"); setFolder(""); }
     } catch (err) { log(`Could not restore: ${err.message}`, "error"); setFolder(""); }
   })();

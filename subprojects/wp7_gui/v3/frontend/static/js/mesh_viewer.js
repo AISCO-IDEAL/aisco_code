@@ -3,7 +3,7 @@
  */
 
 import { PerspectiveCamera, Scene, Color, WebGLRenderer, HemisphereLight, DirectionalLight, AmbientLight, MeshBasicMaterial, MeshStandardMaterial, MeshPhongMaterial, Mesh, Vector3, Box3, SRGBColorSpace, DoubleSide } from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { TrackballControls } from "three/addons/controls/TrackballControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PLYLoader } from "three/addons/loaders/PLYLoader.js";
 
@@ -55,8 +55,7 @@ export function initMeshViewer(containerEl) {
     renderer.outputColorSpace = SRGBColorSpace;
     containerEl.appendChild(renderer.domElement);
 
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
+    const controls = new TrackballControls(camera, renderer.domElement);
     let onControlsChange = null;
     let suppressControlsCallback = false;
     let glbControlsHost = null;
@@ -132,6 +131,17 @@ export function initMeshViewer(containerEl) {
                 y: controls.target.y,
                 z: controls.target.z,
             },
+            up: {
+                x: camera.up.x,
+                y: camera.up.y,
+                z: camera.up.z,
+            },
+            quaternion: {
+                x: camera.quaternion.x,
+                y: camera.quaternion.y,
+                z: camera.quaternion.z,
+                w: camera.quaternion.w,
+            },
         };
     }
 
@@ -142,6 +152,17 @@ export function initMeshViewer(containerEl) {
         suppressControlsCallback = true;
         camera.position.set(viewState.camera.x, viewState.camera.y, viewState.camera.z);
         controls.target.set(viewState.target.x, viewState.target.y, viewState.target.z);
+        if (viewState.up) {
+            camera.up.set(viewState.up.x, viewState.up.y, viewState.up.z);
+        }
+        if (viewState.quaternion) {
+            camera.quaternion.set(
+                viewState.quaternion.x,
+                viewState.quaternion.y,
+                viewState.quaternion.z,
+                viewState.quaternion.w,
+            );
+        }
         controls.update();
         suppressControlsCallback = false;
     }
@@ -296,7 +317,11 @@ export function initMeshViewer(containerEl) {
         camera.far = 5000;
         camera.updateProjectionMatrix();
         controls.target.set(0, 0, 0);
+        camera.quaternion.identity();
         controls.update();
+        // Force TrackballControls to sync its internal state with the camera
+        const currentState = getViewState();
+        setViewState(currentState);
     }
 
     function fitGlbCamera(root) {
@@ -311,7 +336,7 @@ export function initMeshViewer(containerEl) {
         root.scale.setScalar(scale);
         root.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
 
-        camera.up.set(0, 0, 1);
+        camera.quaternion.identity();
         frameScaledObject(size.clone().multiplyScalar(scale));
     }
 
