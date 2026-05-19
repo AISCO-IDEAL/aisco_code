@@ -599,6 +599,7 @@ def process_single_run(  # noqa: PLR0915 — single cohesive extraction unit; sp
     cases_dir: str = CASES_DIR,
     output_dir: str = OUTPUT_DIR,
     time_step: int = DEFAULT_TIME_STEP,
+    source_dataset: str = "openfoam_federico",
 ) -> str | None:
     """Process one OpenFOAM run into a GAOT-compatible .pt file.
 
@@ -607,6 +608,7 @@ def process_single_run(  # noqa: PLR0915 — single cohesive extraction unit; sp
         cases_dir: Parent directory containing RUN_XXX case directories.
         output_dir: Directory for .pt output.
         time_step: Time step to extract.
+        source_dataset: Label identifying this batch for cross-dataset traceability.
 
     Returns:
         Save name on success, None on failure.
@@ -732,6 +734,12 @@ def process_single_run(  # noqa: PLR0915 — single cohesive extraction unit; sp
     data.geom_aspect = geom_aspect
     data.conditioning = conditioning
     data.filename = f"RUN_{run_id:03d}"
+    data.source_dataset = source_dataset
+    data.source_case_id = f"{source_dataset}::RUN_{run_id:03d}"
+    data.preprocess_version = "v0.7.0"
+    data.flow_conditions = {}
+    data.geom_name = ""
+    data.n_surface_faces = int(face_tensor.shape[1])
     data.cd_mean50 = torch.tensor([cd_mean50_float], dtype=torch.float32)
     data.cd_std50 = torch.tensor([cd_std50_float], dtype=torch.float32)
 
@@ -763,6 +771,7 @@ def process_all_runs(
     max_runs: int | None = None,
     num_workers: int = NUM_WORKERS,
     time_step: int = DEFAULT_TIME_STEP,
+    source_dataset: str = "openfoam_federico",
 ) -> None:
     """Process all (or selected) OpenFOAM runs into .pt files.
 
@@ -773,6 +782,7 @@ def process_all_runs(
         max_runs: Process at most this many runs.
         num_workers: Number of parallel workers.
         time_step: Time step to extract.
+        source_dataset: Label identifying this batch for cross-dataset traceability.
     """
     os.makedirs(output_dir, exist_ok=True)
 
@@ -797,7 +807,7 @@ def process_all_runs(
     if num_workers <= 1:
         for rid in tqdm(run_ids, desc="Processing runs"):
             try:
-                result = process_single_run(rid, cases_dir, output_dir, time_step)
+                result = process_single_run(rid, cases_dir, output_dir, time_step, source_dataset)
                 if result is not None:
                     order_list.append(result)
             except Exception as exc:
@@ -805,7 +815,9 @@ def process_all_runs(
                 traceback.print_exc()
     else:
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
-            futures = {executor.submit(process_single_run, rid, cases_dir, output_dir, time_step): rid for rid in run_ids}
+            futures = {
+                executor.submit(process_single_run, rid, cases_dir, output_dir, time_step, source_dataset): rid for rid in run_ids
+            }
             for future in tqdm(as_completed(futures), total=len(futures), desc="Processing runs"):
                 rid = futures[future]
                 try:
@@ -835,6 +847,12 @@ def main() -> None:
     parser.add_argument("--max-runs", type=int, default=None, help="Max runs to process")
     parser.add_argument("--workers", type=int, default=NUM_WORKERS, help="Parallel workers")
     parser.add_argument("--time-step", type=int, default=DEFAULT_TIME_STEP, help="Time step to extract")
+    parser.add_argument(
+        "--source-dataset",
+        type=str,
+        default="openfoam_federico",
+        help="Source dataset label for metadata tracing (e.g. openfoam_federico_021)",
+    )
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
 
@@ -850,6 +868,7 @@ def main() -> None:
         max_runs=args.max_runs,
         num_workers=args.workers,
         time_step=args.time_step,
+        source_dataset=args.source_dataset,
     )
 
 
