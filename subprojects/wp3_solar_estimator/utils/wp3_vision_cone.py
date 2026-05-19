@@ -138,9 +138,12 @@ def render_intersection(
         remap[used_idx] = np.arange(len(used_idx))
         sub_verts = verts_np[used_idx]
         sub_faces = remap[face_indices]
-        mesh = trimesh.Trimesh(vertices=sub_verts, faces=sub_faces, process=False)
-        mesh.visual.face_colors = np.tile(np.array([*rgb, 255], dtype=np.uint8), (len(sub_faces), 1))
-        mesh.export(str(path))
+        mesh = trimesh.Trimesh(vertices=np.asarray(sub_verts, dtype=np.float64), faces=np.asarray(sub_faces, dtype=np.int32), process=False)
+        rgba_uint8 = np.tile(np.array([*rgb, 255], dtype=np.uint8), (len(sub_verts), 1))
+        mesh.visual = trimesh.visual.ColorVisuals(mesh=mesh, vertex_colors=rgba_uint8)
+        scene = trimesh.Scene()
+        scene.add_geometry(mesh, geom_name="mesh")
+        scene.export(str(path))
         return path
 
     selected_faces = faces_np[mask]
@@ -163,9 +166,7 @@ if __name__ == "__main__":
 
     import trimesh
 
-    _PLY = (
-        "/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/wp4_runs/9f0d75f6d9/43_solar-smoke/aero/cp_field/epoch_00030.ply"
-    )
+    _PLY = "/cluster/work/fuge/AISCO/temp_/6166b4e953/26_66948009_deep-thunder/mesh_shape/epoch_01400/slot_07_mesh.ply"
     mesh = cast(trimesh.Trimesh, trimesh.load(_PLY, force="mesh"))
     aero_verts = torch.as_tensor(mesh.vertices, dtype=torch.float32)
     aero_faces = torch.as_tensor(mesh.faces, dtype=torch.long)
