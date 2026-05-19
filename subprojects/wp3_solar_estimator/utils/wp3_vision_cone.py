@@ -138,7 +138,9 @@ def render_intersection(
         remap[used_idx] = np.arange(len(used_idx))
         sub_verts = verts_np[used_idx]
         sub_faces = remap[face_indices]
-        mesh = trimesh.Trimesh(vertices=np.asarray(sub_verts, dtype=np.float64), faces=np.asarray(sub_faces, dtype=np.int32), process=False)
+        mesh = trimesh.Trimesh(
+            vertices=np.asarray(sub_verts, dtype=np.float64), faces=np.asarray(sub_faces, dtype=np.int32), process=False
+        )
         rgba_uint8 = np.tile(np.array([*rgb, 255], dtype=np.uint8), (len(sub_verts), 1))
         mesh.visual = trimesh.visual.ColorVisuals(mesh=mesh, vertex_colors=rgba_uint8)
         scene = trimesh.Scene()
