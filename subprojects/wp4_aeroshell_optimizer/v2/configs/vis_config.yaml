@@ -125,7 +125,7 @@ visual_types:
     shading:
       enabled: true
       colormap: "Blues" # [0,1] bounded shading visibility (corporate light-blue family)
-      interval: 50
+      interval: 1
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -135,7 +135,7 @@ visual_types:
     penalty:
       enabled: true
       colormap: "Reds"     # per-face power lost to shading, lower-bounded at 0
-      interval: 50
+      interval: 1
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -145,7 +145,7 @@ visual_types:
     numerical_factor:
       enabled: true
       colormap: "Reds"   # [0,1] effective loss multiplier after λ/κ applied to visibility
-      interval: 50
+      interval: 1
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -155,7 +155,7 @@ visual_types:
     receiver_mask:
       enabled: true
       colormap: "RdYlGn"  # 0=back-facing (skipped), 1=sun-facing (raytraced)
-      interval: 50
+      interval: 1
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -185,7 +185,7 @@ visual_types:
   bb_constraint:
     enabled: true          # disabled by default — confirm with user before enabling
     colormap: "Reds"        # violation magnitude, lower-bounded at 0
-    interval: 50
+    interval: 1
     alpha_enabled: null
     coordinate_system: null
     vmin: 0.0
@@ -195,7 +195,7 @@ visual_types:
   mesh_assembly_v4:
     enabled: true
     colormap: null          # colours specified per-component via method arguments
-    interval: 50
+    interval: 1
     alpha_enabled: true
     coordinate_system: null
     vmin: null
@@ -218,7 +218,7 @@ visual_types:
   mesh_gradients:
     enabled: true
     colormap: "RdYlGn"
-    interval: 50
+    interval: 1
     alpha_enabled: null
     coordinate_system: null
     vmin: null
