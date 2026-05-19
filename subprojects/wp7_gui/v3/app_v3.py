@@ -4,8 +4,7 @@ Thin by design: this file only wires the FastAPI app to the two mode routers,
 the introduction page, and the static-asset mount. All business logic lives
 under core/, shared/, modes/<mode>/, and shared/.
 
-Run directly:   python app_v3.py           (from anywhere)
-Run as module:  python -m subprojects.wp7_gui.v3.app_v3   (from repo root)
+Run as directly:  python3 subprojects/wp7_gui/v3/app_v3.py   (from repo root)
 """
 
 from __future__ import annotations
