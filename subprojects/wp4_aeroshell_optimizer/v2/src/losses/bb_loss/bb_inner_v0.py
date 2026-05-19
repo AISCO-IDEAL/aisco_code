@@ -23,4 +23,5 @@ class BbInnerV0(BbV44):
 
             upper_sq = self._violation(sdf_inner + self._inner_margin).pow(2)
 
-            return torch.sqrt(upper_sq.sum() + 1e-12)
+            loss = torch.sqrt(upper_sq.sum() + 1e-12)
+            return torch.clamp(loss - self._inner_tolerance, min=0.0)

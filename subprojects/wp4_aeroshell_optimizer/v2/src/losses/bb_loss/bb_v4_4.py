@@ -104,6 +104,10 @@ class BbV44(ParentLoss):
 
         self._inner_margin = float(self.__analytic_cfg.get("inner_margin", 0.0))
         self._outer_margin = float(self.__analytic_cfg.get("outer_margin", 0.0))
+        # GINN-style "satisfied" deadband: aggregated bb loss is clipped to 0 below this
+        # threshold so ALM's λ has a fixed point (consumed by bb_inner_v0/bb_outer_v0._loss).
+        self._inner_tolerance = float(self.__analytic_cfg.get("inner_tolerance", 0.0))
+        self._outer_tolerance = float(self.__analytic_cfg.get("outer_tolerance", 0.0))
         self.__penalty = str(self.__analytic_cfg.get("penalty", "relu")).lower()
         self.__softplus_beta = float(self.__analytic_cfg.get("softplus_beta", 10.0))
 

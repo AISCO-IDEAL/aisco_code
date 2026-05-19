@@ -1,9 +1,27 @@
 general_info:
-  CSE: "True"  # Cruising Speed Estimation  # USED — total_loss.py: self._use_cse
+  CSE: "False"  # Cruising Speed Estimation  # USED — total_loss.py: self._use_cse
   ALM: "True"  # Augmented Lagrangian Method  # USED — total_loss.py: self._use_alm
-  ALM_aggressive: "True" # capu version of ALM
+
+  # ---------------------------------------------------------------------------
+  # ALM mode (plan 003 — M3): controls μ update dynamics.
+  # "aggressive" — original CAPU mode: μ grows ×1.1/epoch until cap (reaches 10000 at ~epoch 95).
+  # "adaptive"   — GINN-style: μ = γ/√ν, proportional to constraint violation level.
+  # "classic"    — legacy Berzins RMS path (alias for adaptive, kept for backward compat).
+  # The legacy boolean ALM_aggressive is read when ALM_mode is absent (backward compat).
+  ALM_mode: "adaptive"              # activate GINN-style adaptive μ
+  ALM_aggressive: "False"           # kept for backward compat; overridden by ALM_mode above
 
   ALM_aggressive_capu: 0.2 # has constraint decreased sufficiently threshold, only used when ALM_aggressive=True. # weights.py: self.use_alm_aggressive
+
+  # ---------------------------------------------------------------------------
+  # ALM penalty formula (plan 003 — M1).
+  # "quadratic_augmented" (default): λ·c + 0.5μ·c² — standard ALM; μ term loses 1/c
+  #   amplification near convergence.
+  # "linear_augmented"              : (λ + 0.5μ)·c — GINN-style; both multipliers
+  #   retain 1/c amplification. ~25× stronger gradient at c≈0.01 vs quadratic.
+  # Both formulas are numerically equal at c=1.0 (the loss-normalisation calibration point).
+  alm_formula: "linear_augmented"   # activate GINN-style linear penalty formula
+
   # ALM parameter mapping order:
   # - Arrays are supported and can be provided in either format:
   #   (a) ACTIVE constraint order (only currently enabled constraints), or
@@ -18,8 +36,8 @@ general_info:
   initial_lambda: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial lambda(s)
   initial_mu: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial mu(s)
   initial_nu: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial nu(s)
-  alpha: 0.8  # EMA decay factor for ν update
-  gamma: 0.6  # parameter for ALM penalty update
+  alpha: 0.9  # EMA decay factor for ν update
+  gamma: 0.3  # parameter for ALM penalty update
   gamma_aggressive: 1.1  # multiplicative increase factor for μ in aggressive CAPU mode
 
   enforce_projection:
@@ -80,8 +98,13 @@ general_info:
       #wheel_loss_enforce_v2:
       #  fixed_grad_scale: 0.1
       #  fixed_loss_scale: 0.000001
+      bb_inner_v1:                    # ← ADD THIS
+        fixed_grad_scale: 0.05
       bb_outer_v0:
         fixed_grad_scale: 0.008
+        fixed_loss_scale: 0.00035
+      bb_outer_v1:
+        fixed_grad_scale: 0.05
         fixed_loss_scale: 0.00035
 
 losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically loads all losses with compute=1
@@ -90,7 +113,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     _role: objective
     _sign: minimize
     _disabled_epochs: []
-    null_loss_aero: [1, 50.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]  # weight=50.0 is the drag surrogate constant returned by the null loss; training weight is forced to 0.0 by TotalLossV2 (is_null_loss marker)
+    null_loss_aero: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]  # weight=50.0 is the drag surrogate constant returned by the null loss; training weight is forced to 0.0 by TotalLossV2 (is_null_loss marker)
     gaot_loss: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
 
   bb_inner:
@@ -107,13 +130,15 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     bb_v4_sel: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_v4_sel.py"]                  # v4.sel with option to select either inner or outer nbz
     silvretta_bb_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/silvretta_bb_v0.py"]   # version provided by Silvretta, not working well as of 2025 12 15
     ### bb_v5, bb_v6, bb_v7 all rely on assembler v4
-    bb_inner_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_inner_v0.py"]  # GINN L2-norm: inner prism containment only, independent ALM slot
+    bb_inner_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_inner_v0.py"]  # GINN L2-norm: inner prism containment only, independent ALM slot
+    bb_inner_v1: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_inner_v1.py"]  # v0 + outward normal offset and wheel-bottom-cap mask (geometric safety buffer)
 
   bb_outer:
     _role: constraint
     _disabled_epochs: []
     null_loss_bb_outer: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
-    bb_outer_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_outer_v0.py"]  # GINN L2-norm: outer prism fit only, independent ALM slot
+    bb_outer_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_outer_v0.py"]  # GINN L2-norm: outer prism fit only, independent ALM slot
+    bb_outer_v1: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_outer_v1.py"]  # v0 + inward normal offset with separate bottom-face control (geometric safety buffer)
 
   eikonal:
     _role: constraint
@@ -168,10 +193,10 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     solar_v6: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
     solar_v7: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
     solar_s_r: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SR.py"] # single ray
-    solar_s_r_r_t: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SRRT.py"] # single ray ray tracing
+    solar_s_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SRRT.py"] # single ray ray tracing
     solar_m_r: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MR.py"]  # multi ray
     solar_m_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MRRT.py"]  # multi ray ray tracing
-    null_loss_solar: [0, 200.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    null_loss_solar: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
 
   diversity:
     _role: diversity
@@ -180,8 +205,8 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     field_diversity_v0:         [0, 0.001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
     # Constraint-aware variants — flip compute=1 on exactly one of these to activate.
     # See field_diversity_{masked,surface,hybrid}_v0_config blocks below for cutoffs (mm) and knobs.
-    field_diversity_masked_v0:  [1, 0.001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_masked_v0.py"]
-    field_diversity_surface_v0: [0, 0.001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_surface_v0.py"]
+    field_diversity_masked_v0:  [1, 0.03, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_masked_v0.py"]
+    field_diversity_surface_v0: [0, 0.03, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_surface_v0.py"]
     field_diversity_hybrid_v0:  [0, 0.001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_hybrid_v0.py"]
 
   total: # Unused with the implementation of TotalLossV2 and main_v2.py? To Be Confirmed
@@ -212,7 +237,7 @@ field_diversity_surface_v0_config:
   wheel_cutoff_mm: 350.0
   bb_inner_cutoff_mm: 350.0
   wheel_sampling_density: 10
-  bb_inner_target_point_count: 20000
+  bb_inner_target_point_count: 10000
   surface_resample_cadence: 50  # re-extract per-shape surface via marching cubes every N get_loss calls
   surface_subsample_n: 4096     # max retained vertices per shape after subsample
   mc_resolution: 64             # marching-cubes grid resolution
@@ -225,8 +250,8 @@ field_diversity_hybrid_v0_config:
   max_div: null              # clamp applied once on the weighted sum
 
 connectedness_config:
-  eval_period: 5  # evaluate PH loss every N epochs (expensive persistent homology computation)
-  return_cached_on_skip: "True"  # if True, reuse last computed scalar on skipped epochs
+  eval_period: 15  # evaluate PH loss every N epochs (expensive persistent homology computation)
+  return_cached_on_skip: "False"  # if True, reuse last computed scalar on skipped epochs
   grid_dim: 3
   grid_resolution: 64
   bbox_scale_factor: 1.0  # multiply outer_prism bounds by this; sourced from wp2
@@ -264,15 +289,27 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
   tessellation_angular_tolerance: 0.4  # CadQuery tessellation angular quality for bb_v4_2
   # v4.4 surface-sampling specific:
   surface_sampling:
-    target_point_count: 20000  # total number of zero-level surface points sampled per setup
+    target_point_count: 30000  # total number of zero-level surface points sampled per setup
     inner_fraction: 0.5  # fraction of points allocated to inner surface(s); rest goes to outer
-    min_points_per_inner_mesh: 256  # minimum points for each inner solid to avoid undersampling small parts
+    min_points_per_inner_mesh: 4000  # minimum points for each inner solid to avoid undersampling small parts
+    # bb_inner_v1 / bb_outer_v1 geometric safety buffer (only read by V1 classes):
+    # Inflates inner solids and shrinks the outer NBZ at the loss-sampling level, so residual
+    # constraint violations after training don't translate into clipping of the real geometry.
+    # Feasibility: inner_outward_offset_mm + outer_bottom_offset_mm must stay below
+    # (seat_z − ground_clearance) ≈ 11 mm, else bb_inner and bb_outer fight each other under the seat.
+    inner_outward_offset_mm: 0.0     # BbInnerV1: outward offset along surface normals (wheels feel bigger)
+    outer_inward_offset_mm: 0.0      # BbOuterV1: inward offset on non-bottom faces (top, sides, ramps)
+    outer_bottom_offset_mm: 0.0      # BbOuterV1: inward offset on flat ground face only; keep small or 0
+    mask_downward_normal_threshold: 0.99  # dot(normal, -ẑ) above this counts as flat-down face
+    cap_z_tolerance_mm: 0.5          # BbInnerV1: face at z < wheel_clearance + tol AND downward-normal = wheel cap (masked)
   # v4.3 analytic specific:
   analytic_options:
-    penalty: "softplus"  # "relu" (default) or "softplus"
+    penalty: "relu"  # "relu" (default) or "softplus"
     softplus_beta: 10.0  # only used when penalty="softplus"
-    inner_margin: 0.0  # tighten upper bound: sdf_model <= sdf_inner - inner_margin
-    outer_margin: 0.0  # tighten lower bound: sdf_outer + outer_margin <= sdf_model
+    inner_margin: 35.0  # tighten upper bound: sdf_model <= sdf_inner - inner_margin
+    outer_margin: 15.0  # tighten lower bound: sdf_outer + outer_margin <= sdf_model
+    inner_tolerance: 0.0  # GINN-style "satisfied" deadband on aggregated bb_inner L2 loss: clamp(loss - tol, 0). Stops λ from drifting once practically satisfied. 0 = disabled.
+    outer_tolerance: 0.0  # same for bb_outer
     topk_fraction: 0.6  # (BbV5/BbV6) fraction of worst-violating points to include in loss reduction; 0.1 = top 10%
   # v4.sel nbz selection:
   nbz_selection: "both"  # "outer", or "both"
@@ -289,8 +326,8 @@ cfd:
   mesh_resolution: 50000  # Default: 50000        Recomendation: Has to Match the Value used during respective GAOT-Training
   gradient_max: 0.001       # Options: any float    Recomendation: 0.1
   pressure_integration_mode: "face" # "sdf_vertex_constant_area"
-  pressure_integration_detach_sdf_normals: false 
-  pressure_backprop_mode: "geometry_only"  # Options: pressure_backprop_mode: "full", "geometry_only", "geometry_area_only", "geometry_normal_only" 
+  pressure_integration_detach_sdf_normals: false
+  pressure_backprop_mode: "geometry_only"  # Options: pressure_backprop_mode: "full", "geometry_only", "geometry_area_only", "geometry_normal_only"
   cp_smoothing:
     enabled: true
     preserve_drag: false
@@ -313,8 +350,8 @@ cfd_local:
   mesh_resolution: 50000  # Default: 50000        Recomendation: Has to Match the Value used during respective GAOT-Training
   gradient_max: 0.001       # Options: any float    Recomendation: 0.1
   pressure_integration_mode: "face" # "sdf_vertex_constant_area"
-  pressure_integration_detach_sdf_normals: false 
-  pressure_backprop_mode: "geometry_only"  # Options: pressure_backprop_mode: "full", "geometry_only", "geometry_area_only", "geometry_normal_only" 
+  pressure_integration_detach_sdf_normals: false
+  pressure_backprop_mode: "geometry_only"  # Options: pressure_backprop_mode: "full", "geometry_only", "geometry_area_only", "geometry_normal_only"
   cp_smoothing:
     enabled: true
     preserve_drag: false
@@ -351,3 +388,5 @@ wheel_loss_config:
   threshold_relu: -0.3  # z-gradient threshold for wheel loss v3; gradients above this value are penalized linearly, while gradients below are not penalized (should be negative, e.g. -0.3 means z gradients above -0.3 are penalized, while z gradients of -0.3 or smaller are not penalized)
   manual_z_shift: -5.0 # manual shift applied to z-coordinate of wheel loss sample points, to give more room for the SDF to find a solution
   enforce_alignment_weight: 0.4 # wheel_loss_enforce_v2 only: weight on the ∇sdf ∥ ẑ ground-tangency aux relative to the primary projection-as-target loss
+  interface_tolerance: 155.0  # GINN-style "satisfied" deadband on aggregated wheel_interface L2 loss: clamp(loss - tol, 0). Stops λ from drifting once practically satisfied. 0 = disabled.
+  alignment_tolerance: 0.08  # same for wheel_alignment

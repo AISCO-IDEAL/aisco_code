@@ -44,6 +44,7 @@ import trimesh
 import yaml
 from torch import Tensor
 
+from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.survey_png import generate_survey_png
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, clear_mesh_cache, load_mesh_extraction_config
 
 # ---------------------------------------------------------------------------
@@ -688,6 +689,12 @@ def main() -> None:
         all_records.extend(records)
 
     _write_summary(all_records, out_dir, ckpt_path)
+    for mode_tag, mode_subdir in [("1", "mode1_circle"), ("2", "mode2_radial"), ("3", "mode3_interp")]:
+        if mode_tag in args.modes:
+            try:
+                generate_survey_png(out_dir / mode_subdir, layout="grid")
+            except ValueError as exc:
+                print(f"[survey_png] Skipped {mode_subdir}: {exc}")
 
 
 if __name__ == "__main__":
