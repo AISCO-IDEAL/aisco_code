@@ -45,23 +45,15 @@ Optional CLI overrides are still available for batch use:
 ```bash
 python subprojects/wp2_assembler/version4/3D_printing_helpers/export_printables.py \
   --run-dir /cluster/work/fuge/AISCO/temp_/6166b4e953/p2clwhx6_66994778_dummy \
-  --assembly-id 0
+  --assembly-slot 0
 ```
 
 Outputs are written to `<run-dir>/printables_3d/` unless `out_dir` is set in the
-YAML or passed on the command line.
+YAML or passed on the command line. The folder is split by print intent:
 
-Typical outputs:
-
-- `final_multicolor_real.glb`
-- `final_multicolor_real.ply`
-- `removable_shell_source.stl`
-- `support_plate.stl`
-- `inner_assembly_full_wheels.stl`
-- `wheel_repair_full_wheels.stl`
-- `seat_support.stl`
-- `shell_socket_cutters.stl`
-- `print_report.json`
+- `multicolor/` contains one STL per material/color: `mesh.stl`, `inner_assembly.stl`, `solar_placement.stl`, and `vision_cone_intersection.stl` when the corresponding real mask exists.
+- `single_color/` contains one-material STL exports such as `removable_shell_source.stl`, `support_plate.stl`, `inner_assembly_full_wheels.stl`, `wheel_repair_full_wheels.stl`, `seat_support.stl`, and `shell_socket_cutters.stl`.
+- `print_report.json` stays at the root of `printables_3d/`.
 
 If a boolean engine is available through `trimesh`, the helper also attempts to
 write `removable_shell_with_sockets.stl`. If the boolean fails, it keeps the

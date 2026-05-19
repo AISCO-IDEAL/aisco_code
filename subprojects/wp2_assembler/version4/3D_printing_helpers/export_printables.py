@@ -11,11 +11,14 @@ import argparse
 import json
 import re
 import sys
-import tempfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+try:
+    import yaml  # type: ignore[import-not-found]
+except ImportError:
+    yaml = None  # type: ignore[assignment]
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 HELPER_DIR = Path(__file__).resolve().parent
@@ -61,25 +64,27 @@ class ConfigError(ValueError):
 
 def _parse_scalar(value: str) -> Any:
     value = value.strip()
-    if value in {"", "''", '""'}:
-        return ""
-    if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
-        return value[1:-1]
     lowered = value.lower()
-    if lowered in {"true", "yes"}:
-        return True
-    if lowered in {"false", "no"}:
-        return False
-    if lowered in {"none", "null"}:
-        return None
-    try:
-        return int(value)
-    except ValueError:
-        pass
-    try:
-        return float(value)
-    except ValueError:
-        return value
+    result: Any
+    if value in {"", "''", '""'}:
+        result = ""
+    elif (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
+        result = value[1:-1]
+    elif lowered in {"true", "yes"}:
+        result = True
+    elif lowered in {"false", "no"}:
+        result = False
+    elif lowered in {"none", "null"}:
+        result = None
+    else:
+        try:
+            result = int(value)
+        except ValueError:
+            try:
+                result = float(value)
+            except ValueError:
+                result = value
+    return result
 
 
 def _load_simple_yaml_mapping(config_path: Path) -> dict[str, Any]:
@@ -98,9 +103,7 @@ def _load_simple_yaml_mapping(config_path: Path) -> dict[str, Any]:
 def load_config(config_path: Path) -> dict[str, Any]:
     if not config_path.exists():
         return {}
-    try:
-        import yaml  # type: ignore[import-not-found]
-    except ImportError:
+    if yaml is None:
         return _load_simple_yaml_mapping(config_path)
     with config_path.open("r") as fh:
         data = yaml.safe_load(fh) or {}
@@ -113,6 +116,18 @@ def _as_path(value: Any) -> Path | None:
     if value in (None, ""):
         return None
     return Path(str(value)).expanduser()
+
+
+def _as_optional_int(value: Any) -> int | None:
+    if value in ("", "auto", None):
+        return None
+    return int(value)
+
+
+def _as_optional_epoch(value: Any) -> int | None:
+    if value in ("", "latest", "last", "auto", None):
+        return None
+    return int(value)
 
 
 def _prompt_text(label: str, default: Any = None, required: bool = False) -> str | None:
@@ -134,7 +149,7 @@ def _prompt_int(label: str, default: int | None = None, required: bool = False) 
         if value in (None, ""):
             return None
         try:
-            return int(value)
+            return int(str(value))
         except ValueError:
             print("Please enter an integer.")
 
@@ -143,7 +158,7 @@ def _prompt_float(label: str, default: float) -> float:
     while True:
         value = _prompt_text(label, default, required=True)
         try:
-            return float(value)
+            return float(str(value))
         except (TypeError, ValueError):
             print("Please enter a number.")
 
@@ -178,14 +193,8 @@ def resolve_settings(args: argparse.Namespace) -> dict[str, Any]:
     prompt_for_missing = bool(cfg.get("prompt_for_missing", True))
     confirm_before_export = bool(cfg.get("confirm_before_export", True))
 
-    if assembly_slot in ("", "auto", None):
-        assembly_slot = None
-    else:
-        assembly_slot = int(assembly_slot)
-    if epoch in ("", "latest", "last", "auto", None):
-        epoch = None
-    else:
-        epoch = int(epoch)
+    assembly_slot = _as_optional_int(assembly_slot)
+    epoch = _as_optional_epoch(epoch)
 
     if prompt_for_missing:
         if run_dir is None:
@@ -246,19 +255,19 @@ def resolve_settings(args: argparse.Namespace) -> dict[str, Any]:
 
 def _epoch_score(path: Path) -> tuple[int, int, str]:
     text = str(path)
-    nums = [int(n) for n in re.findall(r"epoch[_-]?(\d+)", text, flags=re.I)]
+    nums = [int(n) for n in re.findall(r"epoch[_-]?(\d+)", text, flags=re.IGNORECASE)]
     epoch = max(nums) if nums else -1
     preferred = 2 if "adaptive_mesh" in text else 1 if "mesh_shape" in text else 0
     return preferred, epoch, text
 
 
 def _path_epoch(path: Path) -> int | None:
-    nums = [int(n) for n in re.findall(r"epoch[_-]?(\d+)", str(path), flags=re.I)]
+    nums = [int(n) for n in re.findall(r"epoch[_-]?(\d+)", str(path), flags=re.IGNORECASE)]
     return max(nums) if nums else None
 
 
 def _path_slot(path: Path) -> int | None:
-    nums = [int(n) for n in re.findall(r"slot[_-]?(\d+)", str(path), flags=re.I)]
+    nums = [int(n) for n in re.findall(r"slot[_-]?(\d+)", str(path), flags=re.IGNORECASE)]
     return max(nums) if nums else None
 
 
@@ -321,7 +330,7 @@ def find_solar_artifacts(
     return sorted(set(results), key=_epoch_score)
 
 
-def find_solar_mesh(
+def find_solar_mesh(  # noqa: PLR0912
     run_dir: Path,
     solar_source: str,
     epoch: int | None,
@@ -402,8 +411,10 @@ def find_assembly_mesh(
         name = str(path).lower()
         ext_score = 2 if path.suffix.lower() == ".ply" else 1
         vision_score = 0 if "with_vision_cone" in name else 1
-        epoch_score = _path_epoch(path) if _path_epoch(path) is not None else -1
-        slot_score = -(_path_slot(path) if _path_slot(path) is not None else 9999)
+        path_epoch = _path_epoch(path)
+        path_slot = _path_slot(path)
+        epoch_score = path_epoch if path_epoch is not None else -1
+        slot_score = -(path_slot if path_slot is not None else 9999)
         return ext_score + vision_score, epoch_score, slot_score, str(path)
     return sorted(candidates, key=score)[-1]
 
@@ -422,6 +433,39 @@ def _component_bounds(mesh: Any) -> list[tuple[Any, Any, Any]]:
     components.sort(key=lambda item: float(item[0].area), reverse=True)
     return components
 
+
+
+
+def _inner_assembly_components_only(assembly: Any) -> Any:
+    """Drop shell-sized and bounding-box-sized components from an assembly export."""
+    trimesh = _require("trimesh")
+    kept = []
+    for part, _bounds, extents in _component_bounds(assembly):
+        max_extent = max(float(v) for v in extents)
+        nonzero_extents = [float(v) for v in extents if float(v) > 1.0]
+        broad_flat_sheet = len(nonzero_extents) <= 2 and max_extent > 1800.0
+        shell_sized = max_extent > 1800.0
+        if shell_sized or broad_flat_sheet:
+            continue
+        kept.append(part)
+    if not kept:
+        return assembly.copy()
+    return trimesh.util.concatenate(kept)
+
+
+def _cleanup_multicolor_dir(multicolor_dir: Path) -> None:
+    for stale_name in (
+        "final_multicolor_real.glb",
+        "final_multicolor_real.ply",
+        "assembly_overlap.stl",
+        "mesh.stl",
+        "inner_assembly.stl",
+        "solar_placement.stl",
+        "vision_cone_intersection.stl",
+    ):
+        stale_path = multicolor_dir / stale_name
+        if stale_path.exists():
+            stale_path.unlink()
 
 def _infer_wheel_centers_from_mesh(assembly: Any) -> list[Any]:
     """Infer wheel centers from wheel-like connected components in an existing export."""
@@ -494,9 +538,8 @@ def _mesh_based_supports(assembly: Any) -> tuple[Any, Any, Any]:
     for part, comp_bounds, extents in components:
         ordered = sorted(float(v) for v in extents)
         wheel_like = 40.0 <= ordered[0] <= 180.0 and ordered[1] >= 250.0 and ordered[2] >= 350.0 and float(comp_bounds[0][2]) <= 80.0
-        if not wheel_like:
-            if seat_like is None or float(comp_bounds[1][2]) > float(seat_like[1][1][2]):
-                seat_like = (part, comp_bounds, extents)
+        if not wheel_like and (seat_like is None or float(comp_bounds[1][2]) > float(seat_like[1][1][2])):
+            seat_like = (part, comp_bounds, extents)
     if seat_like is None:
         seat_like = components[0]
 
@@ -579,7 +622,7 @@ def _try_boolean_difference(mesh: Any, cutters: Any) -> tuple[Any | None, str]:
     return result, "computed"
 
 
-def export_printables(
+def export_printables(  # noqa: PLR0912, PLR0915
     run_dir: Path,
     out_dir: Path,
     assembly_mesh_dir: Path | None,
@@ -595,9 +638,16 @@ def export_printables(
     trimesh = _require("trimesh")
     run_dir = run_dir.resolve()
     out_dir = out_dir.resolve()
+    multicolor_dir = out_dir / "multicolor"
+    single_color_dir = out_dir / "single_color"
     out_dir.mkdir(parents=True, exist_ok=True)
+    multicolor_dir.mkdir(parents=True, exist_ok=True)
+    single_color_dir.mkdir(parents=True, exist_ok=True)
     _status(f"Run dir: {run_dir}")
     _status(f"Output dir: {out_dir}")
+    _status(f"Multicolor dir: {multicolor_dir}")
+    _status(f"Single-color dir: {single_color_dir}")
+    _cleanup_multicolor_dir(multicolor_dir)
 
     _status(f"Selecting source mesh for epoch: {epoch if epoch is not None else 'latest'}")
     final_mesh_path = find_final_mesh(run_dir, epoch=epoch)
@@ -616,34 +666,36 @@ def export_printables(
         raise SystemExit("No assembly mesh found. Set assembly_mesh_dir and optionally assembly_slot in print_config.yaml.")
     report = ExportReport(str(run_dir), str(out_dir), str(assembly_mesh), scale_factor=scale_factor)
     report.source_mesh = str(final_mesh_path)
+    selected_slot = assembly_slot if assembly_slot is not None else _path_slot(assembly_mesh)
     _status(f"Source mesh: {final_mesh_path}")
     _status(f"Assembly mesh: {assembly_mesh}")
+    _status(f"Selected slot for matching masks: {selected_slot if selected_slot is not None else 'first available'}")
 
-    _status(f"Looking for real solar/{solar_source} mesh for selected epoch/slot")
+    _status(f"Looking for real solar/{solar_source} mesh and solar/vision_cone_mask for selected epoch/slot")
 
     _status("Loading source mesh")
     body = _load_mesh(final_mesh_path)
-    body_colored = _colored(body, (185, 190, 188, 255))
 
     _status("Building/repairing assembly, wheels, seat support, plate, and shell socket cutters")
     outputs = {
-        "inner_assembly_full_wheels": out_dir / "inner_assembly_full_wheels.stl",
-        "wheel_repair_full_wheels": out_dir / "wheel_repair_full_wheels.stl",
-        "seat_support": out_dir / "seat_support.stl",
-        "support_plate": out_dir / "support_plate.stl",
-        "plate_with_seat_support": out_dir / "plate_with_seat_support.stl",
-        "shell_socket_cutters": out_dir / "shell_socket_cutters.stl",
+        "inner_assembly_full_wheels": single_color_dir / "inner_assembly_full_wheels.stl",
+        "wheel_repair_full_wheels": single_color_dir / "wheel_repair_full_wheels.stl",
+        "seat_support": single_color_dir / "seat_support.stl",
+        "support_plate": single_color_dir / "support_plate.stl",
+        "plate_with_seat_support": single_color_dir / "plate_with_seat_support.stl",
+        "shell_socket_cutters": single_color_dir / "shell_socket_cutters.stl",
     }
 
     _status("Using existing assembly mesh and inferring wheel positions from geometry")
     exported_assembly = _load_mesh(assembly_mesh)
+    assembly_core = _inner_assembly_components_only(exported_assembly)
     wheel_centers = _infer_wheel_centers_from_mesh(exported_assembly)
     full_wheels_mesh = _make_full_wheel_meshes(wheel_centers)
-    seat_support_mesh, plate_mesh, plate_with_support_mesh = _mesh_based_supports(exported_assembly)
-    cutters_mesh = _mesh_socket_cutters(exported_assembly, wheel_centers, shell_clearance_mm)
-    inner_mesh = exported_assembly
+    seat_support_mesh, plate_mesh, plate_with_support_mesh = _mesh_based_supports(assembly_core)
+    cutters_mesh = _mesh_socket_cutters(assembly_core, wheel_centers, shell_clearance_mm)
+    inner_mesh = assembly_core
     if full_wheels_mesh is not None:
-        inner_mesh = trimesh.util.concatenate([exported_assembly, full_wheels_mesh])
+        inner_mesh = trimesh.util.concatenate([assembly_core, full_wheels_mesh])
         _export_mesh(full_wheels_mesh, outputs["wheel_repair_full_wheels"], scale_factor)
     else:
         report.warnings.append("No wheel-like components were inferred from assembly mesh; wheel repair was skipped.")
@@ -655,57 +707,50 @@ def export_printables(
     report.wheels = f"inferred {len(wheel_centers)} wheel center(s) from assembly mesh and added full regulation wheels"
     report.seat_support = "generated from existing assembly mesh bounds"
 
-    _status("Skipping generated vision-cone extraction; assembly mesh is the source of truth")
     vision_part = None
-    report.vision_region = "skipped: assembly mesh is the source of truth; use existing *_with_vision_cone mesh if needed"
-    _status(f"Vision region: {report.vision_region}")
-    _status("Attempting assembly-overlap face extraction")
-    overlap_part, report.assembly_overlap = _submesh_by_container(body, inner_mesh)
-    _status(f"Assembly overlap: {report.assembly_overlap}")
-    solar_mesh_path = find_solar_mesh(run_dir, solar_source, selected_epoch, search_parent_for_solar, solar_dir, assembly_slot)
+    report.assembly_overlap = "skipped: not part of current multicolor STL set"
+    solar_mesh_path = find_solar_mesh(run_dir, solar_source, selected_epoch, search_parent_for_solar, solar_dir, selected_slot)
     solar_mesh = None
     if solar_mesh_path is not None:
         _status(f"Including real solar/{solar_source} mesh: {solar_mesh_path}")
         solar_mesh = _load_mesh(solar_mesh_path)
-        report.solar_region = f"included real solar/{solar_source} mesh for selected epoch: {solar_mesh_path}"
+        report.solar_region = f"included real solar/{solar_source} mesh for selected epoch/slot: {solar_mesh_path}"
     else:
-        _status(f"No real solar/{solar_source} mesh found for selected epoch")
+        _status(f"No real solar/{solar_source} mesh found for selected epoch/slot")
 
-    _status("Creating multicolor GLB/PLY scene")
-    scene = trimesh.Scene()
-    scene.add_geometry(_scaled_mesh(body_colored, scale_factor), node_name="final_aeroshell")
-    scene.add_geometry(_scaled_mesh(_colored(inner_mesh, (245, 145, 35, 255)), scale_factor), node_name="full_inner_assembly")
+    vision_mesh_path = find_solar_mesh(run_dir, "vision_cone_mask", selected_epoch, search_parent_for_solar, solar_dir, selected_slot)
+    if vision_mesh_path is not None:
+        _status(f"Including real solar/vision_cone_mask mesh: {vision_mesh_path}")
+        vision_part = _load_mesh(vision_mesh_path)
+        report.vision_region = f"included real solar/vision_cone_mask mesh for selected epoch/slot: {vision_mesh_path}"
+    else:
+        _status("No real solar/vision_cone_mask mesh found for selected epoch/slot")
+        report.vision_region = "missing: no real solar/vision_cone_mask mesh found for selected epoch/slot"
+
+    _status("Writing multicolor STL set, one file per material")
+    mesh_path = multicolor_dir / "mesh.stl"
+    _status(f"Writing {mesh_path.name}")
+    _export_mesh(body, mesh_path, scale_factor)
+    report.outputs["multicolor_mesh"] = str(mesh_path)
+
+    assembly_path = multicolor_dir / "inner_assembly.stl"
+    _status(f"Writing {assembly_path.name}")
+    _export_mesh(inner_mesh, assembly_path, scale_factor)
+    report.outputs["multicolor_inner_assembly"] = str(assembly_path)
+
     if solar_mesh is not None:
-        scene.add_geometry(_scaled_mesh(_colored(solar_mesh, (245, 205, 35, 255)), scale_factor), node_name="real_solar_artifact")
-    if vision_part is not None:
-        scene.add_geometry(_scaled_mesh(_colored(vision_part, (230, 40, 35, 255)), scale_factor), node_name="vision_cone_intersection")
-    if overlap_part is not None:
-        scene.add_geometry(_scaled_mesh(_colored(overlap_part, (130, 50, 220, 255)), scale_factor), node_name="assembly_overlap")
+        solar_path = multicolor_dir / "solar_placement.stl"
+        _status(f"Writing {solar_path.name}")
+        _export_mesh(solar_mesh, solar_path, scale_factor)
+        report.outputs["multicolor_solar_placement"] = str(solar_path)
 
-    glb_path = out_dir / "final_multicolor_real.glb"
-    _status(f"Writing {glb_path.name}")
-    scene.export(str(glb_path))
-    report.outputs["final_multicolor_real_glb"] = str(glb_path)
-
-    merged = trimesh.util.concatenate([body_colored, _colored(inner_mesh, (245, 145, 35, 255))])
-    if solar_mesh is not None:
-        merged = trimesh.util.concatenate([merged, _colored(solar_mesh, (245, 205, 35, 255))])
     if vision_part is not None:
-        merged = trimesh.util.concatenate([merged, _colored(vision_part, (230, 40, 35, 255))])
-        vision_path = out_dir / "vision_cone_intersection.stl"
+        vision_path = multicolor_dir / "vision_cone_intersection.stl"
+        _status(f"Writing {vision_path.name}")
         _export_mesh(vision_part, vision_path, scale_factor)
-        report.outputs["vision_cone_intersection"] = str(vision_path)
-    if overlap_part is not None:
-        merged = trimesh.util.concatenate([merged, _colored(overlap_part, (130, 50, 220, 255))])
-        overlap_path = out_dir / "assembly_overlap.stl"
-        _export_mesh(overlap_part, overlap_path, scale_factor)
-        report.outputs["assembly_overlap"] = str(overlap_path)
-    ply_path = out_dir / "final_multicolor_real.ply"
-    _status(f"Writing {ply_path.name}")
-    _export_mesh(merged, ply_path, scale_factor)
-    report.outputs["final_multicolor_real_ply"] = str(ply_path)
+        report.outputs["multicolor_vision_cone_intersection"] = str(vision_path)
 
-    shell_source = out_dir / "removable_shell_source.stl"
+    shell_source = single_color_dir / "removable_shell_source.stl"
     _status(f"Writing {shell_source.name}")
     _export_mesh(body, shell_source, scale_factor)
     report.outputs["removable_shell_source"] = str(shell_source)
@@ -715,7 +760,7 @@ def export_printables(
     _status(f"Socket boolean: {shell_msg}")
     report.removable_shell = shell_msg
     if socketed is not None:
-        socketed_path = out_dir / "removable_shell_with_sockets.stl"
+        socketed_path = single_color_dir / "removable_shell_with_sockets.stl"
         _export_mesh(socketed, socketed_path, scale_factor)
         report.outputs["removable_shell_with_sockets"] = str(socketed_path)
     else:
@@ -772,4 +817,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
