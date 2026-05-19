@@ -24,6 +24,12 @@ from src.utils.pressure_integration import (
 
 from ..utils.plot import plot_3d_comparison_matplotlib
 
+# Minimum |drag| (N) for which a per-sample relative error is meaningful.
+# Targets at or below this threshold are excluded from the signed relative error
+# average to avoid division by near-zero producing extreme outliers.
+# Typical dataset drag magnitudes are 3-1200 N, so 1e-3 N is a safe guard.
+_DRAG_ZERO_EPS: float = 1e-3
+
 
 class ValidationCalculator:
     def __init__(self, config: dict) -> None:
@@ -34,7 +40,8 @@ class ValidationCalculator:
         total_loss = 0.0
         total_mse = 0.0
         total_rel_l2 = 0.0
-        integrated_errors = []
+        integrated_errors: list[float] = []
+        integrated_rel_errors: list[float] = []
         signed_x_drag_weighted_errors = []
         signed_x_drag_area_weighted_errors = []
         head_losses: dict[str, float] = {}
@@ -47,7 +54,9 @@ class ValidationCalculator:
                 loss, mse, pred_selected_normalized, target_selected_normalized = self._batch_losses(
                     trainer, batch, pred_normalized, mse_fn, head_losses
                 )
-                integrated_errors.extend(self._integrated_drag_errors(trainer, batch, pred_normalized))
+                _abs_errs, _rel_errs = self._integrated_drag_errors(trainer, batch, pred_normalized)
+                integrated_errors.extend(_abs_errs)
+                integrated_rel_errors.extend(_rel_errs)
                 signed_x_drag_weighted_errors.extend(self._signed_x_drag_weighted_field_errors(trainer, batch, pred_normalized))
                 signed_x_drag_area_weighted_errors.extend(
                     self._signed_x_drag_area_weighted_field_errors(trainer, batch, pred_normalized)
@@ -78,6 +87,12 @@ class ValidationCalculator:
             result["average_integrated_drag_error"] = float(np.mean(integrated_errors))
             trainer.tracker.log_metrics(
                 {"val/average_integrated/integrated_drag_error": result["average_integrated_drag_error"]},
+                step=epoch_name,
+            )
+        if trainer.setup_config["rank"] == 0 and integrated_rel_errors:
+            result["average_integrated_drag_rel_error"] = float(np.mean(integrated_rel_errors))
+            trainer.tracker.log_metrics(
+                {"val/average_integrated/integrated_drag_rel_error": result["average_integrated_drag_rel_error"]},
                 step=epoch_name,
             )
         if trainer.setup_config["rank"] == 0 and signed_x_drag_weighted_errors:
@@ -412,20 +427,30 @@ class ValidationCalculator:
                     + loss_fn_none(pred_normalized[head_name][valid], target_normalized[valid]).mean().item()
                 )
 
-    def _integrated_drag_errors(self, trainer, batch, pred_normalized) -> list[float]:
+    def _integrated_drag_errors(self, trainer, batch, pred_normalized) -> tuple[list[float], list[float]]:
+        """Compute absolute and relative integrated drag errors in one pass.
+
+        Returns:
+            (abs_errors, rel_errors): abs_errors contains |pred - target| for every
+            valid sample; rel_errors contains |pred - target| / |target| only for
+            samples where |target| > _DRAG_ZERO_EPS.
+        """
         if not isinstance(pred_normalized, dict) or "field" not in pred_normalized or not hasattr(batch, "x") or batch.x is None:
-            return []
+            return [], []
         if not hasattr(batch, "c") or batch.c is None:
-            return []
+            return [], []
         pred_unnormalized = self._denormalize_field(trainer, pred_normalized["field"])
         target_unnormalized = self._denormalize_field(trainer, batch.x.to(trainer.device))
-        errors = []
+        abs_errors: list[float] = []
+        rel_errors: list[float] = []
         for start, end in self._sample_ranges(batch):
             drag_pred = self._integrate_sample(trainer, batch, pred_unnormalized, start, end)
             drag_target = self._integrate_sample(trainer, batch, target_unnormalized, start, end)
             if drag_pred is not None and drag_target is not None:
-                errors.append(abs(drag_pred - drag_target))
-        return errors
+                abs_errors.append(abs(drag_pred - drag_target))
+                if abs(drag_target) > _DRAG_ZERO_EPS:
+                    rel_errors.append(abs(drag_pred - drag_target) / abs(drag_target))
+        return abs_errors, rel_errors
 
     def _signed_x_drag_weighted_field_errors(self, trainer, batch, pred_normalized) -> list[float]:
         if not isinstance(pred_normalized, dict) or "field" not in pred_normalized or not hasattr(batch, "x") or batch.x is None:

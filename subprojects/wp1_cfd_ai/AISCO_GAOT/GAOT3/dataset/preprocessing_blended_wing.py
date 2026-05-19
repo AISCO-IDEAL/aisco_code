@@ -25,6 +25,7 @@ Saved Data fields:
   filename str          -- case identifier, e.g. "case_0000"
 """
 
+import math
 import os
 from concurrent.futures import BrokenExecutor, ProcessPoolExecutor, as_completed
 
@@ -74,6 +75,20 @@ def load_case_data(path: str) -> dict:
     }
 
 
+def get_kinematic_viscosity(alt_kft: float) -> float:
+    """Calculate kinematic viscosity of air (m^2/s) at a given altitude in kilofeet using ISA."""
+    h = alt_kft * 1000.0 * 0.3048
+    if h < 11000.0:
+        T = 288.15 - 0.0065 * h
+        p = 101325.0 * (T / 288.15) ** 5.25588
+    else:
+        T = 216.65
+        p = 22632.06 * math.exp(-0.03416319 * (h - 11000.0))
+    rho = p / (287.05 * T)
+    mu = 1.458e-6 * (T**1.5) / (T + 110.4)
+    return mu / rho
+
+
 def _process_single(vtk_file: str, case_lookup: dict, output_dir: str):
     """Process one VTK file. Returns case_name on success, None on failure."""
     case_name = os.path.basename(vtk_file).replace(".vtk", "")  # e.g. case_0000
@@ -108,6 +123,15 @@ def _process_single(vtk_file: str, case_lookup: dict, output_dir: str):
 
     aero = case_lookup[case_name]
     v_inf = float(aero["M_inf"]) * A_SEA_LEVEL
+
+    # Calculate actual scale (L) from Reynolds number
+    reynolds = float(aero["Re"])
+    alt_kft = float(aero["alt_kft"])
+    kinematic_viscosity = get_kinematic_viscosity(alt_kft)
+    true_length_meters = (reynolds * kinematic_viscosity) / v_inf
+
+    # Scale the chord-normalized coordinates up to real-world meters
+    pos = pos * true_length_meters
 
     data = Data(pos=pos, c=c, x=cp, face=faces)
 
