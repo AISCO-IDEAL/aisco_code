@@ -39,6 +39,33 @@ export function initMeshViewer(containerEl) {
     let onControlsChange = null;
     let suppressControlsCallback = false;
     let glbControlsHost = null;
+    let plyFallbackColorHex = 0x99A3A4;
+
+    function rgbTripletToHex(rgb) {
+        if (!Array.isArray(rgb) || rgb.length !== 3) {
+            return null;
+        }
+        const channels = rgb.map((value) => {
+            const num = Number(value);
+            if (!Number.isFinite(num)) {
+                return null;
+            }
+            return Math.round(Math.min(1, Math.max(0, num)) * 255);
+        });
+        if (channels.some((value) => value === null)) {
+            return null;
+        }
+        return (channels[0] << 16) | (channels[1] << 8) | channels[2];
+    }
+
+    function setPlyFallbackColorRgb(rgb) {
+        const hex = rgbTripletToHex(rgb);
+        if (hex === null) {
+            return false;
+        }
+        plyFallbackColorHex = hex;
+        return true;
+    }
 
     function ensureOpacitySliderStyles() {
         const styleId = "glb-opacity-slider-styles";
@@ -485,7 +512,7 @@ export function initMeshViewer(containerEl) {
                 const hasVertexColors = geo.hasAttribute("color");
                 const material = hasVertexColors
                     ? new MeshPhongMaterial({ vertexColors: true, side: DoubleSide, shininess: 30 })
-                    : new MeshStandardMaterial({ color: 0x99A3A4, roughness: 0.6, metalness: 0.2, side: DoubleSide });
+                    : new MeshStandardMaterial({ color: plyFallbackColorHex, roughness: 0.6, metalness: 0.2, side: DoubleSide });
                 currentObj = new Mesh(geo, material);
                 currentObj.scale.set(scale, scale, scale);
                 scene.add(currentObj);
@@ -512,5 +539,15 @@ export function initMeshViewer(containerEl) {
         renderGlbControls();
     }
 
-    return { loadMesh, getViewState, setViewState, setOnControlsChange, setGlbControlsHost, getMeshComponents, setMeshComponentState, refreshGlbControls };
+    return {
+        loadMesh,
+        getViewState,
+        setViewState,
+        setOnControlsChange,
+        setGlbControlsHost,
+        getMeshComponents,
+        setMeshComponentState,
+        refreshGlbControls,
+        setPlyFallbackColorRgb,
+    };
 }
