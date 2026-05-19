@@ -52,9 +52,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import trimesh
-import wandb
 from torch.profiler import record_function
 
+import wandb
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.cruising_speed import cruising_speed
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.loss_normalisation import LossNormalisationManager

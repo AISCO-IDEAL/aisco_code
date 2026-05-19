@@ -159,13 +159,14 @@ def render_intersection(
 
 if __name__ == "__main__":
     from datetime import datetime
+    from typing import cast
 
     import trimesh
 
     _PLY = (
         "/cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/wp4_runs/9f0d75f6d9/43_solar-smoke/aero/cp_field/epoch_00030.ply"
     )
-    mesh = trimesh.load(_PLY, force="mesh")
+    mesh = cast(trimesh.Trimesh, trimesh.load(_PLY, force="mesh"))
     aero_verts = torch.as_tensor(mesh.vertices, dtype=torch.float32)
     aero_faces = torch.as_tensor(mesh.faces, dtype=torch.long)
 
@@ -175,6 +176,6 @@ if __name__ == "__main__":
         cone_faces,
         aero_verts,
         aero_faces,
-        out_dir="/cluster/home/fsanche/AISCO_code/local_storage_dir/wp3_vision_cone",
+        out_dir="/cluster/home/aalthaus/",
         timestamp=datetime.now().strftime("%Y%m%d_%H%M%S"),
     )
