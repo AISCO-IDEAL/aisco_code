@@ -1466,7 +1466,95 @@
 
         </div><!-- end ds-panel -->
 
-        <!-- Log (shared; always visible) -->
+        <!-- ── Dataset Audit panel (separate from ds-panel; always visible in dataset mode) ── -->
+        <div id="audit-panel" style="display:none">
+            <div class="card">
+                <h2>Dataset Audit
+                    <span id="audit-active-badge"
+                        style="display:none;margin-left:.5rem;font-size:.72rem;padding:.1rem .45rem;border-radius:10px;background:var(--ac);color:#fff;font-weight:700;letter-spacing:.04em">ACTIVE</span>
+                </h2>
+
+                <!-- Slot + start/stop -->
+                <div style="display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin-bottom:.5rem">
+                    <span style="font-size:.8rem;color:var(--tx2)">Audit slot:</span>
+                    <label style="font-size:.82rem;display:flex;align-items:center;gap:.25rem;cursor:pointer">
+                        <input type="radio" name="audit-slot" value="A" checked onchange="auditState.slot=this.value"> A
+                    </label>
+                    <label style="font-size:.82rem;display:flex;align-items:center;gap:.25rem;cursor:pointer">
+                        <input type="radio" name="audit-slot" value="B" onchange="auditState.slot=this.value"> B
+                    </label>
+                    <button class="btn-ghost" id="audit-toggle-btn" onclick="auditToggle()">▶ Start Audit</button>
+                </div>
+
+                <!-- Progress + decision controls (only shown when active) -->
+                <div id="audit-progress-section" style="display:none">
+                    <div style="display:flex;align-items:baseline;gap:.6rem;margin-bottom:.3rem;flex-wrap:wrap">
+                        <span id="audit-counter" style="font-size:1rem;font-weight:700;color:var(--tx1)">— / —</span>
+                        <span id="audit-stats" style="font-size:.78rem;color:var(--tx3)"></span>
+                    </div>
+                    <progress id="audit-progress-bar" value="0" max="1"
+                        style="width:100%;height:5px;margin-bottom:.55rem"></progress>
+
+                    <!-- Decision buttons -->
+                    <div style="display:flex;gap:.4rem;margin-bottom:.4rem">
+                        <button id="audit-btn-keep" class="btn-ghost audit-decision-btn" onclick="auditDecide('keep')"
+                            style="flex:1;border-color:var(--ok);color:var(--ok)">✓ Keep
+                            <kbd style="opacity:.7">K</kbd></button>
+                        <button id="audit-btn-reject" class="btn-ghost audit-decision-btn"
+                            onclick="auditDecide('reject')" style="flex:1;border-color:var(--er);color:var(--er)">✗
+                            Reject
+                            <kbd style="opacity:.7">R</kbd></button>
+                        <button id="audit-btn-skip" class="btn-ghost audit-decision-btn" onclick="auditDecide('skip')"
+                            style="flex:1">⊘ Skip
+                            <kbd style="opacity:.7">S</kbd></button>
+                        <button id="audit-btn-undo" class="btn-ghost" onclick="auditUndoDecision()"
+                            style="flex:0 0 auto;font-size:.8rem;padding:.25rem .55rem"
+                            title="Remove decision for current run">↺</button>
+                    </div>
+
+                    <!-- Current run decision indicator -->
+                    <div id="audit-current-decision"
+                        style="font-size:.8rem;min-height:1.2em;margin-bottom:.35rem;font-weight:600"></div>
+
+                    <!-- Key hint -->
+                    <div style="font-size:.72rem;color:var(--tx3);line-height:1.8;margin-bottom:.2rem">
+                        <kbd>K</kbd> keep + next &nbsp;·&nbsp; <kbd>R</kbd> reject + next &nbsp;·&nbsp;
+                        <kbd>S</kbd> skip + next &nbsp;·&nbsp; <kbd>←</kbd><kbd>→</kbd> navigate
+                        &nbsp;·&nbsp; <kbd>↺</kbd> undo decision
+                    </div>
+                </div>
+
+                <!-- Import / Export -->
+                <div style="display:flex;gap:.45rem;flex-wrap:wrap;margin-top:.4rem;margin-bottom:.5rem">
+                    <button class="btn-ghost" onclick="auditExport()" style="font-size:.76rem;padding:.25rem .65rem">⤓
+                        Export list</button>
+                    <button class="btn-ghost" onclick="document.getElementById('audit-import-input').click()"
+                        style="font-size:.76rem;padding:.25rem .65rem">⤒ Import list</button>
+                    <button class="btn-ghost" onclick="auditClearAll()"
+                        style="font-size:.76rem;padding:.25rem .65rem;color:var(--er)">✕ Clear all</button>
+                    <input type="file" id="audit-import-input" accept=".json" style="display:none"
+                        onchange="auditImport(this)">
+                </div>
+
+                <!-- Commit -->
+                <div style="border-top:1px solid var(--bd);padding-top:.55rem;margin-top:.2rem">
+                    <div class="field" style="margin-bottom:.35rem">
+                        <label>Output dataset path</label>
+                        <input type="text" id="audit-dst-path"
+                            placeholder="/cluster/work/fuge/AISCO/wp1_cfd_ai/my_curated_dataset"
+                            onkeydown="if(event.key==='Enter') auditCommit()">
+                    </div>
+                    <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
+                        <button class="btn-primary" id="audit-commit-btn" onclick="auditCommit()">
+                            Commit Kept Runs <span class="spin" id="audit-commit-spin"></span>
+                        </button>
+                        <span id="audit-commit-info" style="font-size:.73rem;color:var(--tx3)"></span>
+                    </div>
+                </div>
+            </div>
+        </div><!-- end audit-panel -->
+
+
         <div class="card">
             <h2>Log</h2>
             <div id="log"><span class="dim">Output will appear here…</span></div>
@@ -2452,9 +2540,34 @@
 
         // Global keydown — only fires when no text input is focused
         document.addEventListener('keydown', function (e) {
-            if (!batchActive) return;
             const tag = (document.activeElement?.tagName || '').toLowerCase();
             if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+
+            // Audit shortcuts (active when audit mode is running in dataset panel)
+            if (auditState.active && document.getElementById('audit-panel')?.style.display !== 'none') {
+                const k = e.key;
+                if (k === 'k' || k === 'K') { e.preventDefault(); auditDecide('keep'); return; }
+                if (k === 'r' || k === 'R') { e.preventDefault(); auditDecide('reject'); return; }
+                if (k === 's' || k === 'S') { e.preventDefault(); auditDecide('skip'); return; }
+                if (k === 'u' || k === 'U') { e.preventDefault(); auditUndoDecision(); return; }
+                if (k === 'ArrowLeft') {
+                    e.preventDefault();
+                    dsNavigate(auditState.slot, -1);
+                    auditUpdateCurrentDecision();
+                    auditUpdateStats();
+                    return;
+                }
+                if (k === 'ArrowRight') {
+                    e.preventDefault();
+                    dsNavigate(auditState.slot, 1);
+                    auditUpdateCurrentDecision();
+                    auditUpdateStats();
+                    return;
+                }
+            }
+
+            // Batch shortcuts
+            if (!batchActive) return;
             const k = e.key.toLowerCase();
             if (['0', '1', '2', '3', '4', 'n', 's'].includes(k)) {
                 e.preventDefault();
@@ -2756,12 +2869,14 @@
         function setMode(mode) {
             const plyPanel = document.getElementById('ply-panel');
             const dsPanel = document.getElementById('ds-panel');
+            const auditPanel = document.getElementById('audit-panel');
             const viewer = document.getElementById('viewer');
             const vcmp = document.getElementById('viewer-compare');
             const scalarBar = document.getElementById('scalar-bar');
 
             plyPanel.style.display = mode === 'ply' ? '' : 'none';
             dsPanel.style.display = mode === 'dataset' ? '' : 'none';
+            auditPanel.style.display = mode === 'dataset' ? '' : 'none';
             document.getElementById('tab-ply').classList.toggle('active', mode === 'ply');
             document.getElementById('tab-ds').classList.toggle('active', mode === 'dataset');
 
@@ -3141,6 +3256,210 @@
             }, 220);
         }
 
+        /* ══════════════════════════════════════════════════════
+           Dataset Audit
+           ══════════════════════════════════════════════════════ */
+        const auditState = {
+            active: false,
+            slot: 'A',
+            decisions: {},  // { run_name: 'keep' | 'reject' | 'skip' }
+        };
+
+        function auditToggle() {
+            if (auditState.active) {
+                auditState.active = false;
+                auditRefreshUI();
+                dsLog('<span class="dim">[Audit] Stopped</span>');
+                return;
+            }
+            const st = dsState[auditState.slot];
+            if (!st.runs.length) {
+                alert(`Load dataset ${auditState.slot} first, then start the audit.`);
+                return;
+            }
+            auditState.active = true;
+            auditRefreshUI();
+            dsLog(`<span class="ok">[Audit] Started on slot ${auditState.slot}: ${st.runs.length} runs</span>`);
+        }
+
+        function auditDecide(decision) {
+            if (!auditState.active) return;
+            const st = dsState[auditState.slot];
+            if (st.idx < 0 || st.idx >= st.runs.length) return;
+            const run = st.runs[st.idx].name;
+            auditState.decisions[run] = decision;
+            auditUpdateCurrentDecision();
+            auditUpdateStats();
+            // Advance to next run automatically
+            if (st.idx < st.runs.length - 1) {
+                dsNavigate(auditState.slot, 1);
+                auditUpdateCurrentDecision();
+                auditUpdateStats();
+            }
+        }
+
+        function auditUndoDecision() {
+            if (!auditState.active) return;
+            const st = dsState[auditState.slot];
+            if (st.idx < 0 || st.idx >= st.runs.length) return;
+            const run = st.runs[st.idx].name;
+            delete auditState.decisions[run];
+            auditUpdateCurrentDecision();
+            auditUpdateStats();
+        }
+
+        function auditUpdateCurrentDecision() {
+            if (!auditState.active) return;
+            const st = dsState[auditState.slot];
+            const run = st.runs[st.idx]?.name;
+            const dec = auditState.decisions[run];
+            const el = document.getElementById('audit-current-decision');
+            const colors = { keep: 'var(--ok)', reject: 'var(--er)', skip: 'var(--tx3)' };
+            const labels = { keep: '✓ Marked: KEEP', reject: '✗ Marked: REJECT', skip: '⊘ Marked: SKIP' };
+            if (dec) {
+                el.style.color = colors[dec];
+                el.textContent = labels[dec];
+            } else {
+                el.style.color = 'var(--tx3)';
+                el.textContent = 'Not yet decided';
+            }
+            // Highlight matching button
+            ['keep', 'reject', 'skip'].forEach(d => {
+                const btn = document.getElementById(`audit-btn-${d}`);
+                if (!btn) return;
+                if (d === dec) {
+                    btn.style.opacity = '1';
+                    btn.style.fontWeight = '700';
+                } else {
+                    btn.style.opacity = dec ? '0.45' : '1';
+                    btn.style.fontWeight = '';
+                }
+            });
+        }
+
+        function auditUpdateStats() {
+            const st = dsState[auditState.slot];
+            if (!st.runs.length) return;
+            const total = st.runs.length;
+            const vals = Object.values(auditState.decisions);
+            const kept = vals.filter(d => d === 'keep').length;
+            const rejected = vals.filter(d => d === 'reject').length;
+            const skipped = vals.filter(d => d === 'skip').length;
+            const decided = kept + rejected + skipped;
+            document.getElementById('audit-counter').textContent = `${st.idx + 1} / ${total}`;
+            document.getElementById('audit-stats').textContent =
+                `${kept} kept · ${rejected} rejected · ${skipped} skipped · ${total - decided} pending`;
+            document.getElementById('audit-progress-bar').value = decided / total;
+        }
+
+        function auditRefreshUI() {
+            const active = auditState.active;
+            document.getElementById('audit-active-badge').style.display = active ? '' : 'none';
+            document.getElementById('audit-progress-section').style.display = active ? '' : 'none';
+            document.getElementById('audit-toggle-btn').textContent = active ? '■ Stop Audit' : '▶ Start Audit';
+            if (active) {
+                auditUpdateCurrentDecision();
+                auditUpdateStats();
+            }
+        }
+
+        function auditExport() {
+            const st = dsState[auditState.slot];
+            const data = {
+                dataset_path: st.path,
+                slot: auditState.slot,
+                total_runs: st.runs.length,
+                decisions: auditState.decisions,
+                exported_at: new Date().toISOString(),
+            };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            const dsName = (st.path || 'audit').split('/').filter(Boolean).pop();
+            a.download = `audit_${dsName}.json`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+            dsLog(`<span class="ok">[Audit] Exported ${Object.keys(auditState.decisions).length} decisions</span>`);
+        }
+
+        function auditImport(input) {
+            const file = input.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = ev => {
+                try {
+                    const data = JSON.parse(ev.target.result);
+                    if (!data.decisions || typeof data.decisions !== 'object') {
+                        throw new Error('Invalid format: missing "decisions" object');
+                    }
+                    auditState.decisions = data.decisions;
+                    if (!auditState.active && data.slot) {
+                        const slotInput = document.querySelector(`input[name="audit-slot"][value="${data.slot}"]`);
+                        if (slotInput) { slotInput.checked = true; auditState.slot = data.slot; }
+                        if (dsState[auditState.slot].runs.length) {
+                            auditState.active = true;
+                        }
+                    }
+                    auditRefreshUI();
+                    const count = Object.keys(data.decisions).length;
+                    dsLog(`<span class="ok">[Audit] Imported ${count} decisions from ${escHtml(file.name)}</span>`);
+                } catch (err) {
+                    alert(`Import failed: ${err.message}`);
+                }
+                input.value = '';
+            };
+            reader.readAsText(file);
+        }
+
+        function auditClearAll() {
+            if (!confirm('Clear all audit decisions?')) return;
+            auditState.decisions = {};
+            auditRefreshUI();
+            dsLog('<span class="dim">[Audit] All decisions cleared</span>');
+        }
+
+        async function auditCommit() {
+            const st = dsState[auditState.slot];
+            if (!st.path) { alert('No dataset loaded in the selected slot.'); return; }
+            const keep = Object.entries(auditState.decisions)
+                .filter(([, v]) => v === 'keep').map(([k]) => k);
+            const reject = Object.entries(auditState.decisions)
+                .filter(([, v]) => v === 'reject').map(([k]) => k);
+            if (!keep.length) {
+                alert('No runs are marked as Keep. Mark at least one run before committing.');
+                return;
+            }
+            const dst = document.getElementById('audit-dst-path').value.trim();
+            if (!dst) { alert('Enter an output dataset path.'); return; }
+            const btn = document.getElementById('audit-commit-btn');
+            const spin = document.getElementById('audit-commit-spin');
+            const info = document.getElementById('audit-commit-info');
+            btn.disabled = true; spin.classList.add('on');
+            info.style.color = 'var(--tx3)';
+            info.textContent = `Copying ${keep.length} runs…`;
+            dsLog(`<span class="inf">[Audit] Committing ${keep.length} kept runs → ${escHtml(dst)}…</span>`);
+            try {
+                const r = await fetch('/api/dataset/export_curated', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ src_path: st.path, dst_path: dst, keep_runs: keep, reject_runs: reject }),
+                });
+                const d = await r.json();
+                if (!d.ok) {
+                    info.style.color = 'var(--er)'; info.textContent = d.error;
+                    dsLog(`<span class="er">[Audit] ${escHtml(d.error)}</span>`);
+                    return;
+                }
+                info.style.color = 'var(--ok)';
+                info.textContent = d.message || `Done: ${d.copied} runs copied`;
+                dsLog(`<span class="ok">[Audit] ${escHtml(d.message || `${d.copied} runs → ${dst}`)}</span>`);
+            } catch (e) {
+                info.style.color = 'var(--er)'; info.textContent = String(e);
+                dsLog(`<span class="er">[Audit] ${escHtml(String(e))}</span>`);
+            } finally {
+                btn.disabled = false; spin.classList.remove('on');
+            }
+        }
+
         /* ── Dataset browse / scan ── */
         async function dsScanDatasets() {
             const base = document.getElementById('ds-basedir').value.trim();
@@ -3160,7 +3479,7 @@
                     d.datasets.forEach(ds => {
                         const opt = document.createElement('option');
                         opt.value = ds.path;
-                        opt.textContent = `${ds.name}  (${ds.num_runs} runs)`;
+                        opt.textContent = ds.num_runs != null ? `${ds.name}  (${ds.num_runs} runs)` : ds.name;
                         sel.appendChild(opt);
                     });
                     document.getElementById('ds-browse-field').style.display = '';

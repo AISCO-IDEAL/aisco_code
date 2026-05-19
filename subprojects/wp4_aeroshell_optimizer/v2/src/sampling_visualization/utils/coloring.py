@@ -248,6 +248,12 @@ def resolve_mesh_rgb(
     else:
         return solid_rgb(n_verts, fallback_rgb)
 
+    binary_colors = type_cfg.get("binary_colors_rgb")
+    if binary_colors is not None and len(binary_colors) == 2:
+        color_off = np.array(binary_colors[0], dtype=np.float32)
+        color_on = np.array(binary_colors[1], dtype=np.float32)
+        return np.where((vertex_scalars > 0.5)[:, None], color_on, color_off).astype(np.float32)
+
     colormap: str | None = type_cfg.get("colormap")
     if colormap is None:
         return solid_rgb(n_verts, fallback_rgb)

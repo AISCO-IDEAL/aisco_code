@@ -2,7 +2,7 @@
 # ==============================================================================
 # FAST-RESUME / SPECIFIC CHECKPOINT OVERRIDE
 # ==============================================================================
-use_specific_pretraining: false # if true, skip pretraining and load specific_pretraining_path directly
+use_specific_pretraining: true # if true, skip pretraining and load specific_pretraining_path directly
 specific_pretraining_path_euler: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/000600_ConcatWIREV5_ENFORCE_8cf5cd14ad/pretrained_latent_8cf5cd14ad.pth"
 specific_pretraining_path_local: "/home/aisco/AISCO/pretraining/latent_pretraining/000600_ConcatWIREV5_ENFORCE_8cf5cd14ad/pretrained_latent_8cf5cd14ad.pth"
                           # absolute path to a pretrained_latent_*.pth; only used when use_specific_pretraining=true
@@ -63,8 +63,8 @@ active_population:
   #- simple_catamaran
   #- simple_trimaran
 
-model_name: "ConcatWIREV5_ENFORCE" # only used for standalone pretraining. In main loop, model_name from general_config.yaml is used.
-z_placement: "circle" # circle | random_disk
+model_name: "ConcatWIREV5" # only used for standalone pretraining. In main loop, model_name from general_config.yaml is used.
+z_placement: "random_disk" # circle | random_disk
 z_radius: 2.0 # circle radius for pretrained latent codes.
 
 force_pretraining: false # if false, a cached (hashed) checkpoint is reused when available
@@ -102,7 +102,7 @@ output:
   make_gif: false       # used in main loop; use --make-gif flag for standalone pretraining
   visualisation_directory: "sampling_vis"
 
-  vis_cadence: 10           # epoch interval for sampling visualizations
+  vis_cadence: 100           # epoch interval for sampling visualizations
   vis_show_domain_pts: true # show domain pts (grey) in sampling vis
   vis_show_target_pts: "pts"  # "pts" = surface cache pts in green | "mesh" = target PLY mesh
 

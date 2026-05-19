@@ -25,6 +25,8 @@ class WheelAlignmentV0(ParentLoss):
         self.assembly_id = resolve_assembly_id(self.__bb_config)
         print(f"[WheelAlignmentV0] Using assembly_id={self.assembly_id}")
         self._manual_z_shift = self.__config.get("manual_z_shift", 0.0)
+        # GINN-style "satisfied" deadband on the aggregated L2 angle-deviation loss.
+        self._tolerance = float(self.__config.get("alignment_tolerance", 0.0))
 
         assembly_map_path = Path(__file__).parents[6] / "subprojects/wp2_assembler/version4/config/assembly_map.yaml"
         with assembly_map_path.open("r") as f:
@@ -75,4 +77,5 @@ class WheelAlignmentV0(ParentLoss):
         grad_unit = grad_sdf / grad_sdf.norm(dim=-1, keepdim=True).clamp(min=1e-8)
         angle_dev_sq = (1.0 - (grad_unit * ground_normal).sum(dim=-1)).pow(2)
 
-        return torch.sqrt(angle_dev_sq.sum() + 1e-12)
+        loss = torch.sqrt(angle_dev_sq.sum() + 1e-12)
+        return torch.clamp(loss - self._tolerance, min=0.0)

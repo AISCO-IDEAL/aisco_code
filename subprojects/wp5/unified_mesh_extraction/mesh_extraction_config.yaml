@@ -4,7 +4,7 @@ isovalue: 0.0
 # MeshSDFExtractor (developability, surface_area, …). Keeping the same
 # bbox + resolution across losses lets `_inject_shared_meshes` deduplicate
 # the extraction and ensures every gradient panel renders on the same body.
-bbox: [[-5000, 5000], [-5000, 5000], [-5000, 5000]]
+bbox: [[-6000, 6000], [-6000, 6000], [-6000, 6000]]
 base_resolution: 50
 subdivision_factor: 2
 max_refine_levels: 1
