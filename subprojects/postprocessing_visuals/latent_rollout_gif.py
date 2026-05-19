@@ -74,7 +74,7 @@ _PRISM_Z = (0.0, 1650.0)
 # Model loading
 # ---------------------------------------------------------------------------
 
-_MODELS_DIR = Path(__file__).parents[1] / "src" / "models"
+_MODELS_DIR = Path(__file__).parents[1] / "wp4_aeroshell_optimizer" / "v2" / "src" / "models"
 
 
 def _load_module_direct(module_name: str, file_path: Path) -> types.ModuleType:
@@ -143,7 +143,7 @@ def _ensure_wp4_model_imports() -> None:
 
 
 def _build_model(info: dict[str, Any], device: torch.device) -> Any:
-    root = str(Path(__file__).parents[3])  # AISCO_code root
+    root = str(Path(__file__).parents[2])  # AISCO_code root
     if root not in sys.path:
         sys.path.insert(0, root)
 

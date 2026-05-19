@@ -2,8 +2,8 @@
 # Configuration for sdf_slice_viz.py
 # ---------------------------------------------------------------------------
 # Run:
-#   python scripts/sdf_slice_viz.py [--config configs/sdf_slice_viz.yaml]
-#   python scripts/sdf_slice_viz.py --interactive   # opens a window
+#   python subprojects/postprocessing_visuals/sdf_slice_viz.py
+#   python subprojects/postprocessing_visuals/sdf_slice_viz.py --interactive   # opens a window
 # ---------------------------------------------------------------------------
 
 # --- Input ---

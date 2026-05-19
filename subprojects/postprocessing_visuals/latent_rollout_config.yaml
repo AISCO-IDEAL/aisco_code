@@ -1,7 +1,7 @@
 # latent_rollout_config.yaml
 # All settings for latent_rollout_gif.py
 # CLI flags (--key value) override any value set here.
-# Usage: python latent_rollout_gif.py --config latent_rollout_config.yaml
+# Usage: python subprojects/postprocessing_visuals/latent_rollout_gif.py --config subprojects/postprocessing_visuals/latent_rollout_config.yaml
 
 # ---------------------------------------------------------------------------
 # Paths

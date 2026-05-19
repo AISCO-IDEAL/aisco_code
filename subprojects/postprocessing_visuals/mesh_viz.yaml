@@ -2,10 +2,10 @@
 # Simple PLY mesh visualiser — color, lighting, camera
 # ---------------------------------------------------------------------------
 # Run:
-#   python scripts/mesh_viz.py                          # this config
-#   python scripts/mesh_viz.py --interactive            # write HTML
-#   python scripts/mesh_viz.py --mesh /path/to.ply
-#   python scripts/mesh_viz.py --out /tmp/out.png
+#   python subprojects/postprocessing_visuals/mesh_viz.py
+#   python subprojects/postprocessing_visuals/mesh_viz.py --interactive            # write HTML
+#   python subprojects/postprocessing_visuals/mesh_viz.py --mesh /path/to.ply
+#   python subprojects/postprocessing_visuals/mesh_viz.py --out /tmp/out.png
 # ---------------------------------------------------------------------------
 
 # --- Input / Output ---------------------------------------------------------

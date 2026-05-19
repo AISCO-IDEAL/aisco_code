@@ -2,9 +2,9 @@
 # Configuration for cp_field_viz.py
 # ---------------------------------------------------------------------------
 # Run:
-#   python scripts/cp_field_viz.py [--config configs/cp_field_viz.yaml]
-#   python scripts/cp_field_viz.py --interactive       # writes HTML
-#   python scripts/cp_field_viz.py --mesh /path/to.ply
+#   python subprojects/postprocessing_visuals/cp_field_viz.py
+#   python subprojects/postprocessing_visuals/cp_field_viz.py --interactive       # writes HTML
+#   python subprojects/postprocessing_visuals/cp_field_viz.py --mesh /path/to.ply
 # ---------------------------------------------------------------------------
 
 # --- Input ---
