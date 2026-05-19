@@ -181,10 +181,10 @@ visual_types:
     vmax: null
     solid_color_rgb: [0.7608, 0.2078, 0.1922]
     # Per-component colours (RGB in [0, 1]) and opacities (in [0, 1]):
-    sdf_color: [0.1, 0.6, 0.9]  # aeroshell mesh — corporate large-surface red (#C33531)
+    sdf_color: [0.149, 0.651, 0.604]  # aeroshell mesh — corporate large-surface red (#C33531)
     sdf_alpha: 0.5                   # aeroshell opacity
-    inner_color: [0.8, 0.8, 0.8]  # inner assembly — corporate text-box blue (#D2E0F2)
-    outer_color: [1.0, 0.2, 0.2]     # outer bbox — corporate highlight red (#FF504D)
+    inner_color: [1, 0.439, 0.263]  # inner assembly — corporate text-box blue (#D2E0F2)
+    outer_color: [0.471, 0.565, 0.612]     # outer bbox — corporate highlight red (#FF504D)
     outer_alpha: 0.2                 # outer bbox opacity
 
   # Per-loss gradient visualisation (`vis_mesh_gradient`). Each call writes
