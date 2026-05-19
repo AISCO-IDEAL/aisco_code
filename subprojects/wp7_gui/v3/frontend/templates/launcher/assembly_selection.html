@@ -110,6 +110,13 @@ endblock %}
         background: #fff;
     }
 
+    .selection-table input[type="number"]:disabled {
+        background: var(--sel-panel);
+        color: var(--sel-muted);
+        border-color: transparent;
+        cursor: not-allowed;
+    }
+
     .part-name {
         font-family: monospace;
         font-weight: 600;
@@ -342,11 +349,12 @@ endblock %}
         });
     }
 
-    function inputCell(part, axis, value) {
+    function inputCell(part, axis, value, disabled = false) {
+        const disabledAttr = disabled ? " disabled title=\"Wheel Z is fixed and cannot be changed\"" : "";
         return `
       <td>
         <input type="number" step="1" value="${Math.round(value)}"
-          data-key="${part}" data-axis="${axis}" oninput="onEdit(this)">
+          data-key="${part}" data-axis="${axis}"${disabledAttr} oninput="onEdit(this)">
       </td>
     `;
     }
@@ -355,12 +363,13 @@ endblock %}
         const body = document.getElementById("controls");
         body.innerHTML = "";
         for (const [part, vals] of orderedParts()) {
+            const isWheel = part.startsWith("wheel_");
             const row = document.createElement("tr");
             row.innerHTML = `
         <td class="part-name">${part}</td>
         ${inputCell(part, "x", vals.x)}
         ${inputCell(part, "y", vals.y)}
-        ${inputCell(part, "z", vals.z)}
+        ${inputCell(part, "z", vals.z, isWheel)}
       `;
             body.appendChild(row);
         }

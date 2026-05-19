@@ -19,10 +19,47 @@
     <a href="/launcher/output?pipeline={{ pipeline }}" class="btn">Output →</a>
   </div>
 
-  <!-- Log console -->
-  <div class="dark-card" style="min-height:0; display:grid; grid-template-rows: auto 1fr; gap:6px;">
-    <div style="font-size:0.82rem; color:#f8d9d9; font-weight:600;">Run Log</div>
-    <div class="console" id="logConsole" style="min-height:0;"></div>
+  <!-- Stats panel and log console -->
+  <div style="display:grid; grid-template-columns: 280px 1fr; gap:12px; min-height:0;">
+
+    <!-- Live Stats Panel -->
+    <div class="dark-card" style="min-height:0; display:grid; grid-template-rows: auto 1fr; gap:10px; padding:12px;">
+      <div style="font-size:0.82rem; color:#f8d9d9; font-weight:600;">Live Metrics</div>
+      <div style="display:flex; flex-direction:column; gap:12px; overflow-y:auto;">
+
+        <!-- Drag -->
+        <div style="border-left:2px solid #66a3ff; padding-left:8px;">
+          <div style="font-size:0.7rem; color:#a8d8f8; text-transform:uppercase; letter-spacing:0.5px;">Aerodynamic Drag
+          </div>
+          <div style="font-size:1.2rem; font-weight:600; color:#fff; margin-top:2px;" id="dragValue">—</div>
+          <div style="font-size:0.68rem; color:#888; margin-top:2px;">N (Newtons)</div>
+        </div>
+
+        <!-- Solar -->
+        <div style="border-left:2px solid #ffd966; padding-left:8px;">
+          <div style="font-size:0.7rem; color:#ffd966; text-transform:uppercase; letter-spacing:0.5px;">Solar Output
+          </div>
+          <div style="font-size:1.2rem; font-weight:600; color:#fff; margin-top:2px;" id="solarValue">—</div>
+          <div style="font-size:0.68rem; color:#888; margin-top:2px;">W (Watts)</div>
+        </div>
+
+        <!-- Cruising Speed -->
+        <div style="border-left:2px solid #66cc99; padding-left:8px;">
+          <div style="font-size:0.7rem; color:#66cc99; text-transform:uppercase; letter-spacing:0.5px;">Cruising Speed
+          </div>
+          <div style="font-size:1.2rem; font-weight:600; color:#fff; margin-top:2px;" id="speedValue">—</div>
+          <div style="font-size:0.68rem; color:#888; margin-top:2px;">m/s</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Log console -->
+    <div class="dark-card" style="min-height:0; display:grid; grid-template-rows: auto 1fr; gap:6px;">
+      <div style="font-size:0.82rem; color:#f8d9d9; font-weight:600;">Run Log</div>
+      <div class="console" id="logConsole" style="min-height:0;"></div>
+    </div>
+
   </div>
 </div>
 
@@ -49,10 +86,25 @@
       miniLog.textContent = line.slice(-60);
     });
     logEventSource.addEventListener("epoch", e => {
-      const { epoch, total } = JSON.parse(e.data);
+      const { epoch, total, drag_value, solar_power_w, cruising_speed_ms } = JSON.parse(e.data);
       const pct = total > 0 ? Math.min(100, ((epoch + 1) / total) * 100) : 0;
       progressFill.style.width = pct + "%";
       progressLabel.textContent = `Epoch ${epoch + 1} / ${total} (${pct.toFixed(1)}%)`;
+
+      // Update live metrics
+      const dragEl = document.getElementById("dragValue");
+      const solarEl = document.getElementById("solarValue");
+      const speedEl = document.getElementById("speedValue");
+
+      if (drag_value !== null && drag_value !== undefined) {
+        dragEl.textContent = typeof drag_value === 'number' ? drag_value.toFixed(3) : "—";
+      }
+      if (solar_power_w !== null && solar_power_w !== undefined) {
+        solarEl.textContent = typeof solar_power_w === 'number' ? solar_power_w.toFixed(1) : "—";
+      }
+      if (cruising_speed_ms !== null && cruising_speed_ms !== undefined) {
+        speedEl.textContent = typeof cruising_speed_ms === 'number' ? cruising_speed_ms.toFixed(2) : "—";
+      }
     });
     logEventSource.addEventListener("done", e => {
       const { return_code } = JSON.parse(e.data);
