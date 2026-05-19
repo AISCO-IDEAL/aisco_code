@@ -45,6 +45,7 @@ def solar_loss_mrrt(  # noqa: PLR0915
     vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),
     epoch_name: int | None = None,
     mesh_visibility_fn: Callable | None = None,
+    cone_face_mask: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, dict[str, Any]]:
     """
     Multi-ray solar power objective with per-direction mesh raytracing.
@@ -106,6 +107,9 @@ def solar_loss_mrrt(  # noqa: PLR0915
     mesh_cfg = raytracing_cfg["mesh"]
 
     avg_quality = averaging_solar_quality(face_normals_unit, solar_vectors_unit)  # (F,)
+
+    if cone_face_mask is not None:
+        avg_quality = avg_quality.masked_fill(cone_face_mask.to(avg_quality.device), -1.0)
 
     quality_order_desc = torch.argsort(avg_quality, descending=True)
     sorted_areas_m2 = face_area_m2[quality_order_desc]
@@ -171,6 +175,8 @@ def solar_loss_mrrt(  # noqa: PLR0915
     if epoch_name is not None:
         vis_manager.vis_solar_quality(int(epoch_name), vertices, faces, avg_quality)
         vis_manager.vis_solar_selection(int(epoch_name), vertices, faces, soft_mask_original)
+        if cone_face_mask is not None:
+            vis_manager.vis_solar_vision_cone_mask(int(epoch_name), vertices, faces, cone_face_mask.float())
         if skip_backface_receivers and sun_facing_acc is not None:
             vis_manager.vis_solar_receiver_mask(int(epoch_name), vertices, faces, sun_facing_acc / K)
         vis_manager.vis_solar_shading(int(epoch_name), vertices, faces, mean_visibility)

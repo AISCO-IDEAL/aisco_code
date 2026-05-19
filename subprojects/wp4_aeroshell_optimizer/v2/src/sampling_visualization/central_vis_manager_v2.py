@@ -37,6 +37,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.col
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.gradient_color_semantics import (
     normalize_signed_to_unit_interval,
     optimizer_update_normal_scalar,
+    optimizer_update_sdf_displacement,  # noqa: F401
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.mesh_ops import face_rgb_to_flat_mesh
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.utils.ply_tasks import (
@@ -55,6 +56,8 @@ from subprojects.wp5.unified_mesh_extraction.sdf2mesh import MeshSDFExtractor
 
 _DEFAULT_CONFIG_PATH = Path(__file__).parents[2] / "configs" / "vis_config.yaml"
 _DARK_BLUE_RGB: tuple[float, float, float] = (0.0, 0.0, 139.0 / 255.0)
+_VISION_CONE_RGB: tuple[float, float, float] = (0.9, 0.1, 0.9)
+_VISION_CONE_ALPHA: float = 0.25
 
 
 def _log(event: dict[str, Any]) -> None:
@@ -71,6 +74,43 @@ def _to_i32(x: Any) -> np.ndarray:
     if hasattr(x, "detach"):
         return x.detach().cpu().numpy().astype(np.int32)
     return np.asarray(x, dtype=np.int32)
+
+
+def _export_mesh_assembly_with_cone_ply(
+    *,
+    output_path: Path,
+    meshes: list[tuple[torch.Tensor, torch.Tensor, tuple[float, float, float], float]],
+) -> None:
+    """Best-effort combined PLY writer for optional vision-cone overlays."""
+    import trimesh  # noqa: PLC0415
+
+    verts_blocks: list[np.ndarray] = []
+    faces_blocks: list[np.ndarray] = []
+    color_blocks: list[np.ndarray] = []
+    offset = 0
+
+    for verts, faces, rgb, alpha in meshes:
+        if faces.shape[0] == 0:
+            raise ValueError("cannot export empty mesh component")
+        verts_np = verts.detach().cpu().float().numpy()
+        faces_np = faces.detach().cpu().long().numpy()
+        verts_blocks.append(verts_np)
+        faces_blocks.append(faces_np + offset)
+        offset += verts_np.shape[0]
+
+        r, g, b = (round(c * 255) for c in rgb)
+        a = round(alpha * 255)
+        colors = np.empty((verts_np.shape[0], 4), dtype=np.uint8)
+        colors[:] = [r, g, b, a]
+        color_blocks.append(colors)
+
+    mesh = trimesh.Trimesh(
+        vertices=np.concatenate(verts_blocks, axis=0),
+        faces=np.concatenate(faces_blocks, axis=0),
+        process=False,
+    )
+    mesh.visual.vertex_colors = np.concatenate(color_blocks, axis=0)
+    mesh.export(str(output_path), file_type="ply")
 
 
 # ---------------------------------------------------------------------------
@@ -103,10 +143,12 @@ class _BaseVisManager:
         self._finalizing = False
         self._active_slot: int | None = None
         self._assembly_meshes: tuple | None = None
+        self._vision_cone_mesh: tuple[torch.Tensor, torch.Tensor] | None = None
         atexit.register(self.finalize)
 
         _log({"event": "cvm_v2_init", "run_id": run_id, "run_dir": str(self.run_dir)})
         self._load_assembly_meshes()
+        self._load_vision_cone_mesh()
 
     @property
     def latent_pretraining_cfg(self) -> dict[str, Any]:
@@ -172,6 +214,30 @@ class _BaseVisManager:
                     "run_id": self.run_id,
                     "error": str(exc),
                     "message": "Call set_assembly_meshes() manually if the assembly cannot be loaded automatically.",
+                }
+            )
+
+    def _load_vision_cone_mesh(self) -> None:
+        if not vis_is_enabled(self._visual_types, "mesh_assembly_v4"):
+            return
+        try:
+            from subprojects.wp3_solar_estimator.utils.wp3_vision_cone import get_vision_cone_mesh  # noqa: PLC0415
+            from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.custom_modes.bounding_box_mode_utils import (  # noqa: PLC0415
+                load_bb_assembly_id,
+            )
+
+            assembly_id = load_bb_assembly_id(default_id=0)
+            cone_v, cone_f = get_vision_cone_mesh(assembly_id, device="cpu")
+            self._vision_cone_mesh = (cone_v.detach().cpu(), cone_f.detach().cpu())
+            _log({"event": "vision_cone_mesh_loaded", "run_id": self.run_id, "assembly_id": assembly_id})
+        except Exception as exc:
+            self._vision_cone_mesh = None
+            _log(
+                {
+                    "event": "vision_cone_mesh_load_failed",
+                    "run_id": self.run_id,
+                    "error": str(exc),
+                    "message": "Skipping optional mesh_assembly_v4 vision-cone overlay exports.",
                 }
             )
 
@@ -628,6 +694,14 @@ class CentralVisManagerV2(_BaseVisManager):
             vt, epoch, verts_np, faces_np, _to_f64(receiver_mask).astype(np.float32).reshape(-1), type_cfg
         )
 
+    def vis_solar_vision_cone_mask(self, epoch: int, verts: Any, faces: Any, mask: Any) -> None:
+        vt = self._slotted("solar/vision_cone_mask")
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
+        if type_cfg is None:
+            return
+        verts_np, faces_np = _to_f64(verts), _to_i32(faces)
+        self._submit_ply_flat_faces(vt, epoch, verts_np, faces_np, _to_f64(mask).astype(np.float32).reshape(-1), type_cfg)
+
     def vis_bb_constraint(self, epoch: int, verts: Any, distances: Any) -> None:
         """Bounding-box constraint violations. verts is a point cloud (no faces)."""
         vt = self._slotted("bb_constraint")
@@ -790,6 +864,8 @@ class CentralVisManagerV2(_BaseVisManager):
             out_dir = self._output_dir(vt)
             ply_path = out_dir / f"epoch_{epoch:05d}.ply"
             glb_path = out_dir / f"epoch_{epoch:05d}.glb"
+        cone_ply_path = ply_path.with_name(f"{ply_path.stem}_with_vision_cone.ply")
+        cone_glb_path = glb_path.with_name(f"{glb_path.stem}_with_vision_cone.glb")
 
         def _task() -> tuple[bool, str, str | None]:
             try:
@@ -826,6 +902,40 @@ class CentralVisManagerV2(_BaseVisManager):
                         ("outer_bbox", out_v.numpy(), out_f.numpy(), out_rgb),
                     ],
                 )
+
+                if self._vision_cone_mesh is not None:
+                    try:
+                        cone_v, cone_f = self._vision_cone_mesh
+                        cone_rgb = np.tile(np.array(_VISION_CONE_RGB, dtype=np.float32), (len(cone_v), 1))
+                        save_scene_glb(
+                            cone_glb_path,
+                            [
+                                ("sdf_mesh", sdf_v.numpy(), sdf_f.numpy(), sdf_rgb),
+                                ("inner_assembly", inn_v.numpy(), inn_f.numpy(), inn_rgb),
+                                ("outer_bbox", out_v.numpy(), out_f.numpy(), out_rgb),
+                                ("vision_cone", cone_v.numpy(), cone_f.numpy(), cone_rgb),
+                            ],
+                        )
+                        _export_mesh_assembly_with_cone_ply(
+                            output_path=cone_ply_path,
+                            meshes=[
+                                (inn_v, inn_f, inner_color, 1.0),
+                                (out_v, out_f, outer_color, outer_alpha),
+                                (sdf_v, sdf_f, sdf_color, sdf_alpha),
+                                (cone_v, cone_f, _VISION_CONE_RGB, _VISION_CONE_ALPHA),
+                            ],
+                        )
+                    except Exception as cone_exc:
+                        _log(
+                            {
+                                "event": "vision_cone_overlay_export_failed",
+                                "run_id": self.run_id,
+                                "visual_type": vt,
+                                "epoch": epoch,
+                                "error": str(cone_exc),
+                                "message": "Base mesh_assembly_v4 export succeeded; optional vision-cone overlay was skipped.",
+                            }
+                        )
                 return (True, str(ply_path), None)
             except Exception as exc:
                 return (False, str(ply_path), str(exc))

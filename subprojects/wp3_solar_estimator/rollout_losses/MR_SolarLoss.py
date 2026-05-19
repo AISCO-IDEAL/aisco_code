@@ -35,6 +35,7 @@ def solar_loss_mr(
     epsilon: float = 1e-12,
     vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),
     epoch_name: int | None = None,
+    cone_face_mask: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, dict[str, Any]]:
     """
     Multi-ray solar power objective (no raytracing).
@@ -83,6 +84,9 @@ def solar_loss_mr(
     solar_vectors_unit = solar_vectors / torch.linalg.norm(solar_vectors, dim=-1, keepdim=True).clamp_min(epsilon)
     avg_quality = averaging_solar_quality(face_normals_unit, solar_vectors_unit)  # (F,)
 
+    if cone_face_mask is not None:
+        avg_quality = avg_quality.masked_fill(cone_face_mask.to(avg_quality.device), -1.0)
+
     quality_order_desc = torch.argsort(avg_quality, descending=True)
     sorted_areas_m2 = face_area_m2[quality_order_desc]
     sorted_avg_quality = avg_quality[quality_order_desc]
@@ -102,6 +106,8 @@ def solar_loss_mr(
     if epoch_name is not None:
         vis_manager.vis_solar_selection(int(epoch_name), vertices, faces, soft_mask_original_order)
         vis_manager.vis_solar_quality(int(epoch_name), vertices, faces, avg_quality)
+        if cone_face_mask is not None:
+            vis_manager.vis_solar_vision_cone_mask(int(epoch_name), vertices, faces, cone_face_mask.float())
 
     faces_near_boundary = (soft_mask > 0.1) & (soft_mask < 0.9)
     budget_crossover_idx = (

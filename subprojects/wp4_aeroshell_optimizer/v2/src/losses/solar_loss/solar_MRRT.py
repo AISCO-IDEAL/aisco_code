@@ -7,6 +7,7 @@ Solar vectors are loaded once in _setup from RouteV3 (race mode) or a custom yam
 
 from __future__ import annotations
 
+import os
 from dataclasses import replace as _replace
 
 import torch
@@ -38,6 +39,15 @@ class SolarMRRT(ParentLoss):
         self.epsilon = float(cfg.get("eps", 1e-12))
         self.skip_backface_receivers = bool(cfg.get("skip_backface_receivers", False))
         self.smooth_gradient_iters = int(cfg.get("smooth_gradient_iters", 0))
+
+        self.exclude_vision_cone_faces = bool(cfg.get("exclude_vision_cone_faces", False))
+        if self.exclude_vision_cone_faces:
+            from subprojects.wp3_solar_estimator.utils.wp3_vision_cone import get_vision_cone_mesh  # noqa: PLC0415
+
+            env_id = os.getenv("AISCO_ASSEMBLY_ID", "").strip()
+            cone_id = int(env_id) if env_id else int(self.losses_config.get("bb_config", {}).get("assembly_id", 0))
+            print(f"[SolarMRRT] Vision cone exclusion enabled — assembly_id={cone_id}")
+            self._cone_verts, self._cone_faces = get_vision_cone_mesh(cone_id, device="cpu")
 
         source = cfg.get("solar_vector_source", "route_v3")
         if source == "route_v3":
@@ -77,6 +87,12 @@ class SolarMRRT(ParentLoss):
         solar_vectors = self.solar_vectors.to(self.device)
 
         def loss_fn(vertices: torch.Tensor, faces: torch.Tensor) -> torch.Tensor:
+            cone_face_mask = None
+            if self.exclude_vision_cone_faces:
+                from subprojects.wp3_solar_estimator.utils.wp3_vision_cone import get_vision_cone_face_mask  # noqa: PLC0415
+
+                cone_face_mask = get_vision_cone_face_mask(self._cone_verts, self._cone_faces, vertices, faces)
+
             loss, diagnostics = solar_loss_mrrt(
                 vertices,
                 faces,
@@ -95,6 +111,7 @@ class SolarMRRT(ParentLoss):
                 vis_manager=vis_manager if not skip_telemetry else NullVisManager(),
                 epoch_name=self.epoch_name,
                 mesh_visibility_fn=self._mesh_visibility_fn,
+                cone_face_mask=cone_face_mask,
             )
             self._pending_diagnostics = diagnostics
             return loss
