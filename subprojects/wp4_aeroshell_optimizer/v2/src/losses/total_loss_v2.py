@@ -251,7 +251,7 @@ class TotalLossV2:
                 loss_name=loss_name,
                 losses_config=self.losses_config,
             )
-            self._manual_weights[loss_name] = 0.0 if getattr(instance, "is_null_loss", False) else weight_float
+            self._manual_weights[loss_name] = weight_float
             active_entry = (loss_name, instance)
 
             if role == "objective":
