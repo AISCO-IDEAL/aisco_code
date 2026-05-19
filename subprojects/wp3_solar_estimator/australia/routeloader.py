@@ -1,12 +1,14 @@
+import os
+
 import pandas as pd
 import torch
+
+_CSV_PATH = os.path.join(os.path.dirname(__file__), "route_preprocessed.csv")
 
 
 class Routeloader:
     def __init__(self):
-        self.road_data = pd.read_csv(
-            "subprojects/wp3_solar_estimator/australia/route_preprocessed.csv"
-        )  # CSV with 'lat' and 'lon' columns
+        self.road_data = pd.read_csv(_CSV_PATH)  # CSV with 'lat' and 'lon' columns
 
     def get_position(self, race_distance_km: float | torch.Tensor) -> torch.Tensor:
         """

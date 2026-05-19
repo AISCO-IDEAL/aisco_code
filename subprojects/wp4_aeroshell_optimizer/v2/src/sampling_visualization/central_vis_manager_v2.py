@@ -286,7 +286,15 @@ class _BaseVisManager:
         face_scalars: np.ndarray,
         type_cfg: dict[str, Any],
     ) -> None:
-        face_rgb = map_scalar_to_rgb_mpl(face_scalars, type_cfg["colormap"], vmin=type_cfg.get("vmin"), vmax=type_cfg.get("vmax"))
+        binary_colors = type_cfg.get("binary_colors_rgb")
+        if binary_colors is not None and len(binary_colors) == 2:
+            color_off = np.array(binary_colors[0], dtype=np.float32)
+            color_on = np.array(binary_colors[1], dtype=np.float32)
+            face_rgb = np.where((face_scalars > 0.5)[:, None], color_on, color_off).astype(np.float32)
+        else:
+            face_rgb = map_scalar_to_rgb_mpl(
+                face_scalars, type_cfg["colormap"], vmin=type_cfg.get("vmin"), vmax=type_cfg.get("vmax")
+            )
         flat_verts, flat_faces, flat_rgb = face_rgb_to_flat_mesh(face_rgb, faces_np, verts_np)
         self._submit_ply(visual_type, epoch, flat_verts, flat_faces, flat_rgb, type_cfg)
 
@@ -696,6 +704,14 @@ class CentralVisManagerV2(_BaseVisManager):
 
     def vis_solar_vision_cone_mask(self, epoch: int, verts: Any, faces: Any, mask: Any) -> None:
         vt = self._slotted("solar/vision_cone_mask")
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
+        if type_cfg is None:
+            return
+        verts_np, faces_np = _to_f64(verts), _to_i32(faces)
+        self._submit_ply_flat_faces(vt, epoch, verts_np, faces_np, _to_f64(mask).astype(np.float32).reshape(-1), type_cfg)
+
+    def vis_solar_binary_mask(self, epoch: int, verts: Any, faces: Any, mask: Any) -> None:
+        vt = self._slotted("solar/binary_mask")
         type_cfg = vis_type_config(self._visual_types, vt, epoch)
         if type_cfg is None:
             return

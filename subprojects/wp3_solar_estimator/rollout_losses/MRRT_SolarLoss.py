@@ -175,6 +175,9 @@ def solar_loss_mrrt(  # noqa: PLR0915
     if epoch_name is not None:
         vis_manager.vis_solar_quality(int(epoch_name), vertices, faces, avg_quality)
         vis_manager.vis_solar_selection(int(epoch_name), vertices, faces, soft_mask_original)
+        vis_manager.vis_solar_binary_mask(
+            int(epoch_name), vertices, faces, (soft_mask_original > soft_mask_selection_threshold).float()
+        )
         if cone_face_mask is not None:
             vis_manager.vis_solar_vision_cone_mask(int(epoch_name), vertices, faces, cone_face_mask.float())
         if skip_backface_receivers and sun_facing_acc is not None:

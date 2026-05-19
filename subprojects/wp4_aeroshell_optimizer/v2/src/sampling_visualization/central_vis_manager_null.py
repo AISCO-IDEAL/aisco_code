@@ -55,6 +55,9 @@ class NullVisManager:
     def vis_solar_vision_cone_mask(self, epoch: int, verts: Any, faces: Any, mask: Any) -> None:
         pass
 
+    def vis_solar_binary_mask(self, epoch: int, verts: Any, faces: Any, mask: Any) -> None:
+        pass
+
     def vis_bb_constraint(self, epoch: int, verts: Any, distances: Any) -> None:
         pass
 

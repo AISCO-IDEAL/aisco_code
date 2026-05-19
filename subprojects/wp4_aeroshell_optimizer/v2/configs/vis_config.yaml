@@ -170,6 +170,18 @@ visual_types:
       vmin: 0.0
       vmax: 1.0
 
+    binary_mask:
+      enabled: true
+      colormap: null
+      binary_colors_rgb:
+        - [0.365, 0.678, 0.886]   # 0 = not selected (light grey)
+        - [0.137, 0.157, 0.247]   # 1 = solar cell placed (solar yellow)
+      interval: 1
+      alpha_enabled: null
+      coordinate_system: null
+      vmin: 0.0
+      vmax: 1.0
+
   bb_constraint:
     enabled: true          # disabled by default — confirm with user before enabling
     colormap: "Reds"        # violation magnitude, lower-bounded at 0

@@ -100,6 +100,9 @@ def solar_loss_sr(
 
     if epoch_name is not None:
         vis_manager.vis_solar_selection(int(epoch_name), vertices, faces, soft_mask_original_order)
+        vis_manager.vis_solar_binary_mask(
+            int(epoch_name), vertices, faces, (soft_mask_original_order > soft_mask_selection_threshold).float()
+        )
         vis_manager.vis_solar_quality(int(epoch_name), vertices, faces, sorted_quality[original_order])
         if cone_face_mask is not None:
             vis_manager.vis_solar_vision_cone_mask(int(epoch_name), vertices, faces, cone_face_mask.float())
