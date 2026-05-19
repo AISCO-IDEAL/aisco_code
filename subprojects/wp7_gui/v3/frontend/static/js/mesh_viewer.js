@@ -2,38 +2,10 @@
  * Shared Three.js mesh viewer — ES module.
  */
 
-import { PerspectiveCamera, Scene, Color, WebGLRenderer, HemisphereLight, DirectionalLight, AmbientLight, MeshBasicMaterial, MeshStandardMaterial, MeshPhongMaterial, Mesh, Vector3, Box3, SRGBColorSpace, DoubleSide } from "three";
+import { PerspectiveCamera, Scene, Color, WebGLRenderer, HemisphereLight, DirectionalLight, AmbientLight, MeshStandardMaterial, MeshPhongMaterial, Mesh, Vector3, Box3, SRGBColorSpace, DoubleSide } from "three";
 import { TrackballControls } from "three/addons/controls/TrackballControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PLYLoader } from "three/addons/loaders/PLYLoader.js";
-
-let glbConfigPromise = null;
-
-function loadGlbConfig() {
-    if (!glbConfigPromise) {
-        glbConfigPromise = fetch("/api/artifacts/glb-config", { cache: "no-store" })
-            .then((resp) => (resp.ok ? resp.json() : {}))
-            .catch(() => ({}));
-    }
-    return glbConfigPromise;
-}
-
-function buildGlbColorMap(config) {
-    return {
-        sdf_mesh: {
-            rgb: Array.isArray(config?.sdf_color) ? config.sdf_color : null,
-            alpha: typeof config?.sdf_alpha === "number" ? config.sdf_alpha : null,
-        },
-        inner_assembly: {
-            rgb: Array.isArray(config?.inner_color) ? config.inner_color : null,
-            alpha: null,
-        },
-        outer_bbox: {
-            rgb: Array.isArray(config?.outer_color) ? config.outer_color : null,
-            alpha: typeof config?.outer_alpha === "number" ? config.outer_alpha : null,
-        },
-    };
-}
 
 /**
  * Initialise a Three.js PLY viewer inside containerEl and return a load
@@ -366,82 +338,101 @@ export function initMeshViewer(containerEl) {
     function loadMesh(url, onLoad, onError) {
         const cleanPath = getUrlPath(url);
         if (cleanPath.endsWith(".glb")) {
-            loadGlbConfig().then((config) => {
-                const meshColors = buildGlbColorMap(config);
-                new GLTFLoader().load(
-                    url,
-                    (gltf) => {
-                        const root = gltf.scene;
-                        if (!root) {
-                            if (typeof onError === "function") {
-                                onError(new Error("GLB load error: missing scene root"));
-                            }
+            new GLTFLoader().load(
+                url,
+                (gltf) => {
+                    const root = gltf.scene;
+                    if (!root) {
+                        if (typeof onError === "function") {
+                            onError(new Error("GLB load error: missing scene root"));
+                        }
+                        return;
+                    }
+
+                    let hasVertexColors = false;
+                    let meshCount = 0;
+                    const glbComponents = [];
+                    root.traverse((node) => {
+                        if (!node.isMesh || !node.geometry) {
                             return;
                         }
-
-                        let hasVertexColors = false;
-                        let meshCount = 0;
-                        const glbComponents = [];
-                        root.traverse((node) => {
-                            if (!node.isMesh || !node.geometry) {
-                                return;
+                        meshCount += 1;
+                        if (!node.geometry.hasAttribute("normal")) {
+                            node.geometry.computeVertexNormals();
+                        }
+                        const srcMat = Array.isArray(node.material) ? node.material[0] : node.material;
+                        const baseAlpha = typeof srcMat?.opacity === "number" ? srcMat.opacity : 1.0;
+                        const hasVtxColors = node.geometry.hasAttribute("color");
+                        if (hasVtxColors) {
+                            hasVertexColors = true;
+                            // Convert sRGB vertex colors to linear space (GLB colors are sRGB-encoded)
+                            const colorAttr = node.geometry.attributes.color;
+                            for (let i = 0; i < colorAttr.count; i++) {
+                                const r = colorAttr.getX(i);
+                                const g = colorAttr.getY(i);
+                                const b = colorAttr.getZ(i);
+                                const toLinear = (c) => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+                                colorAttr.setXYZ(i, toLinear(r), toLinear(g), toLinear(b));
                             }
-                            meshCount += 1;
-                            const cfgEntry = meshColors[node.name] || { rgb: null, alpha: null };
-                            const srcMat = Array.isArray(node.material) ? node.material[0] : node.material;
-                            const baseAlpha = cfgEntry.alpha ?? (typeof srcMat?.opacity === "number" ? srcMat.opacity : 1.0);
-                            const useVertexColors = cfgEntry.rgb === null && node.geometry.hasAttribute("color");
-                            if (useVertexColors) {
-                                hasVertexColors = true;
-                            }
-                            node.material = new MeshBasicMaterial({
-                                vertexColors: useVertexColors,
-                                color: cfgEntry.rgb ? new Color(...cfgEntry.rgb) : 0xffffff,
+                            colorAttr.needsUpdate = true;
+                            node.material = new MeshPhongMaterial({
+                                vertexColors: true,
                                 side: DoubleSide,
-                                transparent: true,
+                                transparent: baseAlpha < 0.99,
+                                opacity: baseAlpha,
+                                depthWrite: baseAlpha >= 0.99,
+                                shininess: 30,
+                            });
+                        } else {
+                            node.material = new MeshStandardMaterial({
+                                color: 0x99A3A4,
+                                roughness: 0.6,
+                                metalness: 0.2,
+                                side: DoubleSide,
+                                transparent: baseAlpha < 0.99,
                                 opacity: baseAlpha,
                                 depthWrite: baseAlpha >= 0.99,
                             });
-                            glbComponents.push({
-                                key: node.uuid,
-                                name: node.name || `mesh_${node.id}`,
-                                mesh: node,
-                            });
+                        }
+                        glbComponents.push({
+                            key: node.uuid,
+                            name: node.name || `mesh_${node.id}`,
+                            mesh: node,
                         });
+                    });
 
-                        if (meshCount === 0) {
-                            if (typeof onError === "function") {
-                                onError(new Error("GLB scene has no mesh nodes"));
-                            }
-                            return;
-                        }
-
-                        if (currentObj) {
-                            scene.remove(currentObj);
-                            disposeObject(currentObj);
-                        }
-                        currentObj = root;
-                        currentGlbComponents = glbComponents;
-                        scene.add(currentObj);
-                        fitGlbCamera(currentObj);
-                        renderGlbControls();
-
-                        if (onLoad) {
-                            onLoad({
-                                hasVertexColors,
-                                attributes: hasVertexColors ? ["color"] : [],
-                                meshComponents: getMeshComponents(),
-                            });
-                        }
-                    },
-                    undefined,
-                    (err) => {
+                    if (meshCount === 0) {
                         if (typeof onError === "function") {
-                            onError(err);
+                            onError(new Error("GLB scene has no mesh nodes"));
                         }
-                    },
-                );
-            });
+                        return;
+                    }
+
+                    if (currentObj) {
+                        scene.remove(currentObj);
+                        disposeObject(currentObj);
+                    }
+                    currentObj = root;
+                    currentGlbComponents = glbComponents;
+                    scene.add(currentObj);
+                    fitGlbCamera(currentObj);
+                    renderGlbControls();
+
+                    if (onLoad) {
+                        onLoad({
+                            hasVertexColors,
+                            attributes: hasVertexColors ? ["color"] : [],
+                            meshComponents: getMeshComponents(),
+                        });
+                    }
+                },
+                undefined,
+                (err) => {
+                    if (typeof onError === "function") {
+                        onError(err);
+                    }
+                },
+            );
             return;
         }
 
