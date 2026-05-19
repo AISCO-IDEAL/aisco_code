@@ -20,7 +20,7 @@ general_info:
   # "linear_augmented"              : (λ + 0.5μ)·c — GINN-style; both multipliers
   #   retain 1/c amplification. ~25× stronger gradient at c≈0.01 vs quadratic.
   # Both formulas are numerically equal at c=1.0 (the loss-normalisation calibration point).
-  alm_formula: "quadratic_augmented"   # activate GINN-style linear penalty formula
+  alm_formula: "linear_augmented"   # activate GINN-style linear penalty formula
 
   # ALM parameter mapping order:
   # - Arrays are supported and can be provided in either format:
@@ -36,7 +36,7 @@ general_info:
   initial_lambda: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial lambda(s)
   initial_mu: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial mu(s)
   initial_nu: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial nu(s)
-  alpha: 0.8  # EMA decay factor for ν update
+  alpha: 0.9  # EMA decay factor for ν update
   gamma: 0.3  # parameter for ALM penalty update
   gamma_aggressive: 1.1  # multiplicative increase factor for μ in aggressive CAPU mode
 
