@@ -292,7 +292,9 @@ class _BaseVisManager:
             color_on = np.array(binary_colors[1], dtype=np.float32)
             face_rgb = np.where((face_scalars > 0.5)[:, None], color_on, color_off).astype(np.float32)
         else:
-            face_rgb = map_scalar_to_rgb_mpl(face_scalars, type_cfg["colormap"], vmin=type_cfg.get("vmin"), vmax=type_cfg.get("vmax"))
+            face_rgb = map_scalar_to_rgb_mpl(
+                face_scalars, type_cfg["colormap"], vmin=type_cfg.get("vmin"), vmax=type_cfg.get("vmax")
+            )
         flat_verts, flat_faces, flat_rgb = face_rgb_to_flat_mesh(face_rgb, faces_np, verts_np)
         self._submit_ply(visual_type, epoch, flat_verts, flat_faces, flat_rgb, type_cfg)
 
