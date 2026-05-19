@@ -2,7 +2,7 @@
  * Shared Three.js mesh viewer — ES module.
  */
 
-import { PerspectiveCamera, Scene, Color, WebGLRenderer, HemisphereLight, DirectionalLight, AmbientLight, MeshStandardMaterial, MeshPhongMaterial, Mesh, Vector3, Box3, SRGBColorSpace, DoubleSide } from "three";
+import { PerspectiveCamera, Scene, Color, WebGLRenderer, HemisphereLight, DirectionalLight, AmbientLight, MeshStandardMaterial, MeshPhongMaterial, Mesh, Vector3, Box3, SRGBColorSpace, DoubleSide, EdgesGeometry, LineSegments, LineBasicMaterial } from "three";
 import { TrackballControls } from "three/addons/controls/TrackballControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PLYLoader } from "three/addons/loaders/PLYLoader.js";
@@ -378,15 +378,17 @@ export function initMeshViewer(containerEl) {
                             (_visConfig.outer_render_style || null) === "outer_lines_only";
                         if (isOuterLinesOnly) {
                             const lc = _visConfig.outer_lines_color || [0.137, 0.157, 0.243];
-                            node.material = new MeshPhongMaterial({
+                            // EdgesGeometry with 15° threshold drops flat diagonal splits,
+                            // keeping only real feature/silhouette edges of the CAD shape.
+                            const edgesGeo = new EdgesGeometry(node.geometry, _visConfig.outer_lines_threshold ?? 15);
+                            const linesMat = new LineBasicMaterial({
                                 color: new Color(lc[0], lc[1], lc[2]),
-                                side: DoubleSide,
-                                transparent: false,
-                                opacity: 1.0,
-                                depthWrite: true,
-                                wireframe: true,
                             });
-                            glbComponents.push({ key: node.uuid, name: node.name || `mesh_${node.id}`, mesh: node });
+                            const lines = new LineSegments(edgesGeo, linesMat);
+                            lines.name = node.name;
+                            node.visible = false;  // hide the solid fill
+                            node.parent.add(lines);
+                            glbComponents.push({ key: node.uuid, name: node.name || `mesh_${node.id}`, mesh: lines });
                             return;
                         }
 
