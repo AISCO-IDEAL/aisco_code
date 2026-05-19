@@ -108,6 +108,12 @@
       inner_assembly: { rgb: null, alpha: null },
       outer_bbox: { rgb: null, alpha: null },
     };
+    // outer_lines_only settings — read from vis_config.yaml via /config.json.
+    // When /config.json is unavailable (drag-and-drop without serve.py) these stay
+    // null and the viewer falls back to the legacy solid+edges appearance.
+    let OUTER_RENDER_STYLE = null;
+    let OUTER_LINES_COLOR = null;
+    let OUTER_LINES_WIDTH = null;
     try {
       const resp = await fetch('/config.json');
       if (resp.ok) {
@@ -117,6 +123,11 @@
         if (cfg.inner_color) MESH_COLORS.inner_assembly.rgb = cfg.inner_color;
         if (cfg.outer_color) MESH_COLORS.outer_bbox.rgb = cfg.outer_color;
         if (cfg.outer_alpha != null) MESH_COLORS.outer_bbox.alpha = cfg.outer_alpha;
+        if (typeof cfg.outer_render_style === 'string') OUTER_RENDER_STYLE = cfg.outer_render_style;
+        if (Array.isArray(cfg.outer_lines_color) && cfg.outer_lines_color.length === 3) {
+          OUTER_LINES_COLOR = cfg.outer_lines_color;
+        }
+        if (cfg.outer_lines_width != null) OUTER_LINES_WIDTH = Number(cfg.outer_lines_width);
       }
     } catch (_) { /* /config.json only available when served via serve.py */ }
 
@@ -199,15 +210,24 @@
           const overrideRgb = cfgEntry?.rgb ?? null;
           const overrideAlpha = cfgEntry?.alpha ?? null;
           const srcMat = Array.isArray(obj.material) ? obj.material[0] : obj.material;
-          const baseAlpha = overrideAlpha ?? (typeof srcMat?.opacity === 'number' ? srcMat.opacity : 1.0);
+          const isOuterLinesOnly = obj.name === 'outer_bbox' && OUTER_RENDER_STYLE === 'outer_lines_only';
+          const linesColor = OUTER_LINES_COLOR ?? [0.137, 0.157, 0.243];
+          const baseAlpha = isOuterLinesOnly
+            ? 1.0
+            : (overrideAlpha ?? (typeof srcMat?.opacity === 'number' ? srcMat.opacity : 1.0));
+          const baseColor = isOuterLinesOnly
+            ? new THREE.Color(...linesColor)
+            : (overrideRgb ? new THREE.Color(...overrideRgb) : 0xffffff);
           const newMat = new THREE.MeshBasicMaterial({
             // Use solid override color when configured; otherwise keep baked vertex colors.
-            vertexColors: overrideRgb === null,
-            color: overrideRgb ? new THREE.Color(...overrideRgb) : 0xffffff,
+            vertexColors: !isOuterLinesOnly && overrideRgb === null,
+            color: baseColor,
             side: THREE.DoubleSide,
             transparent: true,
             opacity: baseAlpha,
             depthWrite: baseAlpha >= 0.99,
+            wireframe: isOuterLinesOnly,
+            wireframeLinewidth: OUTER_LINES_WIDTH,
           });
           obj.material = newMat;
         });
