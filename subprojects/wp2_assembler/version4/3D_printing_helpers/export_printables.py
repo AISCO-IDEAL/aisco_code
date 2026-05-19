@@ -176,7 +176,7 @@ def _prompt_bool(label: str, default: bool) -> bool:
         print("Please answer yes or no.")
 
 
-def resolve_settings(args: argparse.Namespace) -> dict[str, Any]:
+def resolve_settings(args: argparse.Namespace) -> dict[str, Any]:  # noqa: PLR0915
     config_path = args.config.expanduser().resolve()
     cfg = load_config(config_path)
 
@@ -190,6 +190,11 @@ def resolve_settings(args: argparse.Namespace) -> dict[str, Any]:
     solar_source = args.solar_source or cfg.get("solar_source", "selection")
     solar_dir = args.solar_dir or _as_path(cfg.get("solar_dir"))
     search_parent_for_solar = cfg.get("search_parent_for_solar", False)
+    keep_original_wheels = (
+        args.keep_original_wheels
+        if args.keep_original_wheels is not None
+        else bool(cfg.get("keep_original_wheels_for_test", False))
+    )
     prompt_for_missing = bool(cfg.get("prompt_for_missing", True))
     confirm_before_export = bool(cfg.get("confirm_before_export", True))
 
@@ -232,6 +237,7 @@ def resolve_settings(args: argparse.Namespace) -> dict[str, Any]:
         "solar_source": str(solar_source),
         "solar_dir": solar_dir,
         "search_parent_for_solar": bool(search_parent_for_solar),
+        "keep_original_wheels": bool(keep_original_wheels),
     }
 
     print("\n3D printable export settings")
@@ -246,6 +252,7 @@ def resolve_settings(args: argparse.Namespace) -> dict[str, Any]:
     print(f"  solar_source: solar/{settings['solar_source']}")
     print(f"  solar_dir: {settings['solar_dir'] if settings['solar_dir'] is not None else 'inside run_dir'}")
     print(f"  search_parent_for_solar: {settings['search_parent_for_solar']}")
+    print(f"  keep_original_wheels: {settings['keep_original_wheels']}")
 
     if confirm_before_export and not _prompt_bool("Run export with these settings?", True):
         raise SystemExit("Cancelled.")
@@ -467,26 +474,55 @@ def _cleanup_multicolor_dir(multicolor_dir: Path) -> None:
         if stale_path.exists():
             stale_path.unlink()
 
+def _is_cut_wheel_component(bounds: Any, extents: Any) -> bool:
+    x_extent, y_extent, z_extent = (float(v) for v in extents)
+    wheel_diameter_like = 350.0 <= x_extent <= 650.0 and 250.0 <= z_extent <= 650.0
+    wheel_width_like = 0.0 <= y_extent <= 180.0
+    near_floor = float(bounds[0][2]) <= 150.0
+    return wheel_diameter_like and wheel_width_like and near_floor
+
+
 def _infer_wheel_centers_from_mesh(assembly: Any) -> list[Any]:
     """Infer wheel centers from wheel-like connected components in an existing export."""
     np = _require("numpy")
-    candidates: list[Any] = []
+    radius = 557.0 / 2.0
+    groups: list[list[Any]] = []
     for _part, bounds, extents in _component_bounds(assembly):
-        x_extent, y_extent, z_extent = (float(v) for v in extents)
-        # The exported wheels are bottom-cut and often split into open surfaces,
-        # so their thin axis can be either the 96 mm width or a zero-width face.
-        wheel_diameter_like = 350.0 <= x_extent <= 650.0 and 250.0 <= z_extent <= 650.0
-        wheel_width_like = 0.0 <= y_extent <= 180.0
-        near_floor = float(bounds[0][2]) <= 150.0
-        if wheel_diameter_like and wheel_width_like and near_floor:
-            center = (bounds[0] + bounds[1]) / 2.0
-            candidates.append(np.array([center[0], center[1], 557.0 / 2.0], dtype=float))
+        if not _is_cut_wheel_component(bounds, extents):
+            continue
+        center = (bounds[0] + bounds[1]) / 2.0
+        candidate = np.array([center[0], center[1], radius], dtype=float)
+        for group in groups:
+            group_center = np.mean(group, axis=0)
+            if float(np.linalg.norm(candidate[:2] - group_center[:2])) <= 160.0:
+                group.append(candidate)
+                break
+        else:
+            groups.append([candidate])
+    return [np.array([float(np.mean(group, axis=0)[0]), float(np.mean(group, axis=0)[1]), radius], dtype=float) for group in groups]
 
-    merged: list[Any] = []
-    for center in candidates:
-        if all(float(np.linalg.norm(center[:2] - existing[:2])) > 120.0 for existing in merged):
-            merged.append(center)
-    return merged
+
+def _is_component_in_wheel_footprint(bounds: Any, wheel_centers: list[Any]) -> bool:
+    if not wheel_centers:
+        return False
+    np = _require("numpy")
+    center = (bounds[0] + bounds[1]) / 2.0
+    near_floor = float(bounds[0][2]) <= 160.0 and float(bounds[1][2]) <= 650.0
+    if not near_floor:
+        return False
+    return any(float(np.linalg.norm(center[:2] - wheel_center[:2])) <= 310.0 for wheel_center in wheel_centers)
+
+
+def _remove_cut_wheel_components(mesh: Any, wheel_centers: list[Any]) -> Any:
+    trimesh = _require("trimesh")
+    kept = [
+        part
+        for part, bounds, extents in _component_bounds(mesh)
+        if not (_is_cut_wheel_component(bounds, extents) or _is_component_in_wheel_footprint(bounds, wheel_centers))
+    ]
+    if not kept:
+        return mesh.copy()
+    return trimesh.util.concatenate(kept)
 
 
 def _make_full_wheel_meshes(wheel_centers: list[Any]) -> Any | None:
@@ -633,6 +669,7 @@ def export_printables(  # noqa: PLR0912, PLR0915
     solar_source: str = "selection",
     search_parent_for_solar: bool = False,
     solar_dir: Path | None = None,
+    keep_original_wheels: bool = False,
 ) -> ExportReport:
     _status("Starting printable export")
     trimesh = _require("trimesh")
@@ -690,12 +727,18 @@ def export_printables(  # noqa: PLR0912, PLR0915
     exported_assembly = _load_mesh(assembly_mesh)
     assembly_core = _inner_assembly_components_only(exported_assembly)
     wheel_centers = _infer_wheel_centers_from_mesh(exported_assembly)
+    if keep_original_wheels:
+        _status("Wheel test mode: keeping original cut wheels and adding full wheels")
+        wheel_base_mesh = assembly_core
+    else:
+        _status("Replacing original cut wheels with full wheels")
+        wheel_base_mesh = _remove_cut_wheel_components(assembly_core, wheel_centers)
     full_wheels_mesh = _make_full_wheel_meshes(wheel_centers)
-    seat_support_mesh, plate_mesh, plate_with_support_mesh = _mesh_based_supports(assembly_core)
-    cutters_mesh = _mesh_socket_cutters(assembly_core, wheel_centers, shell_clearance_mm)
-    inner_mesh = assembly_core
+    seat_support_mesh, plate_mesh, plate_with_support_mesh = _mesh_based_supports(wheel_base_mesh)
+    cutters_mesh = _mesh_socket_cutters(wheel_base_mesh, wheel_centers, shell_clearance_mm)
+    inner_mesh = wheel_base_mesh
     if full_wheels_mesh is not None:
-        inner_mesh = trimesh.util.concatenate([assembly_core, full_wheels_mesh])
+        inner_mesh = trimesh.util.concatenate([wheel_base_mesh, full_wheels_mesh])
         _export_mesh(full_wheels_mesh, outputs["wheel_repair_full_wheels"], scale_factor)
     else:
         report.warnings.append("No wheel-like components were inferred from assembly mesh; wheel repair was skipped.")
@@ -793,6 +836,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scale-factor", type=float, default=None, help="Override config scale_factor.")
     parser.add_argument("--solar-source", type=str, default=None, help="Solar subfolder to include, e.g. selection, quality, penalty.")
     parser.add_argument("--solar-dir", type=Path, default=None, help="Exact solar folder to search, e.g. .../run/solar.")
+    parser.add_argument(
+        "--keep-original-wheels",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Test mode: keep the original cut wheel pieces and add full wheels for alignment comparison.",
+    )
     return parser.parse_args()
 
 
@@ -810,6 +859,7 @@ def main() -> None:
         settings["solar_source"],
         settings["search_parent_for_solar"],
         settings["solar_dir"],
+        settings["keep_original_wheels"],
     )
     print("\nExport complete")
     print(json.dumps(asdict(report), indent=2))

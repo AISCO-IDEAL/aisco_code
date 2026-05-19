@@ -38,6 +38,10 @@ shell_clearance_mm: 0.35
 # Default maps the 5800 mm WP2 car length to about 150 mm.
 scale_factor: 0.02586206896551724
 
+# Test mode only: keep original cut wheels and add full wheels for visual alignment checks.
+# Keep false for final printable exports so only the new full wheels remain.
+keep_original_wheels_for_test: false
+
 # Ask in the terminal for missing values and let you adjust defaults.
 prompt_for_missing: true
 

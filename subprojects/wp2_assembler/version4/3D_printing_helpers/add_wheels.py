@@ -48,24 +48,55 @@ def _component_bounds(mesh: Any) -> list[tuple[Any, Any, Any]]:
     return components
 
 
+def _is_cut_wheel_component(bounds: Any, extents: Any) -> bool:
+    x_extent, y_extent, z_extent = (float(v) for v in extents)
+    wheel_diameter_like = 350.0 <= x_extent <= 650.0 and 250.0 <= z_extent <= 650.0
+    wheel_width_like = 0.0 <= y_extent <= 180.0
+    near_floor = float(bounds[0][2]) <= 150.0
+    return wheel_diameter_like and wheel_width_like and near_floor
+
+
 def infer_wheel_centers(mesh: Any) -> list[Any]:
     """Infer wheel centers from bottom-cut wheel surfaces in an exported mesh."""
     np = _require("numpy")
-    candidates: list[Any] = []
+    radius = 557.0 / 2.0
+    groups: list[list[Any]] = []
     for _part, bounds, extents in _component_bounds(mesh):
-        x_extent, y_extent, z_extent = (float(v) for v in extents)
-        wheel_diameter_like = 350.0 <= x_extent <= 650.0 and 250.0 <= z_extent <= 650.0
-        wheel_width_like = 0.0 <= y_extent <= 180.0
-        near_floor = float(bounds[0][2]) <= 150.0
-        if wheel_diameter_like and wheel_width_like and near_floor:
-            center = (bounds[0] + bounds[1]) / 2.0
-            candidates.append(np.array([center[0], center[1], 557.0 / 2.0], dtype=float))
+        if not _is_cut_wheel_component(bounds, extents):
+            continue
+        center = (bounds[0] + bounds[1]) / 2.0
+        candidate = np.array([center[0], center[1], radius], dtype=float)
+        for group in groups:
+            group_center = np.mean(group, axis=0)
+            if float(np.linalg.norm(candidate[:2] - group_center[:2])) <= 160.0:
+                group.append(candidate)
+                break
+        else:
+            groups.append([candidate])
+    return [np.array([float(np.mean(group, axis=0)[0]), float(np.mean(group, axis=0)[1]), radius], dtype=float) for group in groups]
 
-    merged: list[Any] = []
-    for center in candidates:
-        if all(float(np.linalg.norm(center[:2] - existing[:2])) > 120.0 for existing in merged):
-            merged.append(center)
-    return merged
+
+def _is_component_in_wheel_footprint(bounds: Any, wheel_centers: list[Any]) -> bool:
+    if not wheel_centers:
+        return False
+    np = _require("numpy")
+    center = (bounds[0] + bounds[1]) / 2.0
+    near_floor = float(bounds[0][2]) <= 160.0 and float(bounds[1][2]) <= 650.0
+    if not near_floor:
+        return False
+    return any(float(np.linalg.norm(center[:2] - wheel_center[:2])) <= 310.0 for wheel_center in wheel_centers)
+
+
+def remove_cut_wheel_components(mesh: Any, wheel_centers: list[Any]) -> Any:
+    trimesh = _require("trimesh")
+    kept = [
+        part
+        for part, bounds, extents in _component_bounds(mesh)
+        if not (_is_cut_wheel_component(bounds, extents) or _is_component_in_wheel_footprint(bounds, wheel_centers))
+    ]
+    if not kept:
+        return mesh.copy()
+    return trimesh.util.concatenate(kept)
 
 
 def make_full_wheels(wheel_centers: list[Any]) -> Any | None:
@@ -85,18 +116,19 @@ def make_full_wheels(wheel_centers: list[Any]) -> Any | None:
     return trimesh.util.concatenate(wheels)
 
 
-def default_output_path(input_path: Path) -> Path:
-    return input_path.with_name(f"{input_path.stem}_full_wheels{input_path.suffix}")
+def default_output_path(input_path: Path, keep_original_wheels: bool) -> Path:
+    suffix = "_with_original_and_full_wheels" if keep_original_wheels else "_full_wheels"
+    return input_path.with_name(f"{input_path.stem}{suffix}{input_path.suffix}")
 
 
-def add_wheels(input_path: Path, output_path: Path | None = None) -> Path:
+def add_wheels(input_path: Path, output_path: Path | None = None, keep_original_wheels: bool = False) -> Path:
     trimesh = _require("trimesh")
     input_path = input_path.expanduser().resolve()
     if input_path.suffix.lower() not in {".ply", ".glb"}:
         raise SystemExit("Input must be a .ply or .glb mesh.")
     if not input_path.exists():
         raise SystemExit(f"Input mesh not found: {input_path}")
-    output_path = output_path.expanduser().resolve() if output_path else default_output_path(input_path)
+    output_path = output_path.expanduser().resolve() if output_path else default_output_path(input_path, keep_original_wheels)
 
     _status(f"Input: {input_path}")
     mesh = _load_mesh(input_path)
@@ -106,7 +138,13 @@ def add_wheels(input_path: Path, output_path: Path | None = None) -> Path:
         raise SystemExit("No wheel-like components found. Output was not written.")
 
     wheels = make_full_wheels(wheel_centers)
-    repaired = trimesh.util.concatenate([mesh, wheels])
+    if keep_original_wheels:
+        _status("Test mode: keeping original cut wheels and adding full wheels")
+        base_mesh = mesh
+    else:
+        _status("Replacing original cut wheels with full wheels")
+        base_mesh = remove_cut_wheel_components(mesh, wheel_centers)
+    repaired = trimesh.util.concatenate([base_mesh, wheels])
     output_path.parent.mkdir(parents=True, exist_ok=True)
     repaired.export(str(output_path))
     _status(f"Wrote: {output_path}")
@@ -116,7 +154,12 @@ def add_wheels(input_path: Path, output_path: Path | None = None) -> Path:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input", nargs="?", type=Path, help="Input .ply or .glb assembly mesh.")
-    parser.add_argument("--out", type=Path, default=None, help="Optional output path. Default: beside input with _full_wheels suffix.")
+    parser.add_argument("--out", type=Path, default=None, help="Optional output path. Default: beside input with a wheel suffix.")
+    parser.add_argument(
+        "--keep-original-wheels",
+        action="store_true",
+        help="Test mode: keep the original cut wheel pieces and add full wheels for alignment comparison.",
+    )
     return parser.parse_args()
 
 
@@ -128,7 +171,7 @@ def main() -> None:
         if not value:
             raise SystemExit("No input mesh provided.")
         input_path = Path(value)
-    add_wheels(input_path, args.out)
+    add_wheels(input_path, args.out, args.keep_original_wheels)
 
 
 if __name__ == "__main__":
