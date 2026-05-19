@@ -90,7 +90,7 @@ _THRESHOLDS = {
     "T2_ux_residual": 1e-3,
     "T3_k_residual": 1e-3,
     "T4_omega_residual": 1e-4,
-    "T5_cd_cov": 0.15,  # 15.0% — only severe/extreme oscillation excluded; marginal/moderate (2-15%) accepted for training
+    "T5_cd_cov": 0.05,  # 5.0% — runs with CoV >= 5% are excluded
     "T6_cd_positive": 0.0,
     "T7_cp_min": -10.0,
     "T7_cp_max": 5.0,
