@@ -6,6 +6,7 @@ from __future__ import annotations
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 from subprojects.wp7_gui.v3.shared.run_paths import extract_epoch, find_mesh_assembly_dir
 
@@ -37,8 +38,8 @@ def list_artifacts(run_dir: Path, storage_root: Path) -> dict[str, object]:  # n
 
     Returns:
         dict with keys: run_dir (str), storage_root (str), mesh_assembly_gifs,
-        solar_loss_gifs, meshes, extra_gifs — each a list of artifact dicts
-        with name, rel_path, url (and slow_url / label for gifs).
+        solar_loss_gifs, meshes, meshes_glb, extra_gifs — each a list of
+        artifact dicts with name, rel_path, url (and slow_url / label for gifs).
     """
     storage_root_resolved = storage_root.resolve()
     run_dir_resolved = run_dir.resolve()
@@ -79,20 +80,40 @@ def list_artifacts(run_dir: Path, storage_root: Path) -> dict[str, object]:  # n
                 }
             )
 
-    meshes = []
+    meshes: list[dict[str, object]] = []
+    meshes_glb: list[dict[str, object]] = []
+    seen_mesh_rel_paths: set[str] = set()
+
+    def _append_mesh_file(p: Path, target: list[dict[str, object]]) -> None:
+        rel = _rel(p)
+        if rel in seen_mesh_rel_paths:
+            return
+        seen_mesh_rel_paths.add(rel)
+        target.append(
+            {
+                "name": p.name,
+                "rel_path": rel,
+                "url": f"/api/artifacts/file?path={rel}",
+                "epoch": extract_epoch(p.name),
+            }
+        )
+
     if mesh_dir.exists():
-        raw = sorted(list(mesh_dir.glob("*.ply")) + list(mesh_dir.glob("*.poly")))
-        for p in raw:
-            rel = _rel(p)
-            meshes.append(
-                {
-                    "name": p.name,
-                    "rel_path": rel,
-                    "url": f"/api/artifacts/file?path={rel}",
-                    "epoch": extract_epoch(p.name),
-                }
-            )
-        meshes.sort(key=lambda m: m["epoch"] if m["epoch"] is not None else -1)
+        for p in sorted(list(mesh_dir.glob("*.ply")) + list(mesh_dir.glob("*.poly"))):
+            _append_mesh_file(p, meshes)
+        for p in sorted(mesh_dir.glob("*.glb")):
+            _append_mesh_file(p, meshes_glb)
+
+    # Some runs write renderable PLYs under mesh_assembly_v4 (or sibling candidates)
+    # instead of meshes/. Include them so launcher/output and viewer/archive can render.
+    if mesh_assembly_dir is not None and mesh_assembly_dir.exists():
+        for p in sorted(mesh_assembly_dir.glob("*.ply")):
+            _append_mesh_file(p, meshes)
+        for p in sorted(mesh_assembly_dir.glob("*.glb")):
+            _append_mesh_file(p, meshes_glb)
+
+    meshes.sort(key=lambda m: cast(int, m["epoch"]) if isinstance(m.get("epoch"), int) else -1)
+    meshes_glb.sort(key=lambda m: cast(int, m["epoch"]) if isinstance(m.get("epoch"), int) else -1)
 
     # --- Extra GIFs: scan all subdirs (up to 2 levels) not already handled ---
     extra_gifs: list[dict[str, object]] = []
@@ -199,6 +220,7 @@ def list_artifacts(run_dir: Path, storage_root: Path) -> dict[str, object]:  # n
         "mesh_assembly_gifs": gifs,
         "solar_loss_gifs": solar_gifs,
         "meshes": meshes,
+        "meshes_glb": meshes_glb,
         "extra_gifs": extra_gifs,
         "extra_ply_groups": extra_ply_groups,
     }

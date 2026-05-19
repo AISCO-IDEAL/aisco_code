@@ -302,6 +302,32 @@ input[type="range"]:disabled {
   align-content: start;
 }
 
+.visuals-grid--two-col {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.visuals-grid--four-up {
+  grid-auto-rows: var(--panel-row-h, calc(50vh - 155px));
+  align-content: start;
+  padding-bottom: 12px;
+}
+
+.visuals-grid--four-up .image-slot {
+  height: 100%;
+  min-height: 0;
+}
+
+.visuals-grid--four-up .mesh-container,
+.mesh-container--four-up {
+  height: 100%;
+  min-height: 0;
+}
+
+.visuals-grid--four-up .visual-card {
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+}
+
 .visual-card {
   border: 1px solid #d0dcd4;
   border-radius: 10px;

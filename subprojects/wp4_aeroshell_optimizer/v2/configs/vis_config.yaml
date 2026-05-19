@@ -190,21 +190,22 @@ visual_types:
     vmax: null
     solid_color_rgb: [0.7608, 0.2078, 0.1922]
     # Per-component colours (RGB in [0, 1]) and opacities (in [0, 1]):
-    sdf_color: [0.7608, 0.2078, 0.1922]  # aeroshell mesh — corporate large-surface red (#C33531)
+    sdf_color: [0.1, 0.6, 0.9]  # aeroshell mesh — corporate large-surface red (#C33531)
     sdf_alpha: 0.5                   # aeroshell opacity
-    inner_color: [0.8235, 0.8784, 0.9490]  # inner assembly — corporate text-box blue (#D2E0F2)
-    outer_color: [1.0, 0.3137, 0.3020]     # outer bbox — corporate highlight red (#FF504D)
+    inner_color: [0.8, 0.8, 0.8]  # inner assembly — corporate text-box blue (#D2E0F2)
+    outer_color: [1.0, 0.2, 0.2]     # outer bbox — corporate highlight red (#FF504D)
     outer_alpha: 0.2                 # outer bbox opacity
 
   # Per-loss gradient visualisation (`vis_mesh_gradient`). Each call writes
   # ``mesh_gradients/<loss_key>/epoch_XXXXX.ply`` and finalize() generates the
   # corresponding GIF; the ancestor lookup means every loss_key inherits this
   # parent block unless an explicit override is added below it.
-  # Colormap is diverging (RdBu_r: red = grad pushes surface inward, blue =
-  # outward). vmin/vmax null → symmetric ±max(|grad·n|) per epoch.
+  # Colormap is diverging (RdYlGn: red = optimizer pushes inward, yellow =
+  # neutral, green = optimizer pushes outward). vmin/vmax null -> symmetric
+  # +/-max(|update.n|) per epoch.
   mesh_gradients:
     enabled: true
-    colormap: "RdBu_r"
+    colormap: "RdYlGn"
     interval: 50
     alpha_enabled: null
     coordinate_system: null
