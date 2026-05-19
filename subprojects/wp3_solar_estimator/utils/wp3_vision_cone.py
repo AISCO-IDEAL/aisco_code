@@ -179,6 +179,6 @@ if __name__ == "__main__":
         cone_faces,
         aero_verts,
         aero_faces,
-        out_dir="/cluster/home/aalthaus/",
+        out_dir="",
         timestamp=datetime.now().strftime("%Y%m%d_%H%M%S"),
     )
