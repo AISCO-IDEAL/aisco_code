@@ -50,6 +50,7 @@ def solar_loss_srrt(
     vis_manager: CentralVisManagerV2 | NullVisManager = NullVisManager(),
     epoch_name: int | None = None,
     mesh_visibility_fn: Callable | None = None,
+    cone_face_mask: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, dict[str, Any]]:
     """
     Single-ray solar power objective with mesh raytracing visibility.
@@ -104,6 +105,9 @@ def solar_loss_srrt(
     sun_dir_unit = sun_dir / torch.linalg.norm(sun_dir).clamp_min(epsilon)
     illumination_quality = (face_normals_unit * sun_dir_unit).sum(-1)
 
+    if cone_face_mask is not None:
+        illumination_quality = illumination_quality.masked_fill(cone_face_mask.to(illumination_quality.device), -1.0)
+
     quality_order_desc = torch.argsort(illumination_quality, descending=True)
     sorted_areas_m2 = face_area_m2[quality_order_desc]
     sorted_quality = illumination_quality[quality_order_desc]
@@ -157,6 +161,8 @@ def solar_loss_srrt(
     if epoch_name is not None:
         vis_manager.vis_solar_quality(int(epoch_name), vertices, faces, sorted_quality[original_order].detach())
         vis_manager.vis_solar_selection(int(epoch_name), vertices, faces, soft_mask_original_order)
+        if cone_face_mask is not None:
+            vis_manager.vis_solar_vision_cone_mask(int(epoch_name), vertices, faces, cone_face_mask.float())
         if skip_backface_receivers:
             vis_manager.vis_solar_receiver_mask(int(epoch_name), vertices, faces, sun_facing_mask.float())
         vis_manager.vis_solar_shading(int(epoch_name), vertices, faces, visibility_for_vis)

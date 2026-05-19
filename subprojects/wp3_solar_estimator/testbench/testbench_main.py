@@ -1,4 +1,6 @@
 import hashlib
+import math
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -140,6 +142,23 @@ def load_config() -> dict:
         return yaml.safe_load(f)
 
 
+def apply_loading_overrides(
+    cfg: dict,
+    ply_path: str | None = None,
+    ply_scaling_factor: float | None = None,
+) -> None:
+    """Override the input mesh without editing testbench_cfg.yaml."""
+    env_ply_path = os.getenv("AISCO_TESTBENCH_PLY_PATH", "").strip()
+    env_scale = os.getenv("AISCO_TESTBENCH_PLY_SCALE", "").strip()
+
+    if ply_path or env_ply_path:
+        cfg["loading"]["ply_path"] = ply_path or env_ply_path
+    if ply_scaling_factor is not None:
+        cfg["loading"]["ply_scaling_factor"] = float(ply_scaling_factor)
+    elif env_scale:
+        cfg["loading"]["ply_scaling_factor"] = float(env_scale)
+
+
 def load_ply_file(ply_path: str, scaling_factor: float) -> tuple[torch.Tensor, torch.Tensor]:
     mesh = _load_mesh(ply_path)
     verts = torch.tensor(mesh.vertices, dtype=torch.float32) * scaling_factor
@@ -147,27 +166,45 @@ def load_ply_file(ply_path: str, scaling_factor: float) -> tuple[torch.Tensor, t
     return verts, faces
 
 
-def setup_vis_manager(cfg: dict, loss_class: str | None = None) -> tuple:
+def _make_testbench_run_dir(cfg: dict) -> Path | None:
+    """Create the top-level output directory shared by one testbench invocation."""
+    if not cfg["vis_manager"]["enabled"]:
+        return None
+
+    base_run_dir = Path(cfg["vis_manager"]["run_dir"])
+    base_run_dir.mkdir(parents=True, exist_ok=True)
+
+    run_id = str(cfg["vis_manager"].get("run_id") or "testbench")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    slurm_job_id = os.getenv("SLURM_JOB_ID", "").strip()
+    run_name = f"{timestamp}_{run_id}_pid{os.getpid()}"
+    if slurm_job_id:
+        run_name = f"{run_name}_job{slurm_job_id}"
+
+    run_dir = base_run_dir / run_name
+    suffix = 1
+    while run_dir.exists():
+        run_dir = base_run_dir / f"{run_name}_{suffix:02d}"
+        suffix += 1
+    run_dir.mkdir(parents=True, exist_ok=False)
+    return run_dir
+
+
+def setup_vis_manager(cfg: dict, loss_class: str | None = None, run_dir: Path | None = None) -> tuple:
     """Setup visualizer manager and return (manager, save_dir).
 
     Returns:
         (vis_manager, save_dir_path) where save_dir_path is None if vis is disabled
     """
     if cfg["vis_manager"]["enabled"]:
-        # Resolve base run_dir
-        base_run_dir = Path(cfg["vis_manager"]["run_dir"])
-        base_run_dir.mkdir(parents=True, exist_ok=True)
+        resolved_run_dir = run_dir or _make_testbench_run_dir(cfg)
+        if resolved_run_dir is None:
+            return NullVisManager(), None
+        loss_run_dir = resolved_run_dir / loss_class if loss_class is not None else resolved_run_dir
+        loss_run_dir.mkdir(parents=True, exist_ok=True)
 
-        # Generate unique run_id with timestamp and loss class name
-        if loss_class is not None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            unique_dir_name = f"{timestamp}_{loss_class}"
-            run_dir = base_run_dir / unique_dir_name
-        else:
-            run_dir = base_run_dir / cfg["vis_manager"]["run_id"]
-
-        vis_manager = CentralVisManagerV2(run_dir=run_dir, run_id="data")
-        return vis_manager, run_dir
+        vis_manager = CentralVisManagerV2(run_dir=loss_run_dir, run_id=loss_class or "data")
+        return vis_manager, loss_run_dir
     else:
         return NullVisManager(), None
 
@@ -176,51 +213,51 @@ def get_device() -> str:
     return "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def single_solar_test():
-    cfg = load_config()
-    loss_class = cfg["solar_loss"]["class"]
-    vis_enabled = cfg["vis_manager"]["enabled"]
-    print("=== Solar Testbench ===")
-    print(f"Loss class : {loss_class}")
-    print(f"Vis enabled: {vis_enabled}")
-
-    device = get_device()
-    print(f"Device     : {device}")
-
-    ply_path = cfg["loading"]["ply_path"]
-    ply_scaling = cfg["loading"]["ply_scaling_factor"]
-    print(f"\nLoading PLY: {ply_path}  (scale={ply_scaling})")
-    verts, faces = load_ply_file(ply_path, ply_scaling)
-    print(f"  {verts.shape[0]} vertices, {faces.shape[0]} faces")
-
-    vis_manager, save_dir = setup_vis_manager(cfg, loss_class=loss_class)
-
-    if save_dir is not None:
-        print(f"\nVisualizer will save files to: {save_dir}")
-
-    print(f"\nInitialising {loss_class}...")
-    loss_cls = SOLAR_LOSS_REGISTRY[loss_class]
-    solar_loss = loss_cls(device=device, weight=[1.0, 1.0])
-    solar_loss._vis_manager = vis_manager
-
+def _build_sdf_model(cfg: dict, verts: torch.Tensor, faces: torch.Tensor, device: str) -> "MeshSDFCallable":
     sdf_cfg = cfg.get("sdf_model", {})
     grid_resolution = int(sdf_cfg.get("grid_resolution", 128))
     cache_dir_str = sdf_cfg.get("cache_dir", "sdf_cache")
     cache_dir = Path(__file__).parent / cache_dir_str if cache_dir_str else None
-    sdf_model = MeshSDFCallable(verts.to(device), faces.to(device), grid_resolution=grid_resolution, cache_dir=cache_dir)
+    n_cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", "4"))
+    precompute_chunk_size = int(sdf_cfg.get("precompute_chunk_size", n_cpus * 4096))
+    return MeshSDFCallable(
+        verts.to(device),
+        faces.to(device),
+        grid_resolution=grid_resolution,
+        cache_dir=cache_dir,
+        precompute_chunk_size=precompute_chunk_size,
+    )
+
+
+def run_one(
+    loss_class: str,
+    cfg: dict,
+    sdf_model: "MeshSDFCallable",
+    device: str,
+    losses_config: dict,
+    run_dir: Path | None = None,
+) -> None:
+    vis_enabled = cfg["vis_manager"]["enabled"]
+    true_scale = cfg["vis_manager"]["true_scale"]
+
+    vis_manager, save_dir = setup_vis_manager(cfg, loss_class=loss_class, run_dir=run_dir)
+    if save_dir is not None:
+        print(f"  vis → {save_dir}")
+
+    loss_cls = SOLAR_LOSS_REGISTRY[loss_class]
+    solar_loss = loss_cls(device=device, weight=[1.0, 1.0], losses_config=losses_config)
+    solar_loss._vis_manager = vis_manager
 
     skip_telemetry = not vis_enabled
-    print(f"\nRunning loss evaluation (skip_telemetry={skip_telemetry})...")
     t0 = time.perf_counter()
-    result = solar_loss.get_loss(model=sdf_model, epoch_name=-42, skip_telemetry=skip_telemetry)
+    result = solar_loss.get_loss(model=sdf_model, epoch_name=0, skip_telemetry=skip_telemetry)
     elapsed = time.perf_counter() - t0
 
-    print(f"\nSolar loss : {result.item():.4f} W")
-    print(f"Elapsed    : {elapsed:.2f}s")
-    true_scale = cfg["vis_manager"]["true_scale"]
+    print(f"  loss={result.item():.2f} W  elapsed={elapsed:.2f}s")
+
     if vis_enabled and hasattr(solar_loss, "extractor") and solar_loss.extractor.last_dL_dv is not None:
         vis_manager.vis_mesh_gradient(
-            -42,
+            0,
             loss_class.lower(),
             solar_loss.extractor.last_verts,
             solar_loss.extractor.last_faces,
@@ -231,5 +268,97 @@ def single_solar_test():
     vis_manager.finalize()
 
 
+def single_solar_test(ply_path: str | None = None, ply_scaling_factor: float | None = None) -> None:
+    cfg = load_config()
+    apply_loading_overrides(cfg, ply_path, ply_scaling_factor)
+    loss_class = cfg["solar_loss"]["class"]
+    device = get_device()
+
+    print("=== Solar Testbench ===")
+    print(f"Loss class : {loss_class}")
+    print(f"Vis enabled: {cfg['vis_manager']['enabled']}")
+    print(f"Device     : {device}")
+    run_dir = _make_testbench_run_dir(cfg)
+    if run_dir is not None:
+        print(f"Run dir    : {run_dir}")
+
+    ply_path = cfg["loading"]["ply_path"]
+    ply_scaling = cfg["loading"]["ply_scaling_factor"]
+    print(f"\nLoading PLY: {ply_path}  (scale={ply_scaling})")
+    verts, faces = load_ply_file(ply_path, ply_scaling)
+    print(f"  {verts.shape[0]} vertices, {faces.shape[0]} faces")
+
+    from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config as _load_wp4_config  # noqa: PLC0415
+
+    losses_config = _load_wp4_config(v="v2", cfg_name="losses_v0_config.yaml")
+
+    sdf_model = _build_sdf_model(cfg, verts, faces, device)
+
+    print(f"\nRunning {loss_class}...")
+    run_one(loss_class, cfg, sdf_model, device, losses_config, run_dir=run_dir)
+
+
+# Losses that support vision cone exclusion — skips legacy V3B/V5/V6/V7
+CONE_LOSS_CLASSES = ["SolarSR", "SolarSRRT", "SolarMR", "SolarMRRT"]
+
+
+def all_solar_tests(ply_path: str | None = None, ply_scaling_factor: float | None = None) -> None:
+    cfg = load_config()
+    apply_loading_overrides(cfg, ply_path, ply_scaling_factor)
+    device = get_device()
+
+    print("=== Solar Testbench — all cone-compatible losses ===")
+    print(f"Vis enabled: {cfg['vis_manager']['enabled']}")
+    print(f"Device     : {device}")
+    run_dir = _make_testbench_run_dir(cfg)
+    if run_dir is not None:
+        print(f"Run dir    : {run_dir}")
+
+    ply_path = cfg["loading"]["ply_path"]
+    ply_scaling = cfg["loading"]["ply_scaling_factor"]
+    print(f"\nLoading PLY: {ply_path}  (scale={ply_scaling})")
+    verts, faces = load_ply_file(ply_path, ply_scaling)
+    print(f"  {verts.shape[0]} vertices, {faces.shape[0]} faces")
+
+    from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config as _load_wp4_config  # noqa: PLC0415
+
+    losses_config = _load_wp4_config(v="v2", cfg_name="losses_v0_config.yaml")
+
+    # SDF grid is built once and reused across all losses (cached after first call)
+    sdf_model = _build_sdf_model(cfg, verts, faces, device)
+
+    results: list[tuple[str, float, float]] = []
+    for loss_class in CONE_LOSS_CLASSES:
+        print(f"\n--- {loss_class} ---")
+        try:
+            t0 = time.perf_counter()
+            run_one(loss_class, cfg, sdf_model, device, losses_config, run_dir=run_dir)
+            results.append((loss_class, time.perf_counter() - t0, float("nan")))
+        except Exception as e:
+            print(f"  FAILED: {e}")
+            results.append((loss_class, float("nan"), float("nan")))
+
+    print("\n=== Summary ===")
+    for loss_class, elapsed, _ in results:
+        status = f"{elapsed:.1f}s" if math.isfinite(elapsed) else "FAILED"
+        print(f"  {loss_class:12s}  {status}")
+
+
 if __name__ == "__main__":
-    single_solar_test()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Run the WP3 solar loss testbench.")
+    parser.add_argument("--all", action="store_true", help="Run all cone-compatible rollout solar losses.")
+    parser.add_argument("--ply-path", default=None, help="Override loading.ply_path from testbench_cfg.yaml.")
+    parser.add_argument(
+        "--ply-scaling-factor",
+        type=float,
+        default=None,
+        help="Override loading.ply_scaling_factor from testbench_cfg.yaml.",
+    )
+    args = parser.parse_args()
+
+    if args.all:
+        all_solar_tests(args.ply_path, args.ply_scaling_factor)
+    else:
+        single_solar_test(args.ply_path, args.ply_scaling_factor)

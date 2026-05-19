@@ -106,7 +106,7 @@ visual_types:
     quality:
       enabled: true
       colormap: "Reds"   # [0,1] bounded selection weight (corporate red ramp)
-      interval: 50
+      interval: 1
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -115,7 +115,7 @@ visual_types:
     selection:
       enabled: true
       colormap: "RdBu_r"  # [0,1] bounded selection weight
-      interval: 50
+      interval: 1
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -156,6 +156,15 @@ visual_types:
       enabled: true
       colormap: "RdYlGn"  # 0=back-facing (skipped), 1=sun-facing (raytraced)
       interval: 50
+      alpha_enabled: null
+      coordinate_system: null
+      vmin: 0.0
+      vmax: 1.0
+
+    vision_cone_mask:
+      enabled: true
+      colormap: "RdYlGn"  # 0=selectable (green), 1=excluded by vision cone (red)
+      interval: 1
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
