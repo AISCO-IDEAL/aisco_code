@@ -842,15 +842,12 @@ def render_scene(
             mat = _make_material(color_rgba)
             pr_mesh = pyrender.Mesh.from_trimesh(mesh, material=mat, smooth=True)
         else:
-            # Vertex-colored mesh (solar-baked aeroshell): force BLEND so alpha
-            # channel in face colors is honoured and inner assembly shows through.
-            mat_blend = pyrender.MetallicRoughnessMaterial(
-                metallicFactor=0.0,
-                roughnessFactor=0.65,
-                alphaMode="BLEND",
-                doubleSided=True,
-            )
-            pr_mesh = pyrender.Mesh.from_trimesh(mesh, material=mat_blend, smooth=False)
+            # Use embedded vertex/face colors. Patch alphaMode to BLEND so the
+            # alpha channel in each face color is honoured and inner layers show through.
+            # Do NOT pass material= here — it would override vertex colors.
+            pr_mesh = pyrender.Mesh.from_trimesh(mesh, smooth=False)
+            for prim in pr_mesh.primitives:
+                prim.material.alphaMode = "BLEND"
         scene.add(pr_mesh)
 
     aspect = renderer.viewport_width / renderer.viewport_height
@@ -970,7 +967,22 @@ def _bake_solar_into_aeroshell(
     r, g, b = _parse_color_rgb(ae_hex)
     face_colors = np.full((F, 4), [r, g, b, int(ae_alpha * 255)], dtype=np.uint8)
 
-    # Layer 2: binary mask gold — selected faces only; off-faces keep aeroshell base
+    # Layer 2: shading colormap alpha-blended over ALL faces — shows illumination
+    # quality everywhere, not just on selected area.
+    shading_enabled = bool(_get(cfg, "layers", "solar_shading", "enabled", default=True))
+    if shading is not None and shading_enabled and len(shading) == F:
+        colormap = str(_get(cfg, "layers", "solar_shading", "colormap", default="plasma"))
+        sh_alpha = float(_get(cfg, "layers", "solar_shading", "alpha", default=0.85))
+        vmin = float(_get(cfg, "layers", "solar_shading", "vmin", default=0.0))
+        vmax = float(_get(cfg, "layers", "solar_shading", "vmax", default=1.0))
+        shading_np = shading.detach().cpu().numpy().reshape(-1)
+        rgb_map = _scalar_to_rgb_mpl(shading_np, colormap, vmin, vmax).astype(np.float32) / 255.0
+        existing_rgb = face_colors[:, :3].astype(np.float32) / 255.0
+        blended = rgb_map * sh_alpha + existing_rgb * (1.0 - sh_alpha)
+        face_colors[:, :3] = np.clip(blended * 255.0, 0, 255).astype(np.uint8)
+
+    # Layer 3: binary mask gold — HARD OVERRIDE on selected faces.
+    # Placed above shading so selected area is always clearly gold.
     mask_enabled = bool(_get(cfg, "layers", "solar_binary_mask", "enabled", default=True))
     if binary_mask is not None and mask_enabled and len(binary_mask) == F:
         color_on_hex = _get(cfg, "layers", "solar_binary_mask", "color_on", default="#FFD700")
@@ -980,31 +992,17 @@ def _bake_solar_into_aeroshell(
         mask_np = binary_mask.detach().cpu().numpy().reshape(-1)
         face_colors[mask_np > 0.5] = color_on
 
-    # Layer 3: shading colormap alpha-blended over existing colors (gold and base)
-    # This makes the shading gradient visible on selected faces instead of hidden below gold.
-    shading_enabled = bool(_get(cfg, "layers", "solar_shading", "enabled", default=True))
-    if shading is not None and shading_enabled and len(shading) == F:
-        colormap = str(_get(cfg, "layers", "solar_shading", "colormap", default="Blues"))
-        sh_alpha = float(_get(cfg, "layers", "solar_shading", "alpha", default=0.90))
-        vmin = float(_get(cfg, "layers", "solar_shading", "vmin", default=0.0))
-        vmax = float(_get(cfg, "layers", "solar_shading", "vmax", default=1.0))
-        shading_np = shading.detach().cpu().numpy().reshape(-1)
-        rgb_map = _scalar_to_rgb_mpl(shading_np, colormap, vmin, vmax).astype(np.float32) / 255.0
-        existing_rgb = face_colors[:, :3].astype(np.float32) / 255.0
-        blended = rgb_map * sh_alpha + existing_rgb * (1.0 - sh_alpha)
-        face_colors[:, :3] = np.clip(blended * 255.0, 0, 255).astype(np.uint8)
-
-    # Layer 4: windshield cone mask — alpha-blend windshield color onto cone faces
+    # Layer 4: windshield cone mask — HARD SET (not a blend).
+    # alpha=0 → transparent cut-through (inner assembly visible, no aeroshell).
+    # alpha>0 → opaque-to-semi-transparent gray, suppressing ALL other layers.
+    # The windshield zone never shows any other layer beneath it.
     if cone_mask is not None and bool(_get(cfg, "layers", "windshield", "enabled", default=True)):
-        ws_hex = str(_get(cfg, "layers", "windshield", "color", default="#4FC3F7"))
-        ws_alpha = float(_get(cfg, "layers", "windshield", "alpha", default=0.40))
+        ws_hex = str(_get(cfg, "layers", "windshield", "color", default="#AAAAAA"))
+        ws_alpha = float(_get(cfg, "layers", "windshield", "alpha", default=0.65))
         r_ws, g_ws, b_ws = _parse_color_rgb(ws_hex)
         cone_np = cone_mask.detach().cpu().numpy().reshape(-1).astype(bool)
         if len(cone_np) == F:
-            ws_rgb = np.array([r_ws / 255.0, g_ws / 255.0, b_ws / 255.0], dtype=np.float32)
-            existing_rgb = face_colors[cone_np, :3].astype(np.float32) / 255.0
-            blended = ws_rgb * ws_alpha + existing_rgb * (1.0 - ws_alpha)
-            face_colors[cone_np, :3] = np.clip(blended * 255.0, 0, 255).astype(np.uint8)
+            face_colors[cone_np] = [r_ws, g_ws, b_ws, int(ws_alpha * 255)]
 
     return _build_flat_mesh_with_colors(base_mesh, face_colors)
 
@@ -1210,24 +1208,136 @@ def _apply_full_wheels(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
 # ---------------------------------------------------------------------------
 
 
-def _export_glb(
-    render_list: list[tuple[trimesh.Trimesh, tuple[float, float, float, float] | None]],
+def _build_offset_layer_mesh(
+    base_mesh: trimesh.Trimesh,
+    face_mask: np.ndarray | None,
+    face_colors_F4: np.ndarray,
+    normal_offset_mm: float,
+) -> trimesh.Trimesh | None:
+    """Build a flat-shaded submesh offset along face normals for GLB layer stacking.
+
+    Each selected face becomes 3 unique unshared vertices (flat shading) offset
+    by ``normal_offset_mm`` along the face normal.  This prevents Z-fighting when
+    multiple layers cover the same surface.
+
+    Args:
+        base_mesh: Source aeroshell mesh.
+        face_mask: Bool array (F,) — True selects a face. None = all faces.
+        face_colors_F4: (F, 4) uint8 face colors indexed by base_mesh face index.
+        normal_offset_mm: Distance to offset along face normal in mm.
+
+    Returns:
+        Flat-shaded trimesh.Trimesh with embedded vertex colors, or None if no
+        faces are selected.
+    """
+    selected = np.arange(len(base_mesh.faces)) if face_mask is None else np.where(face_mask)[0]
+    if len(selected) == 0:
+        return None
+    v = base_mesh.vertices[base_mesh.faces[selected]].astype(np.float64)  # (K, 3, 3)
+    v_off = v + base_mesh.face_normals[selected, np.newaxis, :] * normal_offset_mm
+    new_verts = v_off.reshape(-1, 3)
+    new_faces = np.arange(len(selected) * 3, dtype=np.int64).reshape(-1, 3)
+    per_vert = np.repeat(face_colors_F4[selected], 3, axis=0)  # (K*3, 4)
+    m = trimesh.Trimesh(vertices=new_verts, faces=new_faces, process=False)
+    m.visual = trimesh.visual.ColorVisuals(mesh=m, vertex_colors=per_vert)
+    return m
+
+
+def _export_glb_layers(  # noqa: PLR0915  # layer-builder — many statements by design
+    aeroshell_mesh: trimesh.Trimesh,
+    binary_mask: Tensor | None,
+    shading: Tensor | None,
+    cone_mask: Tensor | None,
+    inner_assembly: trimesh.Trimesh | None,
+    outer_bbox: trimesh.Trimesh | None,
+    cfg: dict[str, Any],
     out_path: Path,
 ) -> None:
-    """Export all render-list meshes as a single GLB scene file.
+    """Export a GLB with each layer as a separate, independently-toggleable named node.
 
-    Meshes with an explicit RGBA material have flat face colors applied before
-    export.  Meshes with embedded vertex colors (solar-baked aeroshell) are
-    exported as-is.
+    Aeroshell-surface layers are offset along face normals to prevent Z-fighting
+    when multiple layers are visible at once:
+
+      aeroshell_base    0.0 mm  — base color + windshield gray/cutout
+      solar_shading     0.5 mm  — full mesh with illumination-quality colormap
+      solar_selection   1.0 mm  — selected faces only, gold
+      windshield_zone   1.5 mm  — vision-cone faces with windshield color
+
+    Independent meshes (no offset):
+      inner_assembly, outer_bbox
     """
+    F = len(aeroshell_mesh.faces)
     scene = trimesh.Scene()
-    for i, (mesh, rgba) in enumerate(render_list):
-        m = mesh.copy()
-        if rgba is not None:
-            r_f, g_f, b_f, a_f = rgba
-            fc = np.full((len(m.faces), 4), [int(r_f * 255), int(g_f * 255), int(b_f * 255), int(a_f * 255)], dtype=np.uint8)
-            m.visual = trimesh.visual.ColorVisuals(mesh=m, face_colors=fc)
-        scene.add_geometry(m, node_name=f"layer_{i:02d}")
+
+    def _fc(layer: str, def_hex: str, def_alpha: float) -> np.ndarray:
+        """Single RGBA uint8 row for a uniform layer."""
+        c = _get(cfg, "layers", layer, "color", default=def_hex)
+        a = float(_get(cfg, "layers", layer, "alpha", default=def_alpha))
+        r_c, g_c, b_c = _parse_color_rgb(c)
+        return np.array([r_c, g_c, b_c, int(a * 255)], dtype=np.uint8)
+
+    # --- inner_assembly ---
+    if inner_assembly is not None and bool(_get(cfg, "layers", "inner_assembly", "enabled", default=True)):
+        asm = inner_assembly.copy()
+        fc = np.tile(_fc("inner_assembly", "#F39C12", 1.0), (len(asm.faces), 1))
+        asm.visual = trimesh.visual.ColorVisuals(mesh=asm, face_colors=fc)
+        scene.add_geometry(asm, node_name="inner_assembly")
+
+    # --- outer_bbox ---
+    if outer_bbox is not None and bool(_get(cfg, "layers", "outer_bbox", "enabled", default=False)):
+        bbox = outer_bbox.copy()
+        fc = np.tile(_fc("outer_bbox", "#FF504D", 0.12), (len(bbox.faces), 1))
+        bbox.visual = trimesh.visual.ColorVisuals(mesh=bbox, face_colors=fc)
+        scene.add_geometry(bbox, node_name="outer_bbox")
+
+    # --- aeroshell_base --- (base color + windshield hard override)
+    ae_rgba = _fc("aeroshell", "#33FFFF", 0.82)
+    base_fc = np.tile(ae_rgba, (F, 1))
+    if cone_mask is not None and bool(_get(cfg, "layers", "windshield", "enabled", default=True)):
+        cone_np = cone_mask.detach().cpu().numpy().reshape(-1).astype(bool)
+        if len(cone_np) == F:
+            ws_alpha = float(_get(cfg, "layers", "windshield", "alpha", default=0.65))
+            ws_hex = str(_get(cfg, "layers", "windshield", "color", default="#AAAAAA"))
+            r_ws, g_ws, b_ws = _parse_color_rgb(ws_hex)
+            base_fc[cone_np] = [r_ws, g_ws, b_ws, int(ws_alpha * 255)]
+    glb_base = _build_offset_layer_mesh(aeroshell_mesh, None, base_fc, 0.0)
+    if glb_base is not None:
+        scene.add_geometry(glb_base, node_name="aeroshell_base")
+
+    # --- solar_shading --- (full mesh, illumination quality colormap, +0.5 mm)
+    if shading is not None and bool(_get(cfg, "layers", "solar_shading", "enabled", default=True)):
+        colormap = str(_get(cfg, "layers", "solar_shading", "colormap", default="plasma"))
+        sh_alpha = float(_get(cfg, "layers", "solar_shading", "alpha", default=0.85))
+        vmin = float(_get(cfg, "layers", "solar_shading", "vmin", default=0.0))
+        vmax = float(_get(cfg, "layers", "solar_shading", "vmax", default=1.0))
+        sh_np = shading.detach().cpu().numpy().reshape(-1)
+        rgb_map = _scalar_to_rgb_mpl(sh_np, colormap, vmin, vmax)
+        sh_fc = np.concatenate([rgb_map, np.full((F, 1), int(sh_alpha * 255), dtype=np.uint8)], axis=1)
+        glb_sh = _build_offset_layer_mesh(aeroshell_mesh, None, sh_fc, 0.5)
+        if glb_sh is not None:
+            scene.add_geometry(glb_sh, node_name="solar_shading")
+
+    # --- solar_selection --- (only selected faces, gold, +1.0 mm)
+    if binary_mask is not None and bool(_get(cfg, "layers", "solar_binary_mask", "enabled", default=True)):
+        color_on_hex = str(_get(cfg, "layers", "solar_binary_mask", "color_on", default="#FFD700"))
+        mask_alpha = float(_get(cfg, "layers", "solar_binary_mask", "alpha", default=1.0))
+        r_on, g_on, b_on = _parse_color_rgb(color_on_hex)
+        sel_fc = np.full((F, 4), [r_on, g_on, b_on, int(mask_alpha * 255)], dtype=np.uint8)
+        sel_mask = binary_mask.detach().cpu().numpy().reshape(-1) > 0.5
+        glb_sel = _build_offset_layer_mesh(aeroshell_mesh, sel_mask, sel_fc, 1.0)
+        if glb_sel is not None:
+            scene.add_geometry(glb_sel, node_name="solar_selection")
+
+    # --- windshield_zone --- (only cone faces, windshield color, +1.5 mm)
+    if cone_mask is not None and bool(_get(cfg, "layers", "windshield", "enabled", default=True)):
+        ws_fc_row = _fc("windshield", "#AAAAAA", 0.65)
+        ws_fc = np.tile(ws_fc_row, (F, 1))
+        cone_np = cone_mask.detach().cpu().numpy().reshape(-1).astype(bool)
+        if len(cone_np) == F:
+            glb_ws = _build_offset_layer_mesh(aeroshell_mesh, cone_np, ws_fc, 1.5)
+            if glb_ws is not None:
+                scene.add_geometry(glb_ws, node_name="windshield_zone")
+
     out_path.parent.mkdir(parents=True, exist_ok=True)
     scene.export(str(out_path))
     print(f"  [glb] saved \u2192 {out_path}")
@@ -1662,10 +1772,19 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # orchestrator — large by desig
         img.save(str(out_path))
         print(f"  [{cam_name}] saved → {out_path}")
 
-    # GLB export (one file per run — geometry, no camera)
-    if bool(_get(cfg, "output", "save_glb", default=True)) and render_list:
+    # GLB export — one file per run, each layer as a separate named node
+    if bool(_get(cfg, "output", "save_glb", default=True)):
         glb_path = output_dir / f"{prefix}_{name_stem}.glb"
-        _export_glb(render_list, glb_path)
+        _export_glb_layers(
+            aeroshell_mesh=aeroshell_mesh,
+            binary_mask=binary_mask_tensor,
+            shading=shading_tensor,
+            cone_mask=cone_mask,
+            inner_assembly=inner_assembly,
+            outer_bbox=outer_bbox,
+            cfg=cfg,
+            out_path=glb_path,
+        )
 
     renderer.delete()
     print("\n[aeroshell_png] done.")
