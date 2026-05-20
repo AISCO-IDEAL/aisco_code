@@ -483,6 +483,17 @@
             });
         }
 
+        const coneGlbMeshes = Array.isArray(data.meshes_glb_cone) ? data.meshes_glb_cone : [];
+        if (coneGlbMeshes.length) {
+            groups.push({
+                label: "Aeroshell Mesh (GLB, Vision Cone)",
+                ply_files: coneGlbMeshes,
+                panel_id: "panel_mesh_shape_glb_cone",
+                panel_label: "Aeroshell Mesh GLB (Vision Cone)",
+                default_visible: !!modePanelDefaults.panel_mesh_shape_glb_cone?.defaultVisible,
+            });
+        }
+
         const discovered = Array.isArray(data.extra_ply_groups) ? data.extra_ply_groups : [];
         discovered.forEach((group) => groups.push(group));
 
@@ -688,7 +699,7 @@
             if (!artResp.ok) throw new Error(`artifacts ${artResp.status}`);
             const artData = await artResp.json();
             updateGifs(artData);
-            meshes = (artData.meshes || []).concat(artData.meshes_glb || []);
+            meshes = (artData.meshes || []).concat(artData.meshes_glb || []).concat(artData.meshes_glb_cone || []);
             if (meshes.length) {
                 meshIdx = meshes.length - 1;
                 updateMesh();

@@ -6,9 +6,12 @@
             "label": "Cp Field",
             "defaultVisible": true
         },
-        
         "panel_mesh_shape_glb": {
             "label": "Aeroshell Mesh GLB",
+            "defaultVisible": true
+        },
+        "panel_mesh_shape_glb_cone": {
+            "label": "Aeroshell Mesh GLB (Vision Cone)",
             "defaultVisible": true
         }
     }
