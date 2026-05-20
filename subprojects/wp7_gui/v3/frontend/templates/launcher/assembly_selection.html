@@ -413,11 +413,23 @@ endblock %}
 
     const canvas = document.getElementById("preview");
     const ctx = canvas.getContext("2d");
+    let canvasDrawSize = { width: canvas.width, height: canvas.height };
 
     const bounds = { xmin: -3000, xmax: 3000, ymin: -2200, ymax: 2200 };
-    const wheelRadius = 145;
-    const seatHalfX = 330;
-    const seatHalfY = 180;
+    const maxCarEnvelope = { length: 5800, width: 2300 };
+    const gridStepMm = 500;
+    const majorGridStepMm = 1000;
+
+    const previewSizeAdjust = {
+        wheel: { x: 1.0, y: 1.0 },
+        seat: { x: 1.0, y: 1.0 }
+    };
+
+    const partFootprints = {
+        // Same XY AABB margins used by GUI_assembly.py collision checks.
+        wheel: { xBack: 278.5, xFwd: 278.5, yDown: 48, yUp: 48 },
+        seat: { xBack: 379.081, xFwd: 1000, yDown: 225, yUp: 225 }
+    };
 
     function cssVar(name, fallback) {
         const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -587,66 +599,171 @@ endblock %}
         scheduleAutosave(260);
     };
 
-    function toCanvas(x, y) {
+    function canvasTransform() {
         const pad = 42;
-        const sx = (canvas.width - 2 * pad) / (bounds.xmax - bounds.xmin);
-        const sy = (canvas.height - 2 * pad) / (bounds.ymax - bounds.ymin);
+        const worldWidth = bounds.xmax - bounds.xmin;
+        const worldHeight = bounds.ymax - bounds.ymin;
+        const sx = (canvasDrawSize.width - 2 * pad) / worldWidth;
+        const sy = (canvasDrawSize.height - 2 * pad) / worldHeight;
         const s = Math.min(sx, sy);
-        const cx = pad + (x - bounds.xmin) * s;
-        const cy = canvas.height - pad - (y - bounds.ymin) * s;
+        const offsetX = (canvasDrawSize.width - worldWidth * s) / 2;
+        const offsetY = (canvasDrawSize.height - worldHeight * s) / 2;
+        return { s, offsetX, offsetY };
+    }
+
+    function toCanvas(x, y) {
+        const { s, offsetX, offsetY } = canvasTransform();
+        const cx = offsetX + (x - bounds.xmin) * s;
+        const cy = canvasDrawSize.height - offsetY - (y - bounds.ymin) * s;
         return { x: cx, y: cy, s };
     }
 
     function fromCanvas(cx, cy) {
-        const origin = toCanvas(bounds.xmin, bounds.ymin);
-        const x = bounds.xmin + (cx - origin.x) / origin.s;
-        const y = bounds.ymin + (origin.y - cy) / origin.s;
+        const { s, offsetX, offsetY } = canvasTransform();
+        const x = bounds.xmin + (cx - offsetX) / s;
+        const y = bounds.ymin + (canvasDrawSize.height - offsetY - cy) / s;
         return { x: Math.round(x), y: Math.round(y) };
+    }
+
+    function scaledFootprint(part) {
+        const kind = part === "seat" ? "seat" : "wheel";
+        const fp = partFootprints[kind];
+        const adjust = previewSizeAdjust[kind];
+        return {
+            xBack: fp.xBack * adjust.x,
+            xFwd: fp.xFwd * adjust.x,
+            yDown: fp.yDown * adjust.y,
+            yUp: fp.yUp * adjust.y
+        };
+    }
+
+    function footprintRect(part, vals) {
+        const fp = scaledFootprint(part);
+        const min = toCanvas(vals.x - fp.xBack, vals.y - fp.yDown);
+        const max = toCanvas(vals.x + fp.xFwd, vals.y + fp.yUp);
+        return {
+            left: min.x,
+            right: max.x,
+            top: max.y,
+            bottom: min.y,
+            width: max.x - min.x,
+            height: min.y - max.y
+        };
     }
 
     function drawGrid() {
         const zero = toCanvas(0, 0);
-        ctx.strokeStyle = C_CANVAS_GRID;
         ctx.lineWidth = 1;
+        ctx.font = `10px ${C_CANVAS_FONT}`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
 
-        for (let x = -3000; x <= 3000; x += 1000) {
+        const firstGridX = Math.ceil(bounds.xmin / gridStepMm) * gridStepMm;
+        const firstGridY = Math.ceil(bounds.ymin / gridStepMm) * gridStepMm;
+
+        for (let x = firstGridX; x <= bounds.xmax; x += gridStepMm) {
             const p = toCanvas(x, 0);
+            const isMajor = x % majorGridStepMm === 0;
+            ctx.strokeStyle = isMajor ? C_CANVAS_AXIS : C_CANVAS_GRID;
+            ctx.globalAlpha = isMajor ? 0.55 : 0.32;
             ctx.beginPath();
             ctx.moveTo(p.x, 20);
-            ctx.lineTo(p.x, canvas.height - 20);
+            ctx.lineTo(p.x, canvasDrawSize.height - 20);
             ctx.stroke();
+            if (isMajor) {
+                ctx.globalAlpha = 1;
+                ctx.fillStyle = C_CANVAS_LABEL;
+                ctx.fillText(String(x), p.x, canvasDrawSize.height - 34);
+            }
         }
 
-        for (let y = -2000; y <= 2000; y += 1000) {
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        for (let y = firstGridY; y <= bounds.ymax; y += gridStepMm) {
             const p = toCanvas(0, y);
+            const isMajor = y % majorGridStepMm === 0;
+            ctx.strokeStyle = isMajor ? C_CANVAS_AXIS : C_CANVAS_GRID;
+            ctx.globalAlpha = isMajor ? 0.55 : 0.32;
             ctx.beginPath();
             ctx.moveTo(20, p.y);
-            ctx.lineTo(canvas.width - 20, p.y);
+            ctx.lineTo(canvasDrawSize.width - 20, p.y);
             ctx.stroke();
+            if (isMajor) {
+                ctx.globalAlpha = 1;
+                ctx.fillStyle = C_CANVAS_LABEL;
+                ctx.fillText(String(y), 24, p.y);
+            }
         }
+        ctx.globalAlpha = 1;
 
         // X axis (red) + label
         ctx.strokeStyle = C_CANVAS_AXIS_X;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(20, zero.y);
-        ctx.lineTo(canvas.width - 20, zero.y);
+        ctx.lineTo(canvasDrawSize.width - 20, zero.y);
         ctx.stroke();
         ctx.fillStyle = C_CANVAS_AXIS_X;
         ctx.font = `bold 11px ${C_CANVAS_FONT}`;
         ctx.textAlign = "right";
-        ctx.fillText("X \u2192", canvas.width - 4, zero.y - 6);
+        ctx.textBaseline = "alphabetic";
+        ctx.fillText("X \u2192", canvasDrawSize.width - 4, zero.y - 6);
 
         // Y axis (blue) + label
         ctx.strokeStyle = C_CANVAS_AXIS_Y;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(zero.x, 20);
-        ctx.lineTo(zero.x, canvas.height - 20);
+        ctx.lineTo(zero.x, canvasDrawSize.height - 20);
         ctx.stroke();
         ctx.fillStyle = C_CANVAS_AXIS_Y;
         ctx.textAlign = "left";
         ctx.fillText("\u2191 Y", zero.x + 4, 16);
+
+        drawMaxCarEnvelope();
+        drawEnvelopeBadge();
+    }
+
+    function drawEnvelopeBadge() {
+        const right = canvasDrawSize.width - 18;
+        const top = 18;
+        const width = 178;
+        const height = 48;
+        const left = right - width;
+
+        ctx.save();
+        ctx.fillStyle = cssVar("--theme-panel", "rgba(255,255,255,0.92)");
+        ctx.strokeStyle = C_CANVAS_AXIS_X;
+        ctx.lineWidth = 2;
+        ctx.fillRect(left, top, width, height);
+        ctx.strokeRect(left, top, width, height);
+        ctx.font = `bold 11px ${C_CANVAS_FONT}`;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = C_CANVAS_AXIS_X;
+        ctx.fillText(`max length: ${maxCarEnvelope.length} mm`, left + 10, top + 16);
+        ctx.fillStyle = C_CANVAS_AXIS_Y;
+        ctx.fillText(`max width: ${maxCarEnvelope.width} mm`, left + 10, top + 33);
+        ctx.restore();
+    }
+
+    function drawMaxCarEnvelope() {
+        const halfLength = maxCarEnvelope.length / 2;
+        const halfWidth = maxCarEnvelope.width / 2;
+        const min = toCanvas(-halfLength, -halfWidth);
+        const max = toCanvas(halfLength, halfWidth);
+        const left = min.x;
+        const top = max.y;
+        const width = max.x - min.x;
+        const height = min.y - max.y;
+
+        ctx.save();
+        ctx.strokeStyle = C_CANVAS_LABEL;
+        ctx.fillStyle = C_CANVAS_LABEL;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 6]);
+        ctx.strokeRect(left, top, width, height);
+        ctx.restore();
     }
 
     function drawLabel(text, x, y) {
@@ -680,27 +797,50 @@ endblock %}
 
     function drawWheel(part, vals) {
         const p = toCanvas(vals.x, vals.y);
-        const r = Math.max(8, wheelRadius * p.s);
+        const rect = footprintRect(part, vals);
         ctx.fillStyle = part === hoverPart ? C_CANVAS_WHEEL_HOVER : C_CANVAS_WHEEL;
+        ctx.fillRect(rect.left, rect.top, rect.width, rect.height);
+        ctx.strokeStyle = C_CANVAS_SEAT_STROKE;
+        ctx.strokeRect(rect.left, rect.top, rect.width, rect.height);
+        ctx.fillStyle = C_CANVAS_LABEL;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
         ctx.fill();
-        drawLabel(part, p.x, p.y - r - 8);
+        drawLabel(part, p.x, rect.top - 8);
     }
 
     function drawSeat(part, vals) {
         const p = toCanvas(vals.x, vals.y);
-        const w = seatHalfX * 2 * p.s;
-        const h = seatHalfY * 2 * p.s;
+        const rect = footprintRect(part, vals);
         ctx.fillStyle = part === hoverPart ? C_CANVAS_SEAT_HOVER : C_CANVAS_SEAT;
-        ctx.fillRect(p.x - w / 2, p.y - h / 2, w, h);
+        ctx.fillRect(rect.left, rect.top, rect.width, rect.height);
         ctx.strokeStyle = C_CANVAS_SEAT_STROKE;
-        ctx.strokeRect(p.x - w / 2, p.y - h / 2, w, h);
-        drawLabel(part, p.x, p.y - h / 2 - 8);
+        ctx.strokeRect(rect.left, rect.top, rect.width, rect.height);
+        ctx.fillStyle = C_CANVAS_LABEL;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+        drawLabel(part, p.x, rect.top - 8);
+    }
+
+    function syncCanvasResolution() {
+        const rect = canvas.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        const cssWidth = Math.max(1, Math.round(rect.width));
+        const cssHeight = Math.max(1, Math.round(rect.height));
+        const bitmapWidth = Math.max(1, Math.round(cssWidth * dpr));
+        const bitmapHeight = Math.max(1, Math.round(cssHeight * dpr));
+        if (canvas.width !== bitmapWidth || canvas.height !== bitmapHeight) {
+            canvas.width = bitmapWidth;
+            canvas.height = bitmapHeight;
+        }
+        canvasDrawSize = { width: cssWidth, height: cssHeight };
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
     function drawPreview() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        syncCanvasResolution();
+        ctx.clearRect(0, 0, canvasDrawSize.width, canvasDrawSize.height);
         drawGrid();
         drawWheelPolygon();
         for (const [part, vals] of orderedParts()) {
@@ -715,18 +855,15 @@ endblock %}
     function hitTest(cx, cy) {
         const parts = orderedParts().reverse();
         for (const [part, vals] of parts) {
-            const p = toCanvas(vals.x, vals.y);
-            if (part === "seat") {
-                const hw = seatHalfX * p.s;
-                const hh = seatHalfY * p.s;
-                if (Math.abs(cx - p.x) <= hw && Math.abs(cy - p.y) <= hh) {
-                    return part;
-                }
-            } else {
-                const r = Math.max(10, wheelRadius * p.s);
-                if (Math.hypot(cx - p.x, cy - p.y) <= r) {
-                    return part;
-                }
+            const rect = footprintRect(part, vals);
+            const hitPad = part === "seat" ? 0 : Math.max(8, 18 - Math.min(rect.width, rect.height) / 2);
+            if (
+                cx >= rect.left - hitPad &&
+                cx <= rect.right + hitPad &&
+                cy >= rect.top - hitPad &&
+                cy <= rect.bottom + hitPad
+            ) {
+                return part;
             }
         }
         return null;
@@ -735,8 +872,8 @@ endblock %}
     function pointerPos(event) {
         const rect = canvas.getBoundingClientRect();
         return {
-            x: (event.clientX - rect.left) * canvas.width / rect.width,
-            y: (event.clientY - rect.top) * canvas.height / rect.height
+            x: event.clientX - rect.left,
+            y: event.clientY - rect.top
         };
     }
 
@@ -780,6 +917,7 @@ endblock %}
 
     canvas.addEventListener("pointerup", endDrag);
     canvas.addEventListener("pointercancel", endDrag);
+    window.addEventListener("resize", drawPreview);
 
     function updateAddToMapButton() {
         const loadedButUnchanged = loadedAssemblyMapId !== null && !hasUnsavedMapCloneChanges;
