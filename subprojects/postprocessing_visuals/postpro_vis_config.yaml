@@ -11,11 +11,11 @@ layers:
   aeroshell:
     enabled: true
     color: "#5DADE2"
-    alpha: 0.82               # slightly transparent so inner parts show through
+    alpha: 1.0              
 
   inner_assembly:
     enabled: true
-    color: "#F39C12"          # amber
+    color: "#D2E0F2"          
     alpha: 1.0
     fallback_wp2: true        # load from WP2 cadquery when epoch PLY is absent
     assembly_id: 1            # WP2 assembly_map.yaml key
@@ -24,25 +24,25 @@ layers:
   windshield:
     enabled: true             # bake vision-cone face mask onto aeroshell (wp3_vision_cone)
     color: "#b0bec5"          # light gray — the windshield zone; alpha controls opacity
-    alpha: 0.0               # 0.0 = transparent cut-through, 1.0 = fully opaque gray
+    alpha: 0.3               # 0.0 = transparent cut-through, 1.0 = fully opaque gray
     assembly_id: 1            # WP2 assembly_map.yaml key (same NBZ as inner_assembly)
 
   outer_bbox:
     enabled: true
-    color: "#FF504D"          # red-orange
-    alpha: 0.80               # tube opacity (only used when wireframe: false)
+    color: "#000000"          # red-orange
+    alpha: 1.00               # tube opacity (only used when wireframe: false)
     wireframe: true           # true = draw edges as tubes; false = solid transparent faces
     prism_scale: 1.0          # scale factor applied to WP2 prism bounds (1.0 = exact prism)
 
   solar_binary_mask:
     enabled: true
-    color_on: "#aaaaaa"
-    alpha: 1.0                # always opaque on selected faces; non-selected show aeroshell
+    color_on: "#F39C12"
+    alpha: 0.8                # always opaque on selected faces; non-selected show aeroshell
 
   solar_shading:
     enabled: true
-    colormap: "solar_quality"  # custom: navy→blue→teal→lime→gold→orange→cream (physical solar map)
-    alpha: 0.90               # blend strength over aeroshell base color
+    colormap: "Greys_r"        # any matplotlib colormap name — Greys_r = white (shadow) → black (sun)
+    alpha: 0.70               # blend strength over aeroshell base color
     vmin: 0.0                 # illumination quality range (cos angle)
     vmax: 1.0
 
