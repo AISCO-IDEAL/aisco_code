@@ -400,8 +400,12 @@ export function initMeshViewer(containerEl) {
         camera.updateProjectionMatrix();
         controls.target.set(0, 0, 0);
         camera.quaternion.identity();
+        // Suppress the callback so framing a newly-loaded mesh never broadcasts
+        // the reset view to a synced viewer (would clobber the user's camera).
+        suppressControlsCallback = true;
         controls.update();
-        // Force TrackballControls to sync its internal state with the camera
+        suppressControlsCallback = false;
+        // Force TrackballControls to sync its internal state with the camera.
         const currentState = getViewState();
         setViewState(currentState);
     }

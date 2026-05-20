@@ -283,7 +283,7 @@
     const isLive = pipeline === "live";
     const LAUNCHER_API = "/launcher/api";
     const VIEWER_API = "/viewer/api";
-    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260520_1";
+    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260521_1";
     const PANEL_VISIBILITY_DEFAULTS = {{ panel_visibility_defaults_json | safe }};
     const PANEL_DEFAULTS = PANEL_VISIBILITY_DEFAULTS.launcher;
     const modeKey = isLive ? "live" : "completed";
@@ -348,6 +348,12 @@
     // Shared play interval used when epoch-sync is active
     let syncPlayInterval = null;
 
+    // Persistent user-controlled camera states, updated by onControlsChange.
+    // Restored after each epoch load so the camera never jumps to a stale
+    // snapshot captured before an async load started.
+    let primaryUserView = null;
+    let rightPanelUserView = null;
+
     let availableItems = [];   // all items with data, in priority order
     let activeRightLabel = null; // currently selected label
     let latestArtifactData = null;
@@ -374,14 +380,15 @@
     function loadPrimaryGlb() {
         if (!primaryGlbFiles.length) return;
         const file = primaryGlbFiles[primaryGlbIdx];
-        const prevView = primaryGlbViewer ? primaryGlbViewer.getViewState() : null;
 
         import(MESH_VIEWER_MODULE).then(function (mod) {
             if (!primaryGlbViewer) {
                 primaryGlbViewer = mod.initMeshViewer(primaryGlbMeshBox);
                 primaryGlbViewer.setGlbControlsHost(primaryGlbControls);
                 primaryGlbViewer.setOnControlsChange(function (vs) {
+                    primaryUserView = vs;
                     if (cameraSyncToggle.checked && rightPanelViewer) {
+                        rightPanelUserView = vs;
                         rightPanelViewer.setViewState(vs);
                     }
                 });
@@ -394,7 +401,7 @@
                     const vc = info && info.hasVertexColors ? "yes" : "no";
                     primaryGlbStatus.textContent =
                         file.name + " (" + (primaryGlbIdx + 1) + "/" + primaryGlbFiles.length + ") \u00b7 VC:" + vc;
-                    if (prevView) primaryGlbViewer.setViewState(prevView);
+                    if (primaryUserView) primaryGlbViewer.setViewState(primaryUserView);
                 },
                 function (err) {
                     primaryGlbPlaceholder.style.display = "none";
@@ -443,6 +450,11 @@
         rightPanelIdx = Math.round(pct * (rightPanelFiles.length - 1));
         rightPanelSlider.value = String(rightPanelIdx);
         paintSlider(rightPanelSlider);
+        // Ensure the right panel restores to the primary's current camera after load.
+        if (primaryGlbViewer) {
+            var vs = primaryGlbViewer.getViewState();
+            if (vs) rightPanelUserView = vs;
+        }
         loadRightPanel();
     }
 
@@ -561,20 +573,24 @@
     function loadRightPanel() {
         if (!rightPanelFiles.length) return;
         var file = rightPanelFiles[rightPanelIdx] || rightPanelFiles[0];
-        var prevView = rightPanelViewer ? rightPanelViewer.getViewState() : null;
 
         import(MESH_VIEWER_MODULE).then(function (mod) {
             if (!rightPanelViewer) {
                 rightPanelViewer = mod.initMeshViewer(rightPanelMeshBox);
                 rightPanelViewer.setGlbControlsHost(rightPanelGlbControls);
                 rightPanelViewer.setOnControlsChange(function (vs) {
+                    rightPanelUserView = vs;
                     if (cameraSyncToggle.checked && primaryGlbViewer) {
+                        primaryUserView = vs;
                         primaryGlbViewer.setViewState(vs);
                     }
                 });
                 if (cameraSyncToggle.checked && primaryGlbViewer) {
                     var vs = primaryGlbViewer.getViewState();
-                    if (vs) rightPanelViewer.setViewState(vs);
+                    if (vs) {
+                        rightPanelViewer.setViewState(vs);
+                        rightPanelUserView = vs;
+                    }
                 }
             }
             rightPanelViewer.loadMesh(
@@ -585,7 +601,7 @@
                     var vc = info && info.hasVertexColors ? "yes" : "no";
                     rightPanelStatus.textContent =
                         file.name + " (" + (rightPanelIdx + 1) + "/" + rightPanelFiles.length + ") \u00b7 VC:" + vc;
-                    if (prevView) rightPanelViewer.setViewState(prevView);
+                    if (rightPanelUserView) rightPanelViewer.setViewState(rightPanelUserView);
                 },
                 function (err) {
                     rightPanelPlaceholder.style.display = "none";
@@ -773,10 +789,13 @@
             if (syncPlayInterval) { stopSyncedPlay(); }
             return;
         }
-        // Sync camera
+        // Sync camera: copy primary's view to the right panel and persist it
         if (primaryGlbViewer && rightPanelViewer) {
             var vs = primaryGlbViewer.getViewState();
-            if (vs) rightPanelViewer.setViewState(vs);
+            if (vs) {
+                rightPanelViewer.setViewState(vs);
+                rightPanelUserView = vs;
+            }
         }
         // Sync epoch position: snap right panel to match primary
         syncRightEpochToPrimary();
