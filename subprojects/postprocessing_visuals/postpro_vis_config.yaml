@@ -19,12 +19,13 @@ layers:
     alpha: 1.0
     fallback_wp2: true        # load from WP2 cadquery when epoch PLY is absent
     assembly_id: 1            # WP2 assembly_map.yaml key
+    full_wheels: true         # replace cut-off wheel geometry with full cylinders
 
   windshield:
-    enabled: true             # vision NBZ (driver sightline frustum) from WP2
+    enabled: true             # bake vision-cone face mask onto aeroshell (wp3_vision_cone)
     color: "#4FC3F7"          # sky blue
     alpha: 0.40
-    assembly_id: 1            # WP2 assembly_map.yaml key
+    assembly_id: 1            # WP2 assembly_map.yaml key (same NBZ as inner_assembly)
 
   outer_bbox:
     enabled: false            # disabled by default — enable to inspect bounding box
@@ -111,6 +112,7 @@ solar:
 output:
   output_dir: "/cluster/work/fuge/AISCO/wp9/aeroshell_png"
   filename_prefix: "aeroshell"   # saved as {prefix}_{name}_{view}.png
+  save_glb: true                 # also export a .glb scene file (one per run, all layers)
 
 # ---------------------------------------------------------------------------
 # Legend overlay
