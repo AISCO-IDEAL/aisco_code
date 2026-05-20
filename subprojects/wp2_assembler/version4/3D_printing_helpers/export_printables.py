@@ -11,9 +11,11 @@ import argparse
 import json
 import re
 import sys
+import zipfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
+from xml.sax.saxutils import escape
 
 try:
     import yaml  # type: ignore[import-not-found]
@@ -464,6 +466,7 @@ def _cleanup_multicolor_dir(multicolor_dir: Path) -> None:
     for stale_name in (
         "final_multicolor_real.glb",
         "final_multicolor_real.ply",
+        "multicolor.3mf",
         "assembly_overlap.stl",
         "mesh.stl",
         "inner_assembly.stl",
@@ -630,6 +633,153 @@ def _export_mesh(mesh: Any, path: Path, scale_factor: float) -> None:
     scaled = _scaled_mesh(mesh, scale_factor)
     scaled.export(str(path))
 
+
+def _face_mask_from_vertex_colors(mesh: Any, mode: str) -> Any | None:
+    np = _require("numpy")
+    colors = getattr(mesh.visual, "vertex_colors", None)
+    if colors is None or len(colors) == 0:
+        return None
+    face_rgb = np.asarray(colors, dtype=float)[mesh.faces, :3].mean(axis=1)
+    if mode == "green":
+        mask = face_rgb[:, 1] > face_rgb[:, 0]
+    elif mode == "red":
+        mask = (face_rgb[:, 0] > face_rgb[:, 1]) & (face_rgb[:, 0] > face_rgb[:, 2])
+    else:
+        raise ValueError(f"Unknown color mask mode: {mode}")
+    return mask
+
+
+def _submesh_by_face_mask(mesh: Any, mask: Any) -> Any | None:
+    face_ids = [int(i) for i, ok in enumerate(mask) if bool(ok)]
+    if not face_ids:
+        return None
+    return mesh.submesh([face_ids], append=True, repair=False)
+
+
+def _raised_surface_region(surface: Any, height_mm: float) -> Any:
+    np = _require("numpy")
+    trimesh = _require("trimesh")
+    vertices = np.asarray(surface.vertices, dtype=float)
+    faces = np.asarray(surface.faces, dtype=np.int64)
+    normals = np.asarray(surface.vertex_normals, dtype=float)
+    normal_lengths = np.linalg.norm(normals, axis=1)
+    bad_normals = normal_lengths <= 1e-12
+    if bool(np.any(bad_normals)):
+        center = vertices.mean(axis=0)
+        fallback = vertices - center
+        fallback_lengths = np.linalg.norm(fallback, axis=1)
+        fallback_lengths[fallback_lengths <= 1e-12] = 1.0
+        fallback = fallback / fallback_lengths[:, None]
+        normals[bad_normals] = fallback[bad_normals]
+        normal_lengths = np.linalg.norm(normals, axis=1)
+    normals = normals / normal_lengths[:, None]
+
+    n_vertices = len(vertices)
+    bottom = vertices.copy()
+    top = vertices + normals * float(height_mm)
+    out_vertices = np.vstack([bottom, top])
+    out_faces: list[list[int]] = []
+
+    for a, b, c in faces:
+        out_faces.append([int(a + n_vertices), int(b + n_vertices), int(c + n_vertices)])
+        out_faces.append([int(c), int(b), int(a)])
+
+    edge_counts: dict[tuple[int, int], int] = {}
+    edge_dirs: dict[tuple[int, int], tuple[int, int]] = {}
+    for a, b, c in faces:
+        for start, end in ((int(a), int(b)), (int(b), int(c)), (int(c), int(a))):
+            key = (start, end) if start < end else (end, start)
+            edge_counts[key] = edge_counts.get(key, 0) + 1
+            edge_dirs[key] = (start, end)
+
+    for key, count in edge_counts.items():
+        if count != 1:
+            continue
+        start, end = edge_dirs[key]
+        start_top = start + n_vertices
+        end_top = end + n_vertices
+        out_faces.append([start, end, end_top])
+        out_faces.append([start, end_top, start_top])
+
+    return trimesh.Trimesh(vertices=out_vertices, faces=np.asarray(out_faces, dtype=np.int64), process=False)
+
+
+def _extract_raised_color_region(mesh: Any, mode: str, height_mm: float) -> tuple[Any | None, str]:
+    mask = _face_mask_from_vertex_colors(mesh, mode)
+    if mask is None:
+        return None, "skipped: source mesh has no vertex colors to decode"
+    selected_faces = int(mask.sum())
+    if selected_faces == 0:
+        return None, "computed: no selected faces found"
+    surface = _submesh_by_face_mask(mesh, mask)
+    if surface is None:
+        return None, "computed: no selected faces found"
+    raised = _raised_surface_region(surface, height_mm)
+    return raised, f"computed: {selected_faces} selected faces embossed by {height_mm:g} model mm"
+
+
+def _mesh_to_3mf_object(mesh: Any, object_id: int, material_index: int, name: str) -> str:
+    vertices = _scaled_mesh(mesh, 1.0).vertices
+    faces = _scaled_mesh(mesh, 1.0).faces
+    lines = [f'    <object id="{object_id}" type="model" name="{escape(name)}" pid="1" pindex="{material_index}">']
+    lines.append("      <mesh>")
+    lines.append("        <vertices>")
+    for x, y, z in vertices:
+        lines.append(f'          <vertex x="{float(x):.9g}" y="{float(y):.9g}" z="{float(z):.9g}" />')
+    lines.append("        </vertices>")
+    lines.append("        <triangles>")
+    for v1, v2, v3 in faces:
+        lines.append(f'          <triangle v1="{int(v1)}" v2="{int(v2)}" v3="{int(v3)}" />')
+    lines.append("        </triangles>")
+    lines.append("      </mesh>")
+    lines.append("    </object>")
+    return "\n".join(lines)
+
+
+def _export_multicolor_3mf(parts: list[tuple[str, Any, str]], path: Path, scale_factor: float) -> None:
+    scaled_parts = [(name, _scaled_mesh(mesh, scale_factor), color) for name, mesh, color in parts]
+    material_lines = [
+        f'      <base name="{escape(name)}" displaycolor="{color}" />'
+        for name, _mesh, color in scaled_parts
+    ]
+    object_lines = [
+        _mesh_to_3mf_object(mesh, object_id=index + 1, material_index=index, name=name)
+        for index, (name, mesh, _color) in enumerate(scaled_parts)
+    ]
+    build_lines = [f'    <item objectid="{index + 1}" />' for index in range(len(scaled_parts))]
+    model = "\n".join([
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">',
+        '  <metadata name="Title">AISCO multicolor printable</metadata>',
+        '  <resources>',
+        '    <basematerials id="1">',
+        *material_lines,
+        '    </basematerials>',
+        *object_lines,
+        '  </resources>',
+        '  <build>',
+        *build_lines,
+        '  </build>',
+        '</model>',
+        "",
+    ])
+    content_types = '''<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml" />
+  <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml" />
+</Types>
+'''
+    rels = '''<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" />
+</Relationships>
+'''
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", content_types)
+        archive.writestr("_rels/.rels", rels)
+        archive.writestr("3D/3dmodel.model", model)
+
 def _colored(mesh: Any, color: tuple[int, int, int, int]) -> Any:
     copy = mesh.copy()
     copy.visual.vertex_colors = color
@@ -752,20 +902,33 @@ def export_printables(  # noqa: PLR0912, PLR0915
 
     vision_part = None
     report.assembly_overlap = "skipped: not part of current multicolor STL set"
+    color_region_height_mm = 24.0
     solar_mesh_path = find_solar_mesh(run_dir, solar_source, selected_epoch, search_parent_for_solar, solar_dir, selected_slot)
     solar_mesh = None
     if solar_mesh_path is not None:
-        _status(f"Including real solar/{solar_source} mesh: {solar_mesh_path}")
-        solar_mesh = _load_mesh(solar_mesh_path)
-        report.solar_region = f"included real solar/{solar_source} mesh for selected epoch/slot: {solar_mesh_path}"
+        _status(f"Decoding real solar/{solar_source} color mask: {solar_mesh_path}")
+        solar_source_mesh = _load_mesh(solar_mesh_path)
+        solar_mesh, solar_msg = _extract_raised_color_region(solar_source_mesh, "red", color_region_height_mm)
+        _status(f"Solar color region: {solar_msg}")
+        report.solar_region = (
+            f"included real solar/{solar_source} selected faces for selected epoch/slot: {solar_mesh_path}; {solar_msg}"
+        )
+        if solar_mesh is None:
+            report.warnings.append(f"Solar region was not exported because {solar_msg}")
     else:
         _status(f"No real solar/{solar_source} mesh found for selected epoch/slot")
 
     vision_mesh_path = find_solar_mesh(run_dir, "vision_cone_mask", selected_epoch, search_parent_for_solar, solar_dir, selected_slot)
     if vision_mesh_path is not None:
-        _status(f"Including real solar/vision_cone_mask mesh: {vision_mesh_path}")
-        vision_part = _load_mesh(vision_mesh_path)
-        report.vision_region = f"included real solar/vision_cone_mask mesh for selected epoch/slot: {vision_mesh_path}"
+        _status(f"Decoding real solar/vision_cone_mask color mask: {vision_mesh_path}")
+        vision_source_mesh = _load_mesh(vision_mesh_path)
+        vision_part, vision_msg = _extract_raised_color_region(vision_source_mesh, "green", color_region_height_mm)
+        _status(f"Vision color region: {vision_msg}")
+        report.vision_region = (
+            f"included real solar/vision_cone_mask selected faces for selected epoch/slot: {vision_mesh_path}; {vision_msg}"
+        )
+        if vision_part is None:
+            report.warnings.append(f"Vision region was not exported because {vision_msg}")
     else:
         _status("No real solar/vision_cone_mask mesh found for selected epoch/slot")
         report.vision_region = "missing: no real solar/vision_cone_mask mesh found for selected epoch/slot"
@@ -792,6 +955,19 @@ def export_printables(  # noqa: PLR0912, PLR0915
         _status(f"Writing {vision_path.name}")
         _export_mesh(vision_part, vision_path, scale_factor)
         report.outputs["multicolor_vision_cone_intersection"] = str(vision_path)
+
+    multicolor_parts = [
+        ("body", body, "#D8D8D8"),
+        ("inner_assembly", inner_mesh, "#303030"),
+    ]
+    if solar_mesh is not None:
+        multicolor_parts.append(("solar_placement", solar_mesh, "#E53935"))
+    if vision_part is not None:
+        multicolor_parts.append(("vision_cone_intersection", vision_part, "#00A060"))
+    multicolor_3mf_path = multicolor_dir / "multicolor.3mf"
+    _status(f"Writing {multicolor_3mf_path.name}")
+    _export_multicolor_3mf(multicolor_parts, multicolor_3mf_path, scale_factor)
+    report.outputs["multicolor_3mf"] = str(multicolor_3mf_path)
 
     shell_source = single_color_dir / "removable_shell_source.stl"
     _status(f"Writing {shell_source.name}")
