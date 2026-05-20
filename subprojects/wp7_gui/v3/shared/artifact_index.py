@@ -56,7 +56,7 @@ def list_artifacts(run_dir: Path, storage_root: Path) -> dict[str, object]:  # n
 
     gifs = []
     if mesh_assembly_dir is not None and mesh_assembly_dir.exists():
-        for p in sorted(mesh_assembly_dir.glob("*.gif"), key=lambda f: f.stat().st_mtime, reverse=True):
+        for p in sorted(mesh_assembly_dir.rglob("*.gif"), key=lambda f: f.stat().st_mtime, reverse=True):
             rel = _rel(p)
             gifs.append(
                 {
@@ -107,9 +107,9 @@ def list_artifacts(run_dir: Path, storage_root: Path) -> dict[str, object]:  # n
     # Some runs write renderable PLYs under mesh_assembly_v4 (or sibling candidates)
     # instead of meshes/. Include them so launcher/output and viewer/archive can render.
     if mesh_assembly_dir is not None and mesh_assembly_dir.exists():
-        for p in sorted(mesh_assembly_dir.glob("*.ply")):
+        for p in sorted(mesh_assembly_dir.rglob("*.ply")):
             _append_mesh_file(p, meshes)
-        for p in sorted(mesh_assembly_dir.glob("*.glb")):
+        for p in sorted(mesh_assembly_dir.rglob("*.glb")):
             _append_mesh_file(p, meshes_glb)
 
     meshes.sort(key=lambda m: cast(int, m["epoch"]) if isinstance(m.get("epoch"), int) else -1)

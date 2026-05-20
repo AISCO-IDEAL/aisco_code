@@ -18,8 +18,8 @@ _COMPLETED_MARKERS = ("Model optimisation completed.", "Completed job successful
 
 # Metrics extraction patterns from debug output
 _DRAG_PATTERN = re.compile(r"drag_value\s*:\s*([\d.eE+\-]+)")
-_SOLAR_PATTERN = re.compile(r"loss_value_watts\s*:\s*([\d.eE+\-]+)")
-_CRUISING_SPEED_PATTERN = re.compile(r"cruising_speed_ms\s*:\s*([\d.eE+\-]+)")
+_SOLAR_PATTERN = re.compile(r"(?:loss_value_watts|loss_value_raw)\s*:\s*([\d.eE+\-]+)")
+_CRUISING_SPEED_PATTERN = re.compile(r"(?:cruising_speed_ms|cruising_speed)\s*:\s*([\d.eE+\-]+)")
 
 
 def tail_log(log_path: Path, max_chars: int = 60_000) -> tuple[str, bool]:

@@ -507,6 +507,15 @@ class ModelLoader:
             )
 
         shearforce = self.shear_force_calculator.calculate_shear_force(mesh_verts, mesh_faces)
+        # Expose diagnostics so WP4 debug manager can print GAOT metrics to stdout.
+        self._last_diagnostics = {
+            "drag_value": float(int_drag_f.detach().item()),
+            "drag_is_nan": bool(torch.isnan(int_drag_f).any()),
+            "drag_is_inf": bool(torch.isinf(int_drag_f).any()),
+            "n_input_vertices": int(mesh_verts.shape[0]),
+            "n_input_faces": int(mesh_faces.shape[0]),
+            "normals_flipped_count": int(getattr(self, "_normals_flipped_count", 0)),
+        }
         wandb.log({"cfd/Shearforce:": shearforce}, step=self.epoch_name)
         wandb.log({"cfd/int_drag_f": int_drag_f}, step=self.epoch_name)
         return int_drag_f + shearforce
