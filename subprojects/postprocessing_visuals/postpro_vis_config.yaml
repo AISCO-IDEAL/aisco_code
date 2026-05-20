@@ -20,6 +20,7 @@ layers:
     fallback_wp2: true        # load from WP2 cadquery when epoch PLY is absent
     assembly_id: 1            # WP2 assembly_map.yaml key
     full_wheels: true         # replace cut-off wheel geometry with full cylinders
+    z_fight_scale: 1.0       # uniform scale toward centroid to prevent Z-fighting with aeroshell (< 1.0 = smaller)
 
   windshield:
     enabled: true             # bake vision-cone face mask onto aeroshell (wp3_vision_cone)
@@ -37,12 +38,12 @@ layers:
   solar_binary_mask:
     enabled: true
     color_on: "#F39C12"
-    alpha: 0.8                # always opaque on selected faces; non-selected show aeroshell
+    alpha: 1.0                # always opaque on selected faces; non-selected show aeroshell
 
   solar_shading:
     enabled: true
-    colormap: "Greys_r"        # any matplotlib colormap name — Greys_r = white (shadow) → black (sun)
-    alpha: 0.20               # blend strength over aeroshell base color
+    colormap: "Wistia"        # any matplotlib colormap name — Greys_r = white (shadow) → black (sun)
+    alpha: 0.40               # blend strength over aeroshell base color
     vmin: 0.0                 # illumination quality range (cos angle)
     vmax: 1.0
 
@@ -55,33 +56,33 @@ cameras:
   - name: front_iso
     azim_deg: -55.0
     elev_deg: 22.0
-    distance_mult: 1.6
+    distance_mult: 1.0
 
-  - name: rear_iso
-    azim_deg: 125.0
-    elev_deg: 18.0
-    distance_mult: 1.6
+  # - name: rear_iso
+  #   azim_deg: 125.0
+  #   elev_deg: 18.0
+  #   distance_mult: 1.6
 
-  - name: side_left
-    azim_deg: -90.0
-    elev_deg: 5.0
-    distance_mult: 1.7
+  # - name: side_left
+  #   azim_deg: -90.0
+  #   elev_deg: 5.0
+  #   distance_mult: 1.7
 
-  - name: top_down
-    azim_deg: -90.0
-    elev_deg: 82.0
-    distance_mult: 1.5
+  # - name: top_down
+  #   azim_deg: -90.0
+  #   elev_deg: 82.0
+  #   distance_mult: 1.5
 
-  - name: bottom_up_straight
-    azim_deg: 90.0
-    elev_deg: 90.0
-    distance_mult: 1.5
+  # - name: bottom_up_straight
+  #   azim_deg: 90.0
+  #   elev_deg: 90.0
+  #   distance_mult: 1.5
 
 # ---------------------------------------------------------------------------
 # Rendering
 # ---------------------------------------------------------------------------
-image_width: 1920
-image_height: 1080
+image_width: 3840
+image_height: 2160
 no_background: true
 background_color: "#23283E"   # AISCO dark navy
 
@@ -90,7 +91,7 @@ background_color: "#23283E"   # AISCO dark navy
 # Mesh extraction (used only in .pth compute mode)
 # ---------------------------------------------------------------------------
 compute:
-  resolution: 64              # marching-cubes grid resolution per axis
+  resolution: 128              # marching-cubes grid resolution per axis
   bbox_padding: 1.25          # expand each prism face by this many mm (Z floor never padded)
   prism_scale: 1.0            # scale WP2 outer-prism bounds before mesh extraction (1.0 = exact)
 
@@ -118,6 +119,6 @@ output:
 # Legend overlay
 # ---------------------------------------------------------------------------
 legend:
-  enabled: true             # draw layer legend on each PNG
+  enabled: false             # draw layer legend on each PNG
   position: bottom_left     # bottom_left | bottom_right | top_left | top_right
   filename_prefix: "aeroshell"   # saved as {prefix}_{name}_{view}.png

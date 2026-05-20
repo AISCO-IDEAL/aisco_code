@@ -772,20 +772,11 @@ def _build_flat_mesh_with_colors(
     faces = base_mesh.faces
     n_faces = len(faces)
 
-    # Front faces: each triangle gets its own 3 vertices (flat shading trick)
-    flat_verts_front = verts[faces.reshape(-1)]  # (F*3, 3)
-    flat_faces_front = np.arange(n_faces * 3, dtype=np.int64).reshape(-1, 3)
-
-    # Back faces: same vertices, reversed winding so back-side is visible
-    flat_verts_back = flat_verts_front.copy()
-    flat_faces_back = flat_faces_front[:, ::-1].copy() + n_faces * 3
-
-    flat_verts = np.concatenate([flat_verts_front, flat_verts_back], axis=0)
-    flat_faces = np.concatenate([flat_faces_front, flat_faces_back], axis=0)
+    flat_verts = verts[faces.reshape(-1)]  # (F*3, 3)
+    flat_faces = np.arange(n_faces * 3, dtype=np.int64).reshape(-1, 3)
 
     if face_colors.ndim == 2 and face_colors.shape[1] in (3, 4):
-        vertex_colors_front = np.repeat(face_colors, 3, axis=0)
-        vertex_colors = np.concatenate([vertex_colors_front, vertex_colors_front], axis=0)
+        vertex_colors = np.repeat(face_colors, 3, axis=0)
     else:
         raise ValueError(f"face_colors must be (F, 3) or (F, 4), got {face_colors.shape}")
 
@@ -903,6 +894,7 @@ def render_scene(
             pr_mesh = pyrender.Mesh.from_trimesh(mesh, smooth=False)
             for prim in pr_mesh.primitives:
                 prim.material.alphaMode = "BLEND"
+                prim.material.doubleSided = True
         scene.add(pr_mesh)
 
     aspect = renderer.viewport_width / renderer.viewport_height
@@ -956,6 +948,7 @@ def _build_render_list(
         color = _get(cfg, "layers", layer_name, "color", default=default_hex)
         alpha = float(_get(cfg, "layers", layer_name, "alpha", default=default_alpha))
         return _parse_color_rgba_float(color, alpha=alpha)
+        
 
     # --- Outer bbox: solid face or wireframe depending on config ---
     if _layer_enabled("outer_bbox") and outer_bbox is not None:
@@ -974,12 +967,27 @@ def _build_render_list(
             rgba = _layer_rgba("aeroshell", "#33FFFF", 0.82)
             render_list.append((aeroshell_mesh, rgba))
 
-    # --- Inner assembly last so it is always drawn on top (no Z-fighting) ---
+    # --- Inner assembly last, scaled toward its centroid so it is geometrically
+    # inside the aeroshell shell — eliminates Z-fighting regardless of GPU precision.
     if _layer_enabled("inner_assembly") and inner_assembly is not None:
         rgba = _layer_rgba("inner_assembly", "#F39C12", 1.0)
-        render_list.append((inner_assembly, rgba))
+        scale = float(_get(cfg, "layers", "inner_assembly", "z_fight_scale", default=0.98))
+        render_list.append((_shrink_mesh_inward(inner_assembly, scale), rgba))
 
     return render_list
+
+
+def _shrink_mesh_inward(mesh: trimesh.Trimesh, scale: float = 0.98) -> trimesh.Trimesh:
+    """Return a copy of *mesh* uniformly scaled toward its centroid by *scale*.
+
+    A scale < 1.0 shrinks the assembly uniformly so every surface sits strictly
+    inside the aeroshell shell, eliminating Z-fighting without distorting the
+    shape (unlike per-vertex-normal displacement which breaks on non-convex parts).
+    """
+    m = mesh.copy()
+    centroid = m.vertices.mean(axis=0)
+    m.vertices = centroid + (m.vertices - centroid) * scale
+    return m
 
 
 # ---------------------------------------------------------------------------
