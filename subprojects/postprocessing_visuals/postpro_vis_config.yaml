@@ -24,7 +24,7 @@ layers:
   windshield:
     enabled: true             # bake vision-cone face mask onto aeroshell (wp3_vision_cone)
     color: "#4FC3F7"          # sky blue
-    alpha: 0.40
+    alpha: 0.65               # increased from 0.40 — more visible against solar shading
     assembly_id: 1            # WP2 assembly_map.yaml key (same NBZ as inner_assembly)
 
   outer_bbox:

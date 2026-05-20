@@ -842,8 +842,15 @@ def render_scene(
             mat = _make_material(color_rgba)
             pr_mesh = pyrender.Mesh.from_trimesh(mesh, material=mat, smooth=True)
         else:
-            # Use embedded vertex colors (flat solar overlay)
-            pr_mesh = pyrender.Mesh.from_trimesh(mesh, smooth=False)
+            # Vertex-colored mesh (solar-baked aeroshell): force BLEND so alpha
+            # channel in face colors is honoured and inner assembly shows through.
+            mat_blend = pyrender.MetallicRoughnessMaterial(
+                metallicFactor=0.0,
+                roughnessFactor=0.65,
+                alphaMode="BLEND",
+                doubleSided=True,
+            )
+            pr_mesh = pyrender.Mesh.from_trimesh(mesh, material=mat_blend, smooth=False)
         scene.add(pr_mesh)
 
     aspect = renderer.viewport_width / renderer.viewport_height
@@ -856,7 +863,7 @@ def render_scene(
     fill_pose[:3, 3] = cam_pose[:3, 3] + np.array([0.0, 0.0, 800.0])
     scene.add(pyrender.DirectionalLight(color=np.ones(3), intensity=1.2), pose=fill_pose)
 
-    color, depth = renderer.render(scene)
+    color, depth = renderer.render(scene, flags=pyrender.RenderFlags.RGBA)
     return color[:, :, :3], depth
 
 
@@ -1006,6 +1013,38 @@ def _bake_solar_into_aeroshell(
 # WP2 assembly fallback loaders (cadquery tessellation → trimesh)
 # Used when epoch PLY artifacts are absent.
 # ---------------------------------------------------------------------------
+
+
+def _load_inner_assembly_from_glb(run_dir: Path) -> trimesh.Trimesh | None:
+    """Load ``inner_assembly`` geometry from any GLB in the run's mesh_assembly_v4 dir.
+
+    All slots share the same WP2 inner assembly geometry, so the first GLB
+    found is used regardless of epoch or slot.
+
+    Args:
+        run_dir: WP4 run root (parent of ``mesh_assembly_v4/``).
+
+    Returns:
+        The ``inner_assembly`` sub-mesh, or None if not found / failed.
+    """
+    glb_files = sorted((run_dir / "mesh_assembly_v4").glob("**/*.glb"))
+    if not glb_files:
+        return None
+    try:
+        scene = trimesh.load(str(glb_files[0]), force="scene")
+        if not hasattr(scene, "geometry") or "inner_assembly" not in scene.geometry:
+            return None
+        mesh = scene.geometry["inner_assembly"]
+        print(f"[aeroshell_png] inner_assembly: {len(mesh.vertices):,} verts from GLB ({glb_files[0].name})")
+    except Exception as exc:
+        warnings.warn(
+            f"[aeroshell_png] GLB inner_assembly load failed: {exc}. Falling back to WP2.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+    else:
+        return mesh
 
 
 def _load_assembly_from_wp2(assembly_id: int, tol: float = 2.0, atol: float = 0.4) -> trimesh.Trimesh | None:
@@ -1374,7 +1413,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # orchestrator — large by desig
         run_dir_resolved = ckpt_path.parent.parent
         if epoch_num is not None and _get(cfg, "layers", "inner_assembly", "enabled", default=True):
             inner_assembly = load_inner_assembly(run_dir_resolved, epoch_num)
-            # WP2 fallback when PLY is absent
+            # GLB fallback (any slot from mesh_assembly_v4)
+            if inner_assembly is None:
+                inner_assembly = _load_inner_assembly_from_glb(run_dir_resolved)
+            # WP2 cadquery fallback when GLB is also absent
             if inner_assembly is None and bool(_get(cfg, "layers", "inner_assembly", "fallback_wp2", default=False)):
                 _asm_id = int(_get(cfg, "layers", "inner_assembly", "assembly_id", default=args.assembly_id))
                 inner_assembly = _load_assembly_from_wp2(_asm_id)
@@ -1442,9 +1484,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # orchestrator — large by desig
         inner_parts = [c for c in components_sorted[1:] if len(c.vertices) > 12]
         if inner_parts and bool(_get(cfg, "layers", "inner_assembly", "enabled", default=True)):
             inner_assembly = trimesh.util.concatenate(inner_parts)
-        elif not inner_parts and bool(_get(cfg, "layers", "inner_assembly", "enabled", default=True)) and bool(
-            _get(cfg, "layers", "inner_assembly", "fallback_wp2", default=False)
-        ):
+        elif not inner_parts and bool(_get(cfg, "layers", "inner_assembly", "enabled", default=True)):
+            # GLB fallback
+            inner_assembly = _load_inner_assembly_from_glb(run_dir_resolved)
+            # WP2 cadquery fallback
+            if inner_assembly is None and bool(_get(cfg, "layers", "inner_assembly", "fallback_wp2", default=False)) and bool(
+                _get(cfg, "layers", "inner_assembly", "enabled", default=True)
+            ):
                 _asm_id = int(_get(cfg, "layers", "inner_assembly", "assembly_id", default=args.assembly_id))
                 inner_assembly = _load_assembly_from_wp2(_asm_id)
                 if inner_assembly is not None:
