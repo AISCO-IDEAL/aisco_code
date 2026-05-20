@@ -14,7 +14,6 @@ import yaml
 
 from subprojects.wp7_gui.v3.core.settings import SETTINGS
 
-
 _DEFAULT_GUI_THEME: dict[str, Any] = {
     "fonts": {
         "ui": "Questrial, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
