@@ -166,8 +166,8 @@ visual_types:
   aero:
     cp_field:
       enabled: true
-      colormap: "jet"     # CFD AI colormap
-      interval: 50
+      colormap: "jet"     # diverging; aligned with corporate red/light-blue contrast
+      interval: 1
       alpha_enabled: null
       coordinate_system: true
       vmin: -2.0            # fixed range for cross-epoch comparability
@@ -177,7 +177,7 @@ visual_types:
     gradient:
       enabled: false       # aalthaus: did this ever work?
       colormap: "RdBu_r"
-      interval: 50
+      interval: 1
       alpha_enabled: null
       coordinate_system: null
       vmin: null
@@ -206,7 +206,7 @@ visual_types:
     selection:
       enabled: true
       colormap: "RdBu_r"  # [0,1] bounded selection weight
-      interval: 50
+      interval: 1
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0

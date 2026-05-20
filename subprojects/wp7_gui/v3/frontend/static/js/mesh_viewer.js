@@ -46,7 +46,7 @@ export function initMeshViewer(containerEl) {
     fetch("/viewer/api/vis-config")
         .then((r) => r.ok ? r.json() : {})
         .then((cfg) => { _visConfig = cfg || {}; })
-        .catch(() => {});
+        .catch(() => { });
 
     const camera = new PerspectiveCamera(50, containerEl.clientWidth / containerEl.clientHeight, 0.1, 1000);
     camera.position.set(0, 0, 3);
@@ -134,11 +134,30 @@ export function initMeshViewer(containerEl) {
         slider.style.accentColor = sliderAccent;
     }
 
-    scene.add(new HemisphereLight(0xffffff, 0x444444, 1.0));
-    scene.add(new AmbientLight(0xffffff, 0.6));
+    const hemisphereLight = new HemisphereLight(0xffffff, 0x444444, 1.0);
+    scene.add(hemisphereLight);
+    const ambientLight = new AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
     const dl = new DirectionalLight(0xffffff, 0.8);
     dl.position.set(5, 10, 7);
+    dl.target.position.set(0, 0, 0);
     scene.add(dl);
+    scene.add(dl.target);
+
+    function applyLightingPreset(meshType) {
+        if (meshType === "ply") {
+            // Brighter camera-key lighting for assembly PLY readability.
+            hemisphereLight.intensity = 0.42;
+            ambientLight.intensity = 0.28;
+            dl.intensity = 2.0;
+            return;
+        }
+        hemisphereLight.intensity = 1.0;
+        ambientLight.intensity = 0.6;
+        dl.intensity = 0.8;
+    }
+
+    applyLightingPreset("glb");
 
     window.addEventListener("resize", () => {
         camera.aspect = containerEl.clientWidth / containerEl.clientHeight;
@@ -152,6 +171,14 @@ export function initMeshViewer(containerEl) {
     (function animate() {
         requestAnimationFrame(animate);
         controls.update();
+
+        // For PLY (assembly) views, keep key light locked to camera direction.
+        if (currentMeshType === "ply") {
+            dl.position.copy(camera.position);
+            dl.target.position.copy(controls.target);
+            dl.target.updateMatrixWorld();
+        }
+
         renderer.render(scene, camera);
     })();
 
@@ -411,6 +438,8 @@ export function initMeshViewer(containerEl) {
     function loadMesh(url, onLoad, onError) {
         const cleanPath = getUrlPath(url);
         if (cleanPath.endsWith(".glb")) {
+            currentMeshType = "glb";
+            applyLightingPreset("glb");
             new GLTFLoader().load(
                 url,
                 (gltf) => {
@@ -533,6 +562,8 @@ export function initMeshViewer(containerEl) {
         new PLYLoader().load(
             url,
             (geo) => {
+                currentMeshType = "ply";
+                applyLightingPreset("ply");
                 geo.computeVertexNormals();
                 geo.computeBoundingBox();
                 const center = new Vector3();

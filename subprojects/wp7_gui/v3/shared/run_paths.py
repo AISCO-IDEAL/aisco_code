@@ -35,25 +35,53 @@ def get_storage_root(
 
     Re-reads the file on every call (matches v2 behavior so toggling
     run_locally takes effect immediately).
+
+    Selection policy:
+    - run_locally=True  -> beast_storage_dir, then local_storage_dir
+    - run_locally=False -> storage_dir
     """
+    resolved: Path
     try:
         with general_config_path.open(encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
 
         run_locally_raw = cfg.get("general_info", {}).get("run_locally", False)
-        # yaml.safe_load returns a Python bool for well-formed YAML booleans
-        run_locally = run_locally_raw is True
+        # Accept both real booleans and legacy quoted strings from YAML files.
+        if isinstance(run_locally_raw, bool):
+            run_locally = run_locally_raw
+        else:
+            run_locally = str(run_locally_raw).strip().lower() in {"1", "true", "yes", "on"}
         storage = cfg.get("storage_paths", {})
 
-        raw = storage.get("local_storage_dir" if run_locally else "storage_dir", None)
+        key = "beast_storage_dir" if run_locally else "storage_dir"
+        raw = storage.get(key)
+        if raw is None and run_locally:
+            raw = storage.get("local_storage_dir")
         if raw is None:
             return (default_local if run_locally else default_bulk).resolve()
 
         root = Path(raw)
-        return (repo_parent / root).resolve() if not root.is_absolute() else root.resolve()
+        resolved = (repo_parent / root).resolve() if not root.is_absolute() else root.resolve()
+
+        # On local Beast workflows, some configs keep run_locally=False while
+        # storing outputs under beast_storage_dir. If the selected root is
+        # unavailable, transparently fall back to beast_storage_dir.
+        if resolved.exists():
+            return resolved
+
+        beast_raw = storage.get("beast_storage_dir")
+        if beast_raw is not None:
+            beast_root = Path(beast_raw)
+            beast_resolved = (
+                (repo_parent / beast_root).resolve() if not beast_root.is_absolute() else beast_root.resolve()
+            )
+            if beast_resolved.exists():
+                return beast_resolved
     except Exception as exc:
         LOGGER.warning("Config read error, using default storage root: %s", exc)
         return default_local.resolve()
+    else:
+        return resolved
 
 
 def default_storage_root() -> Path:
