@@ -29,7 +29,7 @@ active_configs:
 
 wandb_general:
   use_wandb: True # main_v1_1_one_model.py, total_loss.py
-  project_name: "temp_" # DEFAULT: "temp_" # main_v1_1_one_model.py: wandb.init(project=...)
+  project_name: "Alex-Rollout-Testing" # DEFAULT: "temp_" # main_v1_1_one_model.py: wandb.init(project=...)
   entity_name: "aisco"  # main_v1_1_one_model.py: wandb.init(entity=...)
   name: ""  # leave as ""; wandb.init(name=...): "": auto-generated wandb name is appended with _<SLURM_JOB_ID>
   use_renderer: True  # total_loss.py: general_config["wandb_general"].get("use_renderer", True)
@@ -42,7 +42,7 @@ vis_manager: "v2"
 storage_paths: # Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
   storage_dir: "/cluster/work/fuge/AISCO/temp_"  # DEFAULT: /cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage, used in main_v1_1_one_model.py, basic_MLP_v1.py, storage_utils.py
   local_storage_dir: "./local_storage_dir" # only used for testing on local machine, not on cluster  #  main_v1_1_one_model.py, storage_utils.py (when run_locally=True)
-  beast_storage_dir: "/home/aisco/AISCO/beast_sync_wp4" # only used for testing on local machine, not on cluster, used when run_locally=True  # main_v1_1_one_model.py, storage_utils.py (when run_locally=True)
+  beast_storage_dir: "/home/aisco/Documents/alex_testing" # only used for testing on local machine, not on cluster, used when run_locally=True  # main_v1_1_one_model.py, storage_utils.py (when run_locally=True)
 
 early_stopping:
   # Final path is auto-built as:

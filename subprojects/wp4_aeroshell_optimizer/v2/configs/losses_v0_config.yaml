@@ -304,10 +304,10 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
     cap_z_tolerance_mm: 0.5          # BbInnerV1: ensures the bottom of the wheel is masked out from the inner bb
   # v4.3 analytic specific:
   analytic_options:
-    penalty: "relu"  # "relu" (default) or "softplus"
+    penalty: "softplus"  # "relu" (default) or "softplus"
     softplus_beta: 0.0  # only used when penalty="softplus"
-    inner_margin: 0.0  # tighten upper bound: sdf_model <= sdf_inner - inner_margin
-    outer_margin: 0.0  # tighten lower bound: sdf_outer + outer_margin <= sdf_model
+    inner_margin: 20.0  # tighten upper bound: sdf_model <= sdf_inner - inner_margin
+    outer_margin: 20.0  # tighten lower bound: sdf_outer + outer_margin <= sdf_model
     inner_tolerance: 0.0  # GINN-style "satisfied" deadband on aggregated bb_inner L2 loss: clamp(loss - tol, 0). Stops λ from drifting once practically satisfied. 0 = disabled.
     outer_tolerance: 0.0  # same for bb_outer
     topk_fraction: 0.6  # (BbV5/BbV6) fraction of worst-violating points to include in loss reduction; 0.1 = top 10%
