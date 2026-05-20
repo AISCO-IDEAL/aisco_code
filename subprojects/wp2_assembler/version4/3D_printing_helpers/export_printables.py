@@ -477,6 +477,26 @@ def _cleanup_multicolor_dir(multicolor_dir: Path) -> None:
         if stale_path.exists():
             stale_path.unlink()
 
+
+def _cleanup_single_color_dir(single_color_dir: Path) -> None:
+    for stale_name in (
+        "plate_with_support.stl",
+        "inner_assembly.stl",
+        "mesh_with_cutouts.stl",
+        "single_print.3mf",
+        "removable_shell_source.stl",
+        "removable_shell_with_sockets.stl",
+        "inner_assembly_full_wheels.stl",
+        "wheel_repair_full_wheels.stl",
+        "seat_support.stl",
+        "support_plate.stl",
+        "plate_with_seat_support.stl",
+        "shell_socket_cutters.stl",
+    ):
+        stale_path = single_color_dir / stale_name
+        if stale_path.exists():
+            stale_path.unlink()
+
 def _is_cut_wheel_component(bounds: Any, extents: Any) -> bool:
     x_extent, y_extent, z_extent = (float(v) for v in extents)
     wheel_diameter_like = 350.0 <= x_extent <= 650.0 and 250.0 <= z_extent <= 650.0
@@ -552,23 +572,68 @@ def _make_box_mesh(center: Any, extents: Any) -> Any:
     return box
 
 
-def _mesh_based_supports(assembly: Any) -> tuple[Any, Any, Any]:
-    """Build a base plate and a simple seat support from existing assembly bounds."""
+def _make_cylinder_between(start: Any, end: Any, radius: float) -> Any:
+    np = _require("numpy")
+    trimesh = _require("trimesh")
+    start_point = np.asarray(start, dtype=float)
+    end_point = np.asarray(end, dtype=float)
+    vector = end_point - start_point
+    height = float(np.linalg.norm(vector))
+    if height <= 1e-9:
+        sphere = trimesh.creation.icosphere(radius=radius, subdivisions=1)
+        sphere.apply_translation(start_point)
+        return sphere
+    cylinder = trimesh.creation.cylinder(radius=float(radius), height=height, sections=18)
+    transform = trimesh.geometry.align_vectors([0.0, 0.0, 1.0], vector / height)
+    cylinder.apply_transform(transform)
+    cylinder.apply_translation((start_point + end_point) / 2.0)
+    return cylinder
+
+
+def _union_plate_with_support(plate: Any, support: Any) -> Any:
+    trimesh = _require("trimesh")
+    fallback = trimesh.util.concatenate([plate, support])
+    try:
+        union_parts = [plate, *support.split(only_watertight=False)]
+        unioned = trimesh.boolean.union(union_parts, check_volume=False)
+    except BaseException:
+        return fallback
+    if unioned is None or getattr(unioned, "is_empty", False):
+        return fallback
+    return unioned
+
+
+def _mesh_based_supports(assembly: Any, wheel_centers: list[Any]) -> tuple[Any, Any, Any]:
+    """Build a wheel-ground plate and a light support frame below the seat."""
     np = _require("numpy")
     trimesh = _require("trimesh")
     bounds = assembly.bounds
-    margin_xy = np.array([140.0, 140.0])
-    plate_thickness = 8.0
-    plate_z_center = float(bounds[0][2]) - plate_thickness / 2.0 - 4.0
-    plate_extents = np.array([
-        max(float(bounds[1][0] - bounds[0][0]) + 2.0 * margin_xy[0], 220.0),
-        max(float(bounds[1][1] - bounds[0][1]) + 2.0 * margin_xy[1], 220.0),
-        plate_thickness,
-    ])
+    wheel_radius = 557.0 / 2.0
+    ground_z = min((float(center[2]) - wheel_radius for center in wheel_centers), default=float(bounds[0][2]))
+    plate_thickness = 90.0
+    plate_margin = np.array([220.0, 180.0])
+
+    if wheel_centers:
+        wheel_xy = np.asarray([[float(center[0]), float(center[1])] for center in wheel_centers], dtype=float)
+        min_xy = wheel_xy.min(axis=0) - np.array([wheel_radius, 96.0 / 2.0]) - plate_margin
+        max_xy = wheel_xy.max(axis=0) + np.array([wheel_radius, 96.0 / 2.0]) + plate_margin
+        assembly_min_xy = np.asarray(bounds[0][:2], dtype=float) - np.array([80.0, 80.0])
+        assembly_max_xy = np.asarray(bounds[1][:2], dtype=float) + np.array([80.0, 80.0])
+        min_xy = np.minimum(min_xy, assembly_min_xy)
+        max_xy = np.maximum(max_xy, assembly_max_xy)
+    else:
+        min_xy = np.asarray(bounds[0][:2], dtype=float) - plate_margin
+        max_xy = np.asarray(bounds[1][:2], dtype=float) + plate_margin
+
     plate_center = np.array([
-        float((bounds[0][0] + bounds[1][0]) / 2.0),
-        float((bounds[0][1] + bounds[1][1]) / 2.0),
-        plate_z_center,
+        float((min_xy[0] + max_xy[0]) / 2.0),
+        float((min_xy[1] + max_xy[1]) / 2.0),
+        ground_z - plate_thickness / 2.0,
+    ])
+    plate_extents = np.array([
+        max(float(max_xy[0] - min_xy[0]), 600.0),
+        max(float(max_xy[1] - min_xy[1]), 420.0),
+        plate_thickness,
     ])
     plate = _make_box_mesh(plate_center, plate_extents)
 
@@ -576,24 +641,47 @@ def _mesh_based_supports(assembly: Any) -> tuple[Any, Any, Any]:
     seat_like = None
     for part, comp_bounds, extents in components:
         ordered = sorted(float(v) for v in extents)
-        wheel_like = 40.0 <= ordered[0] <= 180.0 and ordered[1] >= 250.0 and ordered[2] >= 350.0 and float(comp_bounds[0][2]) <= 80.0
-        if not wheel_like and (seat_like is None or float(comp_bounds[1][2]) > float(seat_like[1][1][2])):
+        wheel_like = 40.0 <= ordered[0] <= 180.0 and ordered[1] >= 250.0 and ordered[2] >= 350.0 and float(comp_bounds[0][2]) <= 160.0
+        if (
+            not wheel_like
+            and float(comp_bounds[0][2]) > ground_z + 260.0
+            and (seat_like is None or float(comp_bounds[1][2]) > float(seat_like[1][1][2]))
+        ):
             seat_like = (part, comp_bounds, extents)
     if seat_like is None:
-        seat_like = components[0]
+        seat_like = max(components, key=lambda item: float(item[1][1][2]))
 
     _part, seat_bounds, _extents = seat_like
-    support_top = float(seat_bounds[0][2])
-    support_bottom = float(bounds[0][2])
-    support_height = max(support_top - support_bottom, 20.0)
-    support_center = np.array([
-        float((seat_bounds[0][0] + seat_bounds[1][0]) / 2.0),
-        float((seat_bounds[0][1] + seat_bounds[1][1]) / 2.0),
-        support_bottom + support_height / 2.0,
+    seat_min = np.asarray(seat_bounds[0], dtype=float)
+    seat_max = np.asarray(seat_bounds[1], dtype=float)
+    frame_radius = 42.0
+    seat_overlap = frame_radius * 0.35
+    support_bottom = ground_z - seat_overlap
+    support_top = max(float(seat_min[2]) + seat_overlap, ground_z + 80.0)
+    top_points = [
+        np.array([seat_min[0], seat_min[1], support_top]),
+        np.array([seat_max[0], seat_min[1], support_top]),
+        np.array([seat_max[0], seat_max[1], support_top]),
+        np.array([seat_min[0], seat_max[1], support_top]),
+    ]
+    bottom_points = [point.copy() for point in top_points]
+    for point in bottom_points:
+        point[2] = support_bottom
+
+    beams = []
+    for bottom, top in zip(bottom_points, top_points, strict=True):
+        beams.append(_make_cylinder_between(bottom, top, frame_radius))
+    for points in (top_points, bottom_points):
+        for start, end in zip(points, points[1:] + points[:1], strict=True):
+            beams.append(_make_cylinder_between(start, end, frame_radius * 0.75))
+    beams.extend([
+        _make_cylinder_between(bottom_points[0], top_points[2], frame_radius * 0.65),
+        _make_cylinder_between(bottom_points[1], top_points[3], frame_radius * 0.65),
+        _make_cylinder_between(bottom_points[2], top_points[0], frame_radius * 0.65),
+        _make_cylinder_between(bottom_points[3], top_points[1], frame_radius * 0.65),
     ])
-    support_extents = np.array([180.0, 180.0, support_height])
-    support = _make_box_mesh(support_center, support_extents)
-    plate_with_support = trimesh.util.concatenate([plate, support])
+    support = trimesh.util.concatenate(beams)
+    plate_with_support = _union_plate_with_support(plate, support)
     return support, plate, plate_with_support
 
 
@@ -612,6 +700,167 @@ def _mesh_socket_cutters(assembly: Any, wheel_centers: list[Any], clearance_mm: 
     central.apply_translation([float(center[0]), float(center[1]), float(bounds[0][2]) + height / 2.0])
     cutters.append(central)
     return trimesh.util.concatenate(cutters)
+
+
+def _box_from_bounds(bounds: Any, clearance_xy_mm: float, clearance_z_mm: float) -> Any:
+    np = _require("numpy")
+    min_corner = np.array(bounds[0], dtype=float) - np.array([clearance_xy_mm, clearance_xy_mm, clearance_z_mm])
+    max_corner = np.array(bounds[1], dtype=float) + np.array([clearance_xy_mm, clearance_xy_mm, clearance_z_mm])
+    center = (min_corner + max_corner) / 2.0
+    extents = np.maximum(max_corner - min_corner, np.array([1.0, 1.0, 1.0]))
+    return _make_box_mesh(center, extents)
+
+
+def _single_print_shell_cutters(body: Any, inner_assembly: Any, plate_with_support: Any, clearance_mm: float) -> Any:
+    trimesh = _require("trimesh")
+    cutters = []
+    clearance_xy = float(clearance_mm)
+    clearance_z = float(clearance_mm)
+
+    for mesh in (inner_assembly, plate_with_support):
+        for _part, bounds, _extents in _component_bounds(mesh):
+            cutters.append(_box_from_bounds(bounds, clearance_xy, clearance_z))
+
+    plate_like_bounds = None
+    plate_like_area = -1.0
+    for _part, bounds, extents in _component_bounds(plate_with_support):
+        height = float(extents[2])
+        area = float(extents[0]) * float(extents[1])
+        if height <= 160.0 and area > plate_like_area:
+            plate_like_bounds = bounds
+            plate_like_area = area
+    plate_bounds = plate_like_bounds if plate_like_bounds is not None else plate_with_support.bounds
+    body_bounds = body.bounds
+    bottom_bounds = [
+        [float(plate_bounds[0][0]), float(plate_bounds[0][1]), float(body_bounds[0][2]) - clearance_z],
+        [float(plate_bounds[1][0]), float(plate_bounds[1][1]), float(plate_bounds[1][2]) + clearance_z],
+    ]
+    cutters.append(_box_from_bounds(bottom_bounds, clearance_xy, 0.0))
+    return trimesh.util.concatenate(cutters)
+
+
+def _cut_mesh_faces_inside_boxes(mesh: Any, cutters: Any) -> tuple[Any | None, str]:
+    np = _require("numpy")
+    face_centers = np.asarray(mesh.triangles_center, dtype=float)
+    remove = np.zeros(len(face_centers), dtype=bool)
+    box_count = 0
+    for _part, bounds, _extents in _component_bounds(cutters):
+        box_count += 1
+        lower = np.asarray(bounds[0], dtype=float)
+        upper = np.asarray(bounds[1], dtype=float)
+        inside = np.all((face_centers >= lower) & (face_centers <= upper), axis=1)
+        remove |= inside
+    kept_ids = np.flatnonzero(~remove)
+    removed_faces = int(remove.sum())
+    if removed_faces == 0:
+        return None, f"skipped: no shell faces inside {box_count} cutout boxes"
+    cut_mesh = mesh.submesh([kept_ids.tolist()], append=True, repair=False)
+    if cut_mesh is None or getattr(cut_mesh, "is_empty", False):
+        return None, f"skipped: face cut removed all shell faces using {box_count} cutout boxes"
+    return cut_mesh, f"computed by face-cut fallback: removed {removed_faces} faces using {box_count} cutout boxes"
+
+def _edge_count_by_pair(faces: Any) -> tuple[Any, Any]:
+    np = _require("numpy")
+    edges = np.vstack([faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]])
+    return np.unique(np.sort(edges, axis=1), axis=0, return_counts=True)
+
+
+def _boundary_loops(boundary_edges: Any) -> list[list[int]]:
+    adjacency: dict[int, list[int]] = {}
+    for start, end in boundary_edges:
+        start_i = int(start)
+        end_i = int(end)
+        adjacency.setdefault(start_i, []).append(end_i)
+        adjacency.setdefault(end_i, []).append(start_i)
+
+    loops: list[list[int]] = []
+    used_edges: set[tuple[int, int]] = set()
+    for raw_start, raw_end in boundary_edges:
+        start = int(raw_start)
+        end = int(raw_end)
+        first_edge = (start, end) if start < end else (end, start)
+        if first_edge in used_edges:
+            continue
+
+        previous = start
+        current = end
+        loop = [start, current]
+        used_edges.add(first_edge)
+        for _unused in range(len(boundary_edges) + 5):
+            if current == start:
+                break
+            next_vertex = None
+            for candidate in adjacency[current]:
+                if candidate == previous:
+                    continue
+                candidate_edge = (current, candidate) if current < candidate else (candidate, current)
+                if candidate_edge not in used_edges or candidate == start:
+                    next_vertex = candidate
+                    break
+            if next_vertex is None:
+                break
+            next_edge = (current, next_vertex) if current < next_vertex else (next_vertex, current)
+            if next_edge in used_edges:
+                break
+            used_edges.add(next_edge)
+            previous = current
+            current = next_vertex
+            if current != start:
+                loop.append(current)
+        loops.append(loop)
+    return loops
+
+
+def _repair_mesh_for_boolean(mesh: Any) -> tuple[Any, str]:
+    np = _require("numpy")
+    trimesh = _require("trimesh")
+    repaired = mesh.copy()
+    repaired.merge_vertices()
+    trimesh.repair.fix_normals(repaired)
+
+    faces = np.asarray(repaired.faces, dtype=np.int64)
+    vertices = np.asarray(repaired.vertices, dtype=float)
+    unique_edges, edge_counts = _edge_count_by_pair(faces)
+    nonmanifold_edges = {tuple(edge) for edge in unique_edges[edge_counts > 2]}
+
+    removed_faces = 0
+    if nonmanifold_edges:
+        remove = np.zeros(len(faces), dtype=bool)
+        for face_index, (a, b, c) in enumerate(faces):
+            for start, end in ((int(a), int(b)), (int(b), int(c)), (int(c), int(a))):
+                edge = (start, end) if start < end else (end, start)
+                if edge in nonmanifold_edges:
+                    remove[face_index] = True
+                    break
+        removed_faces = int(remove.sum())
+        faces = faces[~remove]
+
+    unique_edges, edge_counts = _edge_count_by_pair(faces)
+    boundary_edges = unique_edges[edge_counts == 1]
+    loops = _boundary_loops(boundary_edges) if len(boundary_edges) else []
+
+    out_vertices = vertices.tolist()
+    out_faces = faces.tolist()
+    capped_loops = 0
+    for loop in loops:
+        if len(loop) < 3:
+            continue
+        center_index = len(out_vertices)
+        out_vertices.append(vertices[loop].mean(axis=0).tolist())
+        for index, start in enumerate(loop):
+            out_faces.append([int(start), int(loop[(index + 1) % len(loop)]), center_index])
+        capped_loops += 1
+
+    repaired = trimesh.Trimesh(vertices=np.asarray(out_vertices), faces=np.asarray(out_faces), process=True)
+    repaired.merge_vertices()
+    trimesh.repair.fix_normals(repaired)
+    status = (
+        f"surface repair removed {removed_faces} nonmanifold face(s) and capped {capped_loops} boundary loop(s); "
+        f"watertight={bool(repaired.is_watertight)}"
+    )
+    return repaired, status
+
+
 
 def _load_mesh(path: Path) -> Any:
     trimesh = _require("trimesh")
@@ -644,6 +893,8 @@ def _face_mask_from_vertex_colors(mesh: Any, mode: str) -> Any | None:
         mask = face_rgb[:, 1] > face_rgb[:, 0]
     elif mode == "red":
         mask = (face_rgb[:, 0] > face_rgb[:, 1]) & (face_rgb[:, 0] > face_rgb[:, 2])
+    elif mode == "dark":
+        mask = face_rgb.mean(axis=1) < 96.0
     else:
         raise ValueError(f"Unknown color mask mode: {mode}")
     return mask
@@ -800,12 +1051,18 @@ def _submesh_by_container(mesh: Any, container: Any) -> tuple[Any | None, str]:
 
 def _try_boolean_difference(mesh: Any, cutters: Any) -> tuple[Any | None, str]:
     try:
-        result = mesh.difference([cutters], check_volume=False)
+        cutter_parts = [part for part in cutters.split(only_watertight=False) if not getattr(part, "is_empty", False)]
+    except BaseException:
+        cutter_parts = [cutters]
+    if not cutter_parts:
+        return None, "skipped: no boolean cutters were available"
+    try:
+        result = mesh.difference(cutter_parts, check_volume=False)
     except BaseException as exc:
         return None, f"skipped: boolean difference unavailable ({type(exc).__name__}: {exc})"
     if result is None or getattr(result, "is_empty", False):
         return None, "skipped: boolean returned an empty result"
-    return result, "computed"
+    return result, f"computed with {len(cutter_parts)} cutter solid(s); watertight={bool(result.is_watertight)}"
 
 
 def export_printables(  # noqa: PLR0912, PLR0915
@@ -835,6 +1092,7 @@ def export_printables(  # noqa: PLR0912, PLR0915
     _status(f"Multicolor dir: {multicolor_dir}")
     _status(f"Single-color dir: {single_color_dir}")
     _cleanup_multicolor_dir(multicolor_dir)
+    _cleanup_single_color_dir(single_color_dir)
 
     _status(f"Selecting source mesh for epoch: {epoch if epoch is not None else 'latest'}")
     final_mesh_path = find_final_mesh(run_dir, epoch=epoch)
@@ -863,14 +1121,12 @@ def export_printables(  # noqa: PLR0912, PLR0915
     _status("Loading source mesh")
     body = _load_mesh(final_mesh_path)
 
-    _status("Building/repairing assembly, wheels, seat support, plate, and shell socket cutters")
-    outputs = {
-        "inner_assembly_full_wheels": single_color_dir / "inner_assembly_full_wheels.stl",
-        "wheel_repair_full_wheels": single_color_dir / "wheel_repair_full_wheels.stl",
-        "seat_support": single_color_dir / "seat_support.stl",
-        "support_plate": single_color_dir / "support_plate.stl",
-        "plate_with_seat_support": single_color_dir / "plate_with_seat_support.stl",
-        "shell_socket_cutters": single_color_dir / "shell_socket_cutters.stl",
+    _status("Building/repairing assembly, wheels, seat support, plate, and shell cutouts")
+    single_outputs = {
+        "single_plate_with_support": single_color_dir / "plate_with_support.stl",
+        "single_inner_assembly": single_color_dir / "inner_assembly.stl",
+        "single_mesh_with_cutouts": single_color_dir / "mesh_with_cutouts.stl",
+        "single_print_3mf": single_color_dir / "single_print.3mf",
     }
 
     _status("Using existing assembly mesh and inferring wheel positions from geometry")
@@ -884,21 +1140,14 @@ def export_printables(  # noqa: PLR0912, PLR0915
         _status("Replacing original cut wheels with full wheels")
         wheel_base_mesh = _remove_cut_wheel_components(assembly_core, wheel_centers)
     full_wheels_mesh = _make_full_wheel_meshes(wheel_centers)
-    seat_support_mesh, plate_mesh, plate_with_support_mesh = _mesh_based_supports(wheel_base_mesh)
-    cutters_mesh = _mesh_socket_cutters(wheel_base_mesh, wheel_centers, shell_clearance_mm)
+    _seat_support_mesh, _plate_mesh, plate_with_support_mesh = _mesh_based_supports(wheel_base_mesh, wheel_centers)
     inner_mesh = wheel_base_mesh
     if full_wheels_mesh is not None:
         inner_mesh = trimesh.util.concatenate([wheel_base_mesh, full_wheels_mesh])
-        _export_mesh(full_wheels_mesh, outputs["wheel_repair_full_wheels"], scale_factor)
     else:
         report.warnings.append("No wheel-like components were inferred from assembly mesh; wheel repair was skipped.")
-    _export_mesh(inner_mesh, outputs["inner_assembly_full_wheels"], scale_factor)
-    _export_mesh(seat_support_mesh, outputs["seat_support"], scale_factor)
-    _export_mesh(plate_mesh, outputs["support_plate"], scale_factor)
-    _export_mesh(plate_with_support_mesh, outputs["plate_with_seat_support"], scale_factor)
-    _export_mesh(cutters_mesh, outputs["shell_socket_cutters"], scale_factor)
     report.wheels = f"inferred {len(wheel_centers)} wheel center(s) from assembly mesh and added full regulation wheels"
-    report.seat_support = "generated from existing assembly mesh bounds"
+    report.seat_support = "generated as a wheel-ground plate with a beam frame under the raised seat"
 
     vision_part = None
     report.assembly_overlap = "skipped: not part of current multicolor STL set"
@@ -908,7 +1157,8 @@ def export_printables(  # noqa: PLR0912, PLR0915
     if solar_mesh_path is not None:
         _status(f"Decoding real solar/{solar_source} color mask: {solar_mesh_path}")
         solar_source_mesh = _load_mesh(solar_mesh_path)
-        solar_mesh, solar_msg = _extract_raised_color_region(solar_source_mesh, "red", color_region_height_mm)
+        solar_mask_mode = "dark" if solar_source == "binary_mask" else "red"
+        solar_mesh, solar_msg = _extract_raised_color_region(solar_source_mesh, solar_mask_mode, color_region_height_mm)
         _status(f"Solar color region: {solar_msg}")
         report.solar_region = (
             f"included real solar/{solar_source} selected faces for selected epoch/slot: {solar_mesh_path}; {solar_msg}"
@@ -969,23 +1219,47 @@ def export_printables(  # noqa: PLR0912, PLR0915
     _export_multicolor_3mf(multicolor_parts, multicolor_3mf_path, scale_factor)
     report.outputs["multicolor_3mf"] = str(multicolor_3mf_path)
 
-    shell_source = single_color_dir / "removable_shell_source.stl"
-    _status(f"Writing {shell_source.name}")
-    _export_mesh(body, shell_source, scale_factor)
-    report.outputs["removable_shell_source"] = str(shell_source)
+    _status("Writing single-print STL set")
+    _status(f"Writing {single_outputs['single_plate_with_support'].name}")
+    _export_mesh(plate_with_support_mesh, single_outputs["single_plate_with_support"], scale_factor)
+    _status(f"Writing {single_outputs['single_inner_assembly'].name}")
+    _export_mesh(inner_mesh, single_outputs["single_inner_assembly"], scale_factor)
 
-    _status("Attempting removable-shell socket boolean")
-    socketed, shell_msg = _try_boolean_difference(body, cutters_mesh)
-    _status(f"Socket boolean: {shell_msg}")
-    report.removable_shell = shell_msg
-    if socketed is not None:
-        socketed_path = single_color_dir / "removable_shell_with_sockets.stl"
-        _export_mesh(socketed, socketed_path, scale_factor)
-        report.outputs["removable_shell_with_sockets"] = str(socketed_path)
-    else:
-        report.warnings.append("Socket cutters were exported separately because mesh boolean subtraction did not complete.")
+    print_clearance_mm = 0.6
+    shell_cutout_clearance_mm = max(float(shell_clearance_mm), print_clearance_mm / float(scale_factor))
+    _status(f"Building shell cutouts with {shell_cutout_clearance_mm:.3f} model mm clearance")
+    support_cutout_mesh = trimesh.util.concatenate([_plate_mesh, _seat_support_mesh])
+    shell_cutters = _single_print_shell_cutters(body, inner_mesh, support_cutout_mesh, shell_cutout_clearance_mm)
+    boolean_body, repair_msg = _repair_mesh_for_boolean(body)
+    _status(f"Shell source repair: {repair_msg}")
+    _status("Attempting slide-over shell cutout boolean")
+    cut_shell, shell_msg = _try_boolean_difference(boolean_body, shell_cutters)
+    _status(f"Shell cutout boolean: {shell_msg}")
+    report.removable_shell = f"{repair_msg}; {shell_msg}"
+    if cut_shell is None:
+        cut_shell, fallback_msg = _cut_mesh_faces_inside_boxes(body, shell_cutters)
+        _status(f"Shell cutout fallback: {fallback_msg}")
+        report.removable_shell = f"{shell_msg}; {fallback_msg}"
+    if cut_shell is None:
+        cut_shell = body
+        report.warnings.append("Shell cutouts were not applied because boolean and face-cut fallback did not complete.")
+    elif not bool(cut_shell.is_watertight):
+        report.warnings.append("Shell mesh is not watertight; boolean result should be inspected before printing.")
 
-    report.outputs.update({k: str(v) for k, v in outputs.items()})
+    _status(f"Writing {single_outputs['single_mesh_with_cutouts'].name}")
+    _export_mesh(cut_shell, single_outputs["single_mesh_with_cutouts"], scale_factor)
+
+    _status(f"Writing {single_outputs['single_print_3mf'].name}")
+    _export_multicolor_3mf(
+        [
+            ("plate_with_support", plate_with_support_mesh, "#8A8A8A"),
+            ("inner_assembly", inner_mesh, "#303030"),
+            ("mesh_with_cutouts", cut_shell, "#D8D8D8"),
+        ],
+        single_outputs["single_print_3mf"],
+        scale_factor,
+    )
+    report.outputs.update({k: str(v) for k, v in single_outputs.items()})
 
     report_path = out_dir / "print_report.json"
     report.outputs["print_report"] = str(report_path)

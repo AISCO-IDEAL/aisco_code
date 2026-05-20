@@ -163,7 +163,7 @@ SolarLossConfigV7:
 # Rollout losses — SR/SRRT/MR/MRRT
 SolarLossConfigSR:
   method: "mesh_sdf" # Do not touch
-  bbox: [[-4000.0, 4000.0], [-4000.0, 4000.0], [-4000.0, 4000.0]]
+  bbox: [[-3200.0, 3200.0], [-1400.0, 1400.0], [-200.0, 1900.0]]
   resolution: 64 # used?
   isovalue: 0.0
   area_budget_mm2: 6000000
@@ -179,7 +179,7 @@ SolarLossConfigSR:
 
 SolarLossConfigSRRT:
   method: "mesh_sdf" # Do not touch
-  bbox: [[-4000.0, 4000.0], [-4000.0, 4000.0], [-4000.0, 4000.0]]
+  bbox: [[-3200.0, 3200.0], [-1400.0, 1400.0], [-200.0, 1900.0]]
   resolution: 64 # used?
   isovalue: 0.0
   area_budget_mm2: 6000000
@@ -200,7 +200,7 @@ SolarLossConfigSRRT:
 
 SolarLossConfigMR:
   method: "mesh_sdf"  # Do not touch
-  bbox: [[-4000.0, 4000.0], [-4000.0, 4000.0], [-4000.0, 4000.0]]
+  bbox: [[-3200.0, 3200.0], [-1400.0, 1400.0], [-200.0, 1900.0]]
   resolution: 64
   isovalue: 0.0
   area_budget_mm2: 6000000
@@ -219,7 +219,7 @@ SolarLossConfigMR:
 
 SolarLossConfigMRRT:
   method: "mesh_sdf"  # Do not touch
-  bbox: [[-4000.0, 4000.0], [-4000.0, 4000.0], [-4000.0, 4000.0]]
+  bbox: [[-3200.0, 3200.0], [-1400.0, 1400.0], [-200.0, 1900.0]]
   resolution: 64
   isovalue: 0.0
   area_budget_mm2: 6000000

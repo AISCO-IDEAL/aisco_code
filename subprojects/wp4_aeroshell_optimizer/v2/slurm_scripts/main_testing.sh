@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --partition=gpu
-#SBATCH --job-name=CVM2_Diversity_gradients_per_slot_grid_vis
+#SBATCH --job-name=X_solar_qualtiy
 #SBATCH --time=12:00:00                   # Extended for adaptive mesh extraction (L=4)
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem-per-cpu=4G                  # Total 40G memory
-#SBATCH --gpus=pro_6000:1
+#SBATCH --gpus=rtx_4090:1
 #SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
 ##SBATCH --mail-type=END,FAIL
 ##SBATCH --mail-user=%u@ethz.ch

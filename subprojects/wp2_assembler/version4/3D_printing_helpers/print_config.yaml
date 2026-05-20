@@ -24,8 +24,8 @@ epoch: "latest"
 solar_dir: ""
 
 # Which real solar output to include in the multicolor export.
-# Common choices: selection, quality, penalty, shading, receiver_mask.
-solar_source: "selection"
+# Common choices: binary_mask, selection, quality, penalty, shading, receiver_mask.
+solar_source: "binary_mask"
 
 # Fallback only: if run_dir is a leaf folder without solar outputs, also search its parent.
 # Keep false unless you are sure the parent contains only the matching run.
