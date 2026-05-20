@@ -698,10 +698,10 @@ def _scalar_to_rgb_mpl(values: np.ndarray, colormap: str, vmin: float, vmax: flo
     Returns:
         (F, 3) uint8 RGB array.
     """
-    from matplotlib import cm  # noqa: PLC0415
+    import matplotlib  # noqa: PLC0415
 
     norm_vals = np.clip((values - vmin) / max(vmax - vmin, 1e-12), 0.0, 1.0)
-    cmap = cm.get_cmap(colormap)
+    cmap = matplotlib.colormaps[colormap]
     rgba = cmap(norm_vals)  # (F, 4) float
     return (rgba[:, :3] * 255).astype(np.uint8)
 
@@ -818,14 +818,12 @@ def render_scene(
     cam_pose: np.ndarray,
     bg_color: tuple[float, float, float, float],
     meshes: list[tuple[trimesh.Trimesh, tuple[float, float, float, float] | None]],
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
     """Render a list of (mesh, color_rgba) pairs to a (H, W, 3) uint8 image.
 
     Pass ``None`` as the color to use the mesh's embedded vertex colors (for
-    flat-shaded solar layers).  Pass an RGBA tuple to apply a uniform material.
-
-    Meshes are added in list order — render opaque layers before transparent
-    ones to get correct depth compositing.
+    flat-shaded solar-baked aeroshell or solar layers).  Pass an RGBA tuple to
+    apply a uniform material.
 
     Args:
         renderer: pyrender.OffscreenRenderer already sized to the desired output.
@@ -834,7 +832,8 @@ def render_scene(
         meshes: List of (trimesh_mesh, color_rgba_or_None) pairs.
 
     Returns:
-        (H, W, 3) uint8 RGB image.
+        Tuple of ``(color_rgb, depth)`` where ``color_rgb`` is (H, W, 3) uint8
+        and ``depth`` is (H, W) float32 (0 for background pixels).
     """
     scene = pyrender.Scene(bg_color=list(bg_color), ambient_light=[0.35, 0.35, 0.35, 1.0])
 
@@ -857,8 +856,8 @@ def render_scene(
     fill_pose[:3, 3] = cam_pose[:3, 3] + np.array([0.0, 0.0, 800.0])
     scene.add(pyrender.DirectionalLight(color=np.ones(3), intensity=1.2), pose=fill_pose)
 
-    color, _ = renderer.render(scene)
-    return color[:, :, :3]
+    color, depth = renderer.render(scene)
+    return color[:, :, :3], depth
 
 
 # ---------------------------------------------------------------------------
@@ -869,23 +868,25 @@ def render_scene(
 def _build_render_list(
     aeroshell_mesh: trimesh.Trimesh | None,
     inner_assembly: trimesh.Trimesh | None,
+    windshield: trimesh.Trimesh | None,
     outer_bbox: trimesh.Trimesh | None,
-    solar_binary_mesh: trimesh.Trimesh | None,
-    solar_shading_mesh: trimesh.Trimesh | None,
     cfg: dict[str, Any],
 ) -> list[tuple[trimesh.Trimesh, tuple[float, float, float, float] | None]]:
     """Assemble render-list from active layers ordered for correct compositing.
 
-    Opaque layers (inner_assembly, outer_bbox, solar layers) are added first
-    so they are correctly depth-composited behind the transparent aeroshell.
-    Disabled layers are excluded entirely (not just made invisible).
+    Opaque layers are added first so they are correctly depth-composited
+    behind the semi-transparent aeroshell.  Disabled layers are excluded
+    entirely (not just made invisible).
+
+    The ``aeroshell_mesh`` may be a solar-baked flat-colored mesh (which has
+    ``trimesh.visual.ColorVisuals`` and must be rendered with ``color_rgba=None``)
+    or a plain mesh rendered with a uniform MetallicRoughnessMaterial.
 
     Args:
-        aeroshell_mesh: Aeroshell surface mesh or None.
+        aeroshell_mesh: Aeroshell surface mesh (possibly solar-baked) or None.
         inner_assembly: Inner assembly mesh or None.
+        windshield: Vision-NBZ mesh or None.
         outer_bbox: Outer bounding-box mesh or None.
-        solar_binary_mesh: Flat-shaded binary-mask mesh or None.
-        solar_shading_mesh: Flat-shaded shading mesh or None.
         cfg: Parsed YAML config dict.
 
     Returns:
@@ -911,81 +912,227 @@ def _build_render_list(
         rgba = _layer_rgba("outer_bbox", "#FF504D", 0.12)
         render_list.append((outer_bbox, rgba))
 
-    # --- Solar binary mask (flat-shaded overlay, no material) ---
-    if _layer_enabled("solar_binary_mask") and solar_binary_mesh is not None:
-        render_list.append((solar_binary_mesh, None))
+    # --- Windshield / vision NBZ (semi-transparent, rendered before aeroshell) ---
+    if _layer_enabled("windshield") and windshield is not None:
+        rgba = _layer_rgba("windshield", "#4FC3F7", 0.40)
+        render_list.append((windshield, rgba))
 
-    # --- Solar shading (flat-shaded overlay) ---
-    if _layer_enabled("solar_shading") and solar_shading_mesh is not None:
-        render_list.append((solar_shading_mesh, None))
-
-    # --- Aeroshell (transparent, rendered last so inner layers show through) ---
+    # --- Aeroshell: vertex-colored (solar baked) or uniform material ---
     if _layer_enabled("aeroshell") and aeroshell_mesh is not None:
-        rgba = _layer_rgba("aeroshell", "#33FFFF", 0.82)
-        render_list.append((aeroshell_mesh, rgba))
+        is_vertex_colored = isinstance(getattr(aeroshell_mesh, "visual", None), trimesh.visual.ColorVisuals)
+        if is_vertex_colored:
+            render_list.append((aeroshell_mesh, None))
+        else:
+            rgba = _layer_rgba("aeroshell", "#33FFFF", 0.82)
+            render_list.append((aeroshell_mesh, rgba))
 
     return render_list
 
 
 # ---------------------------------------------------------------------------
-# Solar mesh builders (from tensor data computed in checkpoint mode)
+# Solar baking — composites solar data directly into aeroshell face colors,
+# eliminating the Z-fighting caused by co-planar duplicate overlay meshes.
 # ---------------------------------------------------------------------------
 
 
-def _build_solar_binary_mesh(
+def _bake_solar_into_aeroshell(
     base_mesh: trimesh.Trimesh,
-    binary_mask: Tensor,
+    binary_mask: Tensor | None,
+    shading: Tensor | None,
     cfg: dict[str, Any],
 ) -> trimesh.Trimesh:
-    """Build a flat-shaded mesh colored by the binary solar selection mask.
+    """Build a flat-shaded aeroshell mesh with solar data baked into per-face colors.
+
+    Layer order (later layer overrides earlier):
+      1. Aeroshell base color (alpha from aeroshell config) — all faces.
+      2. Solar shading colormap — all faces when shading is enabled.
+      3. Solar binary mask gold — selected faces only; off-faces keep the
+         color from the layer below (aeroshell base or shading) so they
+         show no extra color — just the aeroshell texture.
 
     Args:
-        base_mesh: Aeroshell mesh (faces match binary_mask length).
-        binary_mask: (F,) float tensor with 0.0 / 1.0 values.
+        base_mesh: Aeroshell mesh.
+        binary_mask: (F,) float tensor (0.0/1.0), or None to skip.
+        shading: (F,) float tensor in [0, 1], or None to skip.
         cfg: Parsed YAML config dict.
 
     Returns:
-        Flat-shaded trimesh.Trimesh with per-face colors.
+        Flat-shaded trimesh.Trimesh with per-face colors encoding all active
+        solar layers.  The caller should render this with ``color_rgba=None``
+        so pyrender uses the embedded vertex colors.
     """
-    color_on_hex = _get(cfg, "layers", "solar_binary_mask", "color_on", default="#FFD700")
-    color_off_hex = _get(cfg, "layers", "solar_binary_mask", "color_off", default="#2A2F45")
-    alpha = float(_get(cfg, "layers", "solar_binary_mask", "alpha", default=1.0))
+    F = len(base_mesh.faces)
 
-    color_on = np.array([*_parse_color_rgb(color_on_hex), int(alpha * 255)], dtype=np.uint8)
-    color_off = np.array([*_parse_color_rgb(color_off_hex), int(alpha * 255)], dtype=np.uint8)
+    # Base: aeroshell color for all faces
+    ae_hex = _get(cfg, "layers", "aeroshell", "color", default="#33FFFF")
+    ae_alpha = float(_get(cfg, "layers", "aeroshell", "alpha", default=0.82))
+    r, g, b = _parse_color_rgb(ae_hex)
+    face_colors = np.full((F, 4), [r, g, b, int(ae_alpha * 255)], dtype=np.uint8)
 
-    mask_np = binary_mask.detach().cpu().numpy().reshape(-1)
-    face_colors = np.where(mask_np[:, None] > 0.5, color_on, color_off).astype(np.uint8)
+    # Layer: shading colormap (overrides base on all faces)
+    shading_enabled = bool(_get(cfg, "layers", "solar_shading", "enabled", default=True))
+    if shading is not None and shading_enabled and len(shading) == F:
+        colormap = str(_get(cfg, "layers", "solar_shading", "colormap", default="Blues"))
+        sh_alpha = float(_get(cfg, "layers", "solar_shading", "alpha", default=0.90))
+        vmin = float(_get(cfg, "layers", "solar_shading", "vmin", default=0.0))
+        vmax = float(_get(cfg, "layers", "solar_shading", "vmax", default=1.0))
+        shading_np = shading.detach().cpu().numpy().reshape(-1)
+        rgb_map = _scalar_to_rgb_mpl(shading_np, colormap, vmin, vmax)
+        face_colors = np.concatenate([rgb_map, np.full((F, 1), int(sh_alpha * 255), dtype=np.uint8)], axis=1)
+
+    # Layer: binary mask gold (overrides only selected faces; off-faces keep aeroshell color)
+    mask_enabled = bool(_get(cfg, "layers", "solar_binary_mask", "enabled", default=True))
+    if binary_mask is not None and mask_enabled and len(binary_mask) == F:
+        color_on_hex = _get(cfg, "layers", "solar_binary_mask", "color_on", default="#FFD700")
+        mask_alpha = float(_get(cfg, "layers", "solar_binary_mask", "alpha", default=1.0))
+        r_on, g_on, b_on = _parse_color_rgb(color_on_hex)
+        color_on = np.array([r_on, g_on, b_on, int(mask_alpha * 255)], dtype=np.uint8)
+        mask_np = binary_mask.detach().cpu().numpy().reshape(-1)
+        face_colors[mask_np > 0.5] = color_on
+        # off-faces intentionally keep the existing color (aeroshell base or shading)
 
     return _build_flat_mesh_with_colors(base_mesh, face_colors)
 
 
-def _build_solar_shading_mesh(
-    base_mesh: trimesh.Trimesh,
-    shading: Tensor,
-    cfg: dict[str, Any],
-) -> trimesh.Trimesh:
-    """Build a flat-shaded mesh colored by the per-face illumination quality.
+# ---------------------------------------------------------------------------
+# WP2 assembly fallback loaders (cadquery tessellation → trimesh)
+# Used when epoch PLY artifacts are absent.
+# ---------------------------------------------------------------------------
+
+
+def _load_assembly_from_wp2(assembly_id: int, tol: float = 2.0, atol: float = 0.4) -> trimesh.Trimesh | None:
+    """Tessellate inner assembly (seat + wheels) from WP2 cadquery.
+
+    Used as a fallback when the epoch PLY is not available.  Each solid in
+    the inner assembly is tessellated independently and concatenated.
 
     Args:
-        base_mesh: Aeroshell mesh (faces match shading length).
-        shading: (F,) float tensor with values in [0, 1].
-        cfg: Parsed YAML config dict.
+        assembly_id: WP2 assembly index (see assembly_map.yaml).
+        tol: Tessellation linear tolerance in mm.
+        atol: Tessellation angular tolerance in radians.
 
     Returns:
-        Flat-shaded trimesh.Trimesh with per-face colors.
+        Concatenated trimesh.Trimesh, or None on any failure.
     """
-    colormap = str(_get(cfg, "layers", "solar_shading", "colormap", default="Blues"))
-    alpha = float(_get(cfg, "layers", "solar_shading", "alpha", default=0.90))
-    vmin = float(_get(cfg, "layers", "solar_shading", "vmin", default=0.0))
-    vmax = float(_get(cfg, "layers", "solar_shading", "vmax", default=1.0))
+    try:
+        from subprojects.wp2_assembler.version4.components.nbz import call_assembly  # noqa: PLC0415
 
-    shading_np = shading.detach().cpu().numpy().reshape(-1)
-    rgb = _scalar_to_rgb_mpl(shading_np, colormap, vmin, vmax)
-    alpha_col = np.full((len(rgb), 1), int(alpha * 255), dtype=np.uint8)
-    face_colors = np.concatenate([rgb, alpha_col], axis=1)
+        inner_assy, _, _ = call_assembly(id_number=assembly_id)
+        inner_solids = list(inner_assy.toCompound().Solids())
+        parts: list[trimesh.Trimesh] = []
+        for solid in inner_solids:
+            verts_cq, faces_cq = solid.tessellate(tol, atol)
+            verts = np.array([[v.x, v.y, v.z] for v in verts_cq], dtype=np.float32)
+            faces = np.array(faces_cq, dtype=np.int64)
+            if len(verts) > 0 and len(faces) > 0:
+                parts.append(trimesh.Trimesh(vertices=verts, faces=faces))
+        if not parts:
+            return None
+        return trimesh.util.concatenate(parts)
+    except Exception as exc:
+        warnings.warn(
+            f"[aeroshell_png] WP2 inner_assembly load failed: {exc}. Skipping.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
 
-    return _build_flat_mesh_with_colors(base_mesh, face_colors)
+
+def _load_windshield_from_wp2(assembly_id: int, tol: float = 2.0, atol: float = 0.4) -> trimesh.Trimesh | None:
+    """Tessellate the driver vision NBZ (= windshield visibility cone) from WP2.
+
+    The vision NBZ is the regulatory driver-sightline frustum, displayed as
+    the 'windshield' layer to highlight the transparency zone on the aeroshell.
+
+    Args:
+        assembly_id: WP2 assembly index.
+        tol: Tessellation linear tolerance in mm.
+        atol: Tessellation angular tolerance in radians.
+
+    Returns:
+        trimesh.Trimesh of the vision cone, or None on any failure.
+    """
+    try:
+        from subprojects.wp2_assembler.version4.components.nbz import vision_nbz  # noqa: PLC0415
+
+        assy = vision_nbz(id_number=assembly_id)
+        solids = list(assy.toCompound().Solids())
+        parts: list[trimesh.Trimesh] = []
+        for solid in solids:
+            verts_cq, faces_cq = solid.tessellate(tol, atol)
+            verts = np.array([[v.x, v.y, v.z] for v in verts_cq], dtype=np.float32)
+            faces = np.array(faces_cq, dtype=np.int64)
+            if len(verts) > 0 and len(faces) > 0:
+                parts.append(trimesh.Trimesh(vertices=verts, faces=faces))
+        if not parts:
+            return None
+        return trimesh.util.concatenate(parts)
+    except Exception as exc:
+        warnings.warn(
+            f"[aeroshell_png] WP2 windshield (vision NBZ) load failed: {exc}. Skipping.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Legend overlay
+# ---------------------------------------------------------------------------
+
+
+def _add_legend(
+    img: Image.Image,
+    entries: list[tuple[str, tuple[int, int, int, int]]],
+    cfg: dict[str, Any],
+) -> Image.Image:
+    """Draw a legend box onto *img* (in-place via PIL draw) and return it.
+
+    Args:
+        img: Source PIL Image (RGB or RGBA).
+        entries: List of ``(label, (R, G, B, A))`` uint8 tuples for active layers.
+        cfg: Parsed YAML config dict (reads ``legend.position``).
+
+    Returns:
+        The modified image (same object).
+    """
+    if not entries:
+        return img
+
+    from PIL import ImageDraw  # noqa: PLC0415
+
+    # Ensure RGBA so semi-transparent legend box works
+    if img.mode != "RGBA":
+        img = img.convert("RGBA")
+
+    swatch = 18
+    pad = 10
+    line_h = 28
+    text_x_off = swatch + 8
+    font_color = (230, 230, 230, 255)
+    box_bg = (25, 28, 45, 210)
+
+    max_label_px = max(len(lbl) * 8 for lbl, _ in entries)
+    box_w = pad + swatch + text_x_off + max_label_px + pad
+    box_h = pad + len(entries) * line_h + pad
+
+    position = str(_get(cfg, "legend", "position", default="bottom_left"))
+    x0 = img.width - box_w - pad if position in ("bottom_right", "top_right") else pad
+    y0 = pad if position.startswith("top") else img.height - box_h - pad
+
+    # Draw on a temporary RGBA overlay so the box is composited transparently
+    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    draw.rectangle([x0, y0, x0 + box_w, y0 + box_h], fill=box_bg)
+
+    for i, (label, rgba) in enumerate(entries):
+        y = y0 + pad + i * line_h
+        r, g, b, a = rgba
+        draw.rectangle([x0 + pad, y, x0 + pad + swatch, y + swatch], fill=(r, g, b, min(a, 220)))
+        draw.text((x0 + pad + text_x_off, y + 3), label, fill=font_color)
+
+    img = Image.alpha_composite(img, overlay)
+    return img
 
 
 # ---------------------------------------------------------------------------
@@ -1046,6 +1193,18 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # orchestrator — large by desig
         default=Path(_c("output", "output_dir", default="/cluster/work/fuge/AISCO/wp9/aeroshell_png")),
         help="Output directory for PNGs",
     )
+    parser.add_argument(
+        "--no_background",
+        action="store_true",
+        default=bool(_c("no_background", default=False)),
+        help="Render with transparent background (saves RGBA PNG)",
+    )
+    parser.add_argument(
+        "--assembly_id",
+        type=int,
+        default=int(_c("assembly_id", default=1)),
+        help="WP2 assembly ID used for inner_assembly fallback and windshield loading (default 1)",
+    )
     args = parser.parse_args()
 
     if args.checkpoint is None and args.run_dir is None:
@@ -1097,6 +1256,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # orchestrator — large by desig
         run_dir_resolved = ckpt_path.parent.parent
         if epoch_num is not None and _get(cfg, "layers", "inner_assembly", "enabled", default=True):
             inner_assembly = load_inner_assembly(run_dir_resolved, epoch_num)
+            # WP2 fallback when PLY is absent
+            if inner_assembly is None and bool(_get(cfg, "layers", "inner_assembly", "fallback_wp2", default=False)):
+                _asm_id = int(_get(cfg, "layers", "inner_assembly", "assembly_id", default=args.assembly_id))
+                inner_assembly = _load_assembly_from_wp2(_asm_id)
+                if inner_assembly is not None:
+                    print(f"[aeroshell_png] inner_assembly: {len(inner_assembly.vertices):,} verts loaded from WP2 (id={_asm_id})")
 
         # Compute solar fields if any solar layer is enabled
         solar_mask_enabled = bool(_get(cfg, "layers", "solar_binary_mask", "enabled", default=True))
@@ -1156,6 +1321,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # orchestrator — large by desig
         inner_parts = [c for c in components_sorted[1:] if len(c.vertices) > 12]
         if inner_parts and bool(_get(cfg, "layers", "inner_assembly", "enabled", default=True)):
             inner_assembly = trimesh.util.concatenate(inner_parts)
+        elif not inner_parts and bool(_get(cfg, "layers", "inner_assembly", "enabled", default=True)) and bool(
+            _get(cfg, "layers", "inner_assembly", "fallback_wp2", default=False)
+        ):
+                _asm_id = int(_get(cfg, "layers", "inner_assembly", "assembly_id", default=args.assembly_id))
+                inner_assembly = _load_assembly_from_wp2(_asm_id)
+                if inner_assembly is not None:
+                    print(f"[aeroshell_png] inner_assembly: {len(inner_assembly.vertices):,} verts from WP2 fallback")
 
         # Solar layers from pre-built PLYs
         if bool(_get(cfg, "layers", "solar_binary_mask", "enabled", default=True)):
@@ -1190,32 +1362,25 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # orchestrator — large by desig
     assert aeroshell_mesh is not None  # guaranteed by both branches above
 
     # ------------------------------------------------------------------
-    # Build solar overlay meshes (shared by both modes)
+    # Load windshield (vision NBZ) from WP2 when layer is enabled
     # ------------------------------------------------------------------
-    solar_binary_mesh: trimesh.Trimesh | None = None
-    solar_shading_mesh: trimesh.Trimesh | None = None
+    windshield_mesh: trimesh.Trimesh | None = None
+    if bool(_get(cfg, "layers", "windshield", "enabled", default=False)):
+        _ws_id = int(_get(cfg, "layers", "windshield", "assembly_id", default=args.assembly_id))
+        windshield_mesh = _load_windshield_from_wp2(_ws_id)
+        if windshield_mesh is not None:
+            print(f"[aeroshell_png] windshield: {len(windshield_mesh.vertices):,} verts from WP2 (id={_ws_id})")
 
-    if binary_mask_tensor is not None and bool(_get(cfg, "layers", "solar_binary_mask", "enabled", default=True)):
-        if len(binary_mask_tensor) == len(aeroshell_mesh.faces):
-            solar_binary_mesh = _build_solar_binary_mesh(aeroshell_mesh, binary_mask_tensor, cfg)
-        else:
-            warnings.warn(
-                f"[aeroshell_png] binary_mask face count ({len(binary_mask_tensor)}) "
-                f"does not match aeroshell ({len(aeroshell_mesh.faces)}). Skipping.",
-                UserWarning,
-                stacklevel=1,
-            )
-
-    if shading_tensor is not None and bool(_get(cfg, "layers", "solar_shading", "enabled", default=True)):
-        if len(shading_tensor) == len(aeroshell_mesh.faces):
-            solar_shading_mesh = _build_solar_shading_mesh(aeroshell_mesh, shading_tensor, cfg)
-        else:
-            warnings.warn(
-                f"[aeroshell_png] shading face count ({len(shading_tensor)}) "
-                f"does not match aeroshell ({len(aeroshell_mesh.faces)}). Skipping.",
-                UserWarning,
-                stacklevel=1,
-            )
+    # ------------------------------------------------------------------
+    # Bake solar data into aeroshell face colors (eliminates Z-fighting)
+    # ------------------------------------------------------------------
+    solar_any = bool(_get(cfg, "layers", "solar_binary_mask", "enabled", default=True)) or bool(
+        _get(cfg, "layers", "solar_shading", "enabled", default=True)
+    )
+    if solar_any and (binary_mask_tensor is not None or shading_tensor is not None):
+        aeroshell_for_render = _bake_solar_into_aeroshell(aeroshell_mesh, binary_mask_tensor, shading_tensor, cfg)
+    else:
+        aeroshell_for_render: trimesh.Trimesh | None = aeroshell_mesh  # type: ignore[assignment]
 
     # ------------------------------------------------------------------
     # Build outer bbox mesh from WP2 prism (shared by both modes)
@@ -1254,7 +1419,35 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # orchestrator — large by desig
     output_dir = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n[aeroshell_png] rendering {len(camera_cfgs)} view(s) → {output_dir}")
+    no_background = args.no_background
+    no_bg_str = " (transparent background)" if no_background else ""
+    print(f"\n[aeroshell_png] rendering {len(camera_cfgs)} view(s) → {output_dir}{no_bg_str}")
+
+    # Collect legend entries for active layers
+    legend_enabled = bool(_get(cfg, "legend", "enabled", default=False))
+    legend_entries: list[tuple[str, tuple[int, int, int, int]]] = []
+    if legend_enabled:
+        def _le(name: str, default_hex: str, default_alpha: float) -> tuple[int, int, int, int]:
+            c = _get(cfg, "layers", name, "color", default=default_hex)
+            a = float(_get(cfg, "layers", name, "alpha", default=default_alpha))
+            r, g, b = _parse_color_rgb(c)
+            return (r, g, b, int(a * 255))
+
+        if inner_assembly is not None and bool(_get(cfg, "layers", "inner_assembly", "enabled", default=True)):
+            legend_entries.append(("inner assembly", _le("inner_assembly", "#F39C12", 1.0)))
+        if windshield_mesh is not None and bool(_get(cfg, "layers", "windshield", "enabled", default=False)):
+            legend_entries.append(("windshield", _le("windshield", "#4FC3F7", 0.40)))
+        if outer_bbox is not None and bool(_get(cfg, "layers", "outer_bbox", "enabled", default=False)):
+            legend_entries.append(("outer bbox", _le("outer_bbox", "#FF504D", 0.12)))
+        if shading_tensor is not None and bool(_get(cfg, "layers", "solar_shading", "enabled", default=True)):
+            cmap = str(_get(cfg, "layers", "solar_shading", "colormap", default="Blues"))
+            legend_entries.append((f"solar shading ({cmap})", (80, 130, 200, 230)))
+        if binary_mask_tensor is not None and bool(_get(cfg, "layers", "solar_binary_mask", "enabled", default=True)):
+            c_on = _get(cfg, "layers", "solar_binary_mask", "color_on", default="#FFD700")
+            r_on, g_on, b_on = _parse_color_rgb(c_on)
+            legend_entries.append(("solar selected", (r_on, g_on, b_on, 255)))
+        if bool(_get(cfg, "layers", "aeroshell", "enabled", default=True)):
+            legend_entries.append(("aeroshell", _le("aeroshell", "#33FFFF", 0.82)))
 
     for cam_def in camera_cfgs:
         cam_name = str(cam_def.get("name", "view"))
@@ -1265,11 +1458,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # orchestrator — large by desig
         cam_pose = compute_camera_pose(ref_verts, azim_deg=azim, elev_deg=elev, distance_mult=dist_mult)
 
         render_list = _build_render_list(
-            aeroshell_mesh=aeroshell_mesh,
+            aeroshell_mesh=aeroshell_for_render,
             inner_assembly=inner_assembly,
+            windshield=windshield_mesh,
             outer_bbox=outer_bbox,
-            solar_binary_mesh=solar_binary_mesh,
-            solar_shading_mesh=solar_shading_mesh,
             cfg=cfg,
         )
 
@@ -1281,8 +1473,17 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # orchestrator — large by desig
             )
             continue
 
-        rgb = render_scene(renderer, cam_pose, bg_rgba, render_list)
-        img = Image.fromarray(rgb)
+        rgb, depth = render_scene(renderer, cam_pose, bg_rgba, render_list)
+
+        if no_background:
+            alpha = (depth > 0).astype(np.uint8) * 255
+            rgba_arr = np.dstack([rgb, alpha])
+            img: Image.Image = Image.fromarray(rgba_arr, "RGBA")
+        else:
+            img = Image.fromarray(rgb)
+
+        if legend_enabled and legend_entries:
+            img = _add_legend(img, legend_entries, cfg)
 
         out_path = output_dir / f"{prefix}_{name_stem}_{cam_name}.png"
         img.save(str(out_path))
