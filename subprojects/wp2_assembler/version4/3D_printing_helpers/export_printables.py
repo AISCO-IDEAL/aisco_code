@@ -483,7 +483,10 @@ def _cleanup_single_color_dir(single_color_dir: Path) -> None:
         "plate_with_support.stl",
         "inner_assembly.stl",
         "mesh_with_cutouts.stl",
+        "unmodified_mesh.stl",
+        "unmodified_inner_assembly.stl",
         "single_print.3mf",
+        "single_print_unmodified.3mf",
         "removable_shell_source.stl",
         "removable_shell_with_sockets.stl",
         "inner_assembly_full_wheels.stl",
@@ -1126,7 +1129,10 @@ def export_printables(  # noqa: PLR0912, PLR0915
         "single_plate_with_support": single_color_dir / "plate_with_support.stl",
         "single_inner_assembly": single_color_dir / "inner_assembly.stl",
         "single_mesh_with_cutouts": single_color_dir / "mesh_with_cutouts.stl",
+        "single_unmodified_mesh": single_color_dir / "unmodified_mesh.stl",
+        "single_unmodified_inner_assembly": single_color_dir / "unmodified_inner_assembly.stl",
         "single_print_3mf": single_color_dir / "single_print.3mf",
+        "single_print_unmodified_3mf": single_color_dir / "single_print_unmodified.3mf",
     }
 
     _status("Using existing assembly mesh and inferring wheel positions from geometry")
@@ -1146,6 +1152,7 @@ def export_printables(  # noqa: PLR0912, PLR0915
         inner_mesh = trimesh.util.concatenate([wheel_base_mesh, full_wheels_mesh])
     else:
         report.warnings.append("No wheel-like components were inferred from assembly mesh; wheel repair was skipped.")
+    unmodified_inner_assembly = inner_mesh.copy()
     report.wheels = f"inferred {len(wheel_centers)} wheel center(s) from assembly mesh and added full regulation wheels"
     report.seat_support = "generated as a wheel-ground plate with a beam frame under the raised seat"
 
@@ -1224,6 +1231,10 @@ def export_printables(  # noqa: PLR0912, PLR0915
     _export_mesh(plate_with_support_mesh, single_outputs["single_plate_with_support"], scale_factor)
     _status(f"Writing {single_outputs['single_inner_assembly'].name}")
     _export_mesh(inner_mesh, single_outputs["single_inner_assembly"], scale_factor)
+    _status(f"Writing {single_outputs['single_unmodified_mesh'].name}")
+    _export_mesh(body, single_outputs["single_unmodified_mesh"], scale_factor)
+    _status(f"Writing {single_outputs['single_unmodified_inner_assembly'].name}")
+    _export_mesh(unmodified_inner_assembly, single_outputs["single_unmodified_inner_assembly"], scale_factor)
 
     print_clearance_mm = 0.6
     shell_cutout_clearance_mm = max(float(shell_clearance_mm), print_clearance_mm / float(scale_factor))
@@ -1257,6 +1268,16 @@ def export_printables(  # noqa: PLR0912, PLR0915
             ("mesh_with_cutouts", cut_shell, "#D8D8D8"),
         ],
         single_outputs["single_print_3mf"],
+        scale_factor,
+    )
+
+    _status(f"Writing {single_outputs['single_print_unmodified_3mf'].name}")
+    _export_multicolor_3mf(
+        [
+            ("unmodified_mesh", body, "#D8D8D8"),
+            ("unmodified_inner_assembly", unmodified_inner_assembly, "#303030"),
+        ],
+        single_outputs["single_print_unmodified_3mf"],
         scale_factor,
     )
     report.outputs.update({k: str(v) for k, v in single_outputs.items()})
