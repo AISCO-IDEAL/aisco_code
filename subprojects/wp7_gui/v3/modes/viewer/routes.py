@@ -52,9 +52,7 @@ def viewer_index(request: Request):
             "active_mode": "viewer",
             "active_page": "runs",
             "page_title": "Viewer — Runs",
-            "panel_visibility_defaults_json": json.dumps(
-                load_panel_visibility_defaults(SETTINGS.panel_visibility_defaults_path)
-            ),
+            "panel_visibility_defaults_json": json.dumps(load_panel_visibility_defaults(SETTINGS.panel_visibility_defaults_path)),
             **theme_ctx,
         },
     )

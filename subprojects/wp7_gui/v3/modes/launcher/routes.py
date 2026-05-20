@@ -144,9 +144,7 @@ def launcher_index(request: Request, pipeline: str = "live"):
             "active_page": "config-overrides",
             "page_title": "Launcher",
             "pipeline": pipeline,
-            "panel_visibility_defaults_json": json.dumps(
-                load_panel_visibility_defaults(SETTINGS.panel_visibility_defaults_path)
-            ),
+            "panel_visibility_defaults_json": json.dumps(load_panel_visibility_defaults(SETTINGS.panel_visibility_defaults_path)),
             **theme_ctx,
         },
     )
@@ -166,9 +164,7 @@ def launcher_subpage(request: Request, page_key: str, pipeline: str = "live"):
             "active_page": page_key,
             "page_title": title,
             "pipeline": pipeline,
-            "panel_visibility_defaults_json": json.dumps(
-                load_panel_visibility_defaults(SETTINGS.panel_visibility_defaults_path)
-            ),
+            "panel_visibility_defaults_json": json.dumps(load_panel_visibility_defaults(SETTINGS.panel_visibility_defaults_path)),
             **theme_ctx,
         },
     )
@@ -293,13 +289,16 @@ async def run_stream_logs() -> StreamingResponse:
                     if epoch >= 0:
                         active_cfg_folder = _runtime_state["active_cfg_folder"]
                         metrics = log_parser.parse_metrics(text)
-                        yield sse.event("epoch", {
-                            "epoch": epoch,
-                            "total": _get_total_epochs(active_cfg_folder),
-                            "drag_value": metrics.get("drag_value"),
-                            "solar_power_w": metrics.get("solar_power_w"),
-                            "cruising_speed_ms": metrics.get("cruising_speed_ms"),
-                        })
+                        yield sse.event(
+                            "epoch",
+                            {
+                                "epoch": epoch,
+                                "total": _get_total_epochs(active_cfg_folder),
+                                "drag_value": metrics.get("drag_value"),
+                                "solar_power_w": metrics.get("solar_power_w"),
+                                "cruising_speed_ms": metrics.get("cruising_speed_ms"),
+                            },
+                        )
             if not state["running"]:
                 yield sse.event("done", {"return_code": state["return_code"]})
                 break

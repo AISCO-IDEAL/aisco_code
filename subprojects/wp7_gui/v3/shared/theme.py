@@ -189,10 +189,14 @@ def theme_to_css_vars(gui_theme: Mapping[str, Any]) -> dict[str, str]:
         "--theme-active-glow": str(rgba_effects.get("active_glow", "0 0 14px 2px rgba(200, 33, 33, 0.5)")),
         "--theme-panel-overlay": str(rgba_effects.get("panel_overlay", "rgba(255, 255, 255, 0.06)")),
         "--theme-workspace-top": str(rgba_effects.get("workspace_top", "rgba(0, 0, 0, 0.22)")),
-        "--theme-gradient-page-bg": str(gradients.get("page_bg", "radial-gradient(circle at top left, #344267 0%, #1D2233 45%, #151A28 100%)")),
+        "--theme-gradient-page-bg": str(
+            gradients.get("page_bg", "radial-gradient(circle at top left, #344267 0%, #1D2233 45%, #151A28 100%)")
+        ),
         "--theme-gradient-top-bar": str(gradients.get("top_bar", "linear-gradient(180deg, #35466D 0%, #2B3754 100%)")),
         "--theme-gradient-intro-card": str(gradients.get("intro_card", "linear-gradient(135deg, #1A2744 0%, #0D1120 100%)")),
-        "--theme-gradient-arcade-bg": str(gradients.get("arcade_bg", "radial-gradient(ellipse at 38% 28%, #27366B 0%, #18233D 45%, #0D1120 100%)")),
+        "--theme-gradient-arcade-bg": str(
+            gradients.get("arcade_bg", "radial-gradient(ellipse at 38% 28%, #27366B 0%, #18233D 45%, #0D1120 100%)")
+        ),
         "--theme-mesh-bg": str(threejs.get("mesh_background", "#F1F7F3")),
         "--theme-mesh-fallback": str(threejs.get("mesh_fallback", "#99A3A4")),
         "--theme-slider-accent": str(threejs.get("slider_accent", "#C33531")),

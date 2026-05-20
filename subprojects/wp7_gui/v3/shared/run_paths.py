@@ -72,9 +72,7 @@ def get_storage_root(
         beast_raw = storage.get("beast_storage_dir")
         if beast_raw is not None:
             beast_root = Path(beast_raw)
-            beast_resolved = (
-                (repo_parent / beast_root).resolve() if not beast_root.is_absolute() else beast_root.resolve()
-            )
+            beast_resolved = (repo_parent / beast_root).resolve() if not beast_root.is_absolute() else beast_root.resolve()
             if beast_resolved.exists():
                 return beast_resolved
     except Exception as exc:
