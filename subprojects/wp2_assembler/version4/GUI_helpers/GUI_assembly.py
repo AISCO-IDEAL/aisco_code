@@ -304,8 +304,12 @@ def _check_validity(params: dict, output_dir: Path | None = None) -> list[str]:
 
 def call_assembly_from_params(output_dir: Path | None = None) -> tuple[cq.Assembly, cq.Solid, cq.Assembly]:
     """
-    Reads parameters.yaml and returns the same tuple as call_assembly() in nbz.py:
-    (cut_inner_assembly, cut_outer_nbz_solid, vision_assembly)
+    Reads parameters.yaml and returns the GUI preview/export tuple:
+    (inner_assembly, cut_outer_nbz_solid, vision_assembly)
+
+    The validity checks still apply wheel-clearance logic, but the exported GUI
+    mesh keeps wheels whole so the 3D viewer shows round tires instead of
+    clearance-clipped tires.
 
     Args:
         output_dir: Optional directory to write assembly.ply, assembly.step, and checks.txt.
@@ -317,7 +321,6 @@ def call_assembly_from_params(output_dir: Path | None = None) -> tuple[cq.Assemb
     _check_validity(params, output_dir=output_dir)
 
     ground_clearance = get_regulation("no_build_zones.outer_prism.ground_clearance")
-    wheel_clearance = get_regulation("no_build_zones.outer_prism.wheel_clearance")
 
     def keep_above_z(solid: cq.Solid, z_cut: float) -> cq.Solid | None:
         bbox = solid.BoundingBox()
@@ -348,29 +351,25 @@ def call_assembly_from_params(output_dir: Path | None = None) -> tuple[cq.Assemb
     wheel_solids = inner_solids[1:]
     wheel_names = [k for k in params if k.startswith("wheel_")]
 
-    cut_wheel_solids: list[tuple[str, cq.Solid]] = []
-    for wheel_name, wheel in zip(wheel_names, wheel_solids, strict=False):
-        cut_wheel = keep_above_z(wheel, wheel_clearance)
-        if cut_wheel is not None:
-            cut_wheel_solids.append((wheel_name, cut_wheel))
+    full_wheel_solids = list(zip(wheel_names, wheel_solids, strict=False))
 
     cut_outer = keep_above_z(_outer_nbz_from_dict(params), ground_clearance)
     if cut_outer is None:
         print("[WARNING] Outer NBZ was completely removed by the ground clearance cut — layout is degenerate.")
         cut_outer = _outer_nbz_from_dict(params)
 
-    cut_inner_assembly = cq.Assembly()
+    inner_assembly = cq.Assembly()
     if _EXPORT_SEAT:
-        cut_inner_assembly.add(seat_solid, name="Seat")
+        inner_assembly.add(seat_solid, name="Seat")
     if _EXPORT_WHEELS:
-        for wheel_name, wheel_solid in cut_wheel_solids:
-            cut_inner_assembly.add(wheel_solid, name=wheel_name)
-    cut_inner_assembly.name = "inner_assembly"
+        for wheel_name, wheel_solid in full_wheel_solids:
+            inner_assembly.add(wheel_solid, name=wheel_name)
+    inner_assembly.name = "inner_assembly"
 
     outer_solid = cut_outer.Solids()[0]
     vision = _vision_nbz_from_dict(params) if _EXPORT_VISION else cq.Assembly()
 
-    result = cut_inner_assembly, outer_solid, vision
+    result = inner_assembly, outer_solid, vision
     save_ply(*result, output_dir=output_dir)
     return result
 
