@@ -706,6 +706,50 @@ def _scalar_to_rgb_mpl(values: np.ndarray, colormap: str, vmin: float, vmax: flo
     return (rgba[:, :3] * 255).astype(np.uint8)
 
 
+def _bbox_wireframe_mesh(
+    box_mesh: trimesh.Trimesh,
+    color_rgba: tuple[float, float, float, float],
+    tube_radius: float = 3.0,
+) -> trimesh.Trimesh:
+    """Build a solid mesh representing the wireframe edges of *box_mesh*.
+
+    pyrender has no line-primitive support, so edges are tessellated into thin
+    square-cross-section tubes (12 faces each).  The result renders as a
+    wireframe cage.
+
+    Args:
+        box_mesh: Source box mesh whose unique edges are extracted.
+        color_rgba: (R, G, B, A) float tuple in [0, 1].
+        tube_radius: Half-width of each edge tube in mm.
+
+    Returns:
+        Flat-colored trimesh.Trimesh suitable for ``render_list``.
+    """
+    r_u, g_u, b_u, a_u = (int(v * 255) for v in color_rgba)
+    tubes: list[trimesh.Trimesh] = []
+    for edge in box_mesh.edges_unique:
+        p0 = box_mesh.vertices[edge[0]]
+        p1 = box_mesh.vertices[edge[1]]
+        direction = p1 - p0
+        length = float(np.linalg.norm(direction))
+        if length < 1e-9:
+            continue
+        tube = trimesh.creation.cylinder(radius=tube_radius, height=length, sections=4)
+        # Align tube (initially along Z) to the edge direction
+        z_axis = np.array([0.0, 0.0, 1.0])
+        edge_dir = direction / length
+        rotation = trimesh.geometry.align_vectors(z_axis, edge_dir)
+        tube.apply_transform(rotation)
+        tube.apply_translation((p0 + p1) / 2.0)
+        tubes.append(tube)
+    if not tubes:
+        return box_mesh.copy()
+    result = trimesh.util.concatenate(tubes)
+    fc = np.full((len(result.faces), 4), [r_u, g_u, b_u, a_u], dtype=np.uint8)
+    result.visual = trimesh.visual.ColorVisuals(mesh=result, face_colors=fc)
+    return result
+
+
 def _build_flat_mesh_with_colors(
     base_mesh: trimesh.Trimesh,
     face_colors: np.ndarray,
@@ -907,10 +951,13 @@ def _build_render_list(
         rgba = _layer_rgba("inner_assembly", "#F39C12", 1.0)
         render_list.append((inner_assembly, rgba))
 
-    # --- Outer bbox (transparent, rendered before aeroshell) ---
+    # --- Outer bbox: solid face or wireframe depending on config ---
     if _layer_enabled("outer_bbox") and outer_bbox is not None:
         rgba = _layer_rgba("outer_bbox", "#FF504D", 0.12)
-        render_list.append((outer_bbox, rgba))
+        if bool(_get(cfg, "layers", "outer_bbox", "wireframe", default=True)):
+            render_list.append((_bbox_wireframe_mesh(outer_bbox, rgba), None))
+        else:
+            render_list.append((outer_bbox, rgba))
 
     # --- Aeroshell: vertex-colored (solar baked) or uniform material ---
     if _layer_enabled("aeroshell") and aeroshell_mesh is not None:
@@ -967,18 +1014,20 @@ def _bake_solar_into_aeroshell(
     r, g, b = _parse_color_rgb(ae_hex)
     face_colors = np.full((F, 4), [r, g, b, int(ae_alpha * 255)], dtype=np.uint8)
 
-    # Layer 2: shading colormap alpha-blended over ALL faces — shows illumination
-    # quality everywhere, not just on selected area.
+    # Layer 2: shading — dark grey overlay whose opacity scales with (1 - illumination):
+    # shadowed faces get full shadow_alpha, fully-lit faces stay transparent.
+    # This "darkens" the shadow side while leaving sun-facing faces near their base color.
     shading_enabled = bool(_get(cfg, "layers", "solar_shading", "enabled", default=True))
     if shading is not None and shading_enabled and len(shading) == F:
-        colormap = str(_get(cfg, "layers", "solar_shading", "colormap", default="plasma"))
-        sh_alpha = float(_get(cfg, "layers", "solar_shading", "alpha", default=0.85))
-        vmin = float(_get(cfg, "layers", "solar_shading", "vmin", default=0.0))
-        vmax = float(_get(cfg, "layers", "solar_shading", "vmax", default=1.0))
-        shading_np = shading.detach().cpu().numpy().reshape(-1)
-        rgb_map = _scalar_to_rgb_mpl(shading_np, colormap, vmin, vmax).astype(np.float32) / 255.0
+        sh_alpha_max = float(_get(cfg, "layers", "solar_shading", "alpha", default=0.70))
+        shadow_hex = str(_get(cfg, "layers", "solar_shading", "color", default="#333333"))
+        r_sh, g_sh, b_sh = _parse_color_rgb(shadow_hex)
+        shading_np = shading.detach().cpu().numpy().reshape(-1).astype(np.float32)
+        # shadow weight = 1 - illumination: 1 on dark faces, 0 on lit faces
+        shadow_w = (1.0 - shading_np) * sh_alpha_max
         existing_rgb = face_colors[:, :3].astype(np.float32) / 255.0
-        blended = rgb_map * sh_alpha + existing_rgb * (1.0 - sh_alpha)
+        sh_rgb = np.array([r_sh / 255.0, g_sh / 255.0, b_sh / 255.0], dtype=np.float32)
+        blended = sh_rgb * shadow_w[:, np.newaxis] + existing_rgb * (1.0 - shadow_w[:, np.newaxis])
         face_colors[:, :3] = np.clip(blended * 255.0, 0, 255).astype(np.uint8)
 
     # Layer 3: binary mask gold — HARD OVERRIDE on selected faces.
@@ -1243,7 +1292,7 @@ def _build_offset_layer_mesh(
     return m
 
 
-def _export_glb_layers(  # noqa: PLR0915  # layer-builder — many statements by design
+def _export_glb_layers(  # noqa: PLR0912, PLR0915  # layer-builder — many branches and statements by design
     aeroshell_mesh: trimesh.Trimesh,
     binary_mask: Tensor | None,
     shading: Tensor | None,
@@ -1285,10 +1334,16 @@ def _export_glb_layers(  # noqa: PLR0915  # layer-builder — many statements by
 
     # --- outer_bbox ---
     if outer_bbox is not None and bool(_get(cfg, "layers", "outer_bbox", "enabled", default=False)):
-        bbox = outer_bbox.copy()
-        fc = np.tile(_fc("outer_bbox", "#FF504D", 0.12), (len(bbox.faces), 1))
-        bbox.visual = trimesh.visual.ColorVisuals(mesh=bbox, face_colors=fc)
-        scene.add_geometry(bbox, node_name="outer_bbox")
+        bbox_color = _fc("outer_bbox", "#FF504D", 0.80)
+        r_f, g_f, b_f, a_f = (v / 255.0 for v in bbox_color)
+        if bool(_get(cfg, "layers", "outer_bbox", "wireframe", default=True)):
+            wf = _bbox_wireframe_mesh(outer_bbox, (r_f, g_f, b_f, a_f))
+            scene.add_geometry(wf, node_name="outer_bbox")
+        else:
+            bbox = outer_bbox.copy()
+            fc = np.tile(bbox_color, (len(bbox.faces), 1))
+            bbox.visual = trimesh.visual.ColorVisuals(mesh=bbox, face_colors=fc)
+            scene.add_geometry(bbox, node_name="outer_bbox")
 
     # --- aeroshell_base --- (base color + windshield hard override)
     ae_rgba = _fc("aeroshell", "#33FFFF", 0.82)
@@ -1304,15 +1359,19 @@ def _export_glb_layers(  # noqa: PLR0915  # layer-builder — many statements by
     if glb_base is not None:
         scene.add_geometry(glb_base, node_name="aeroshell_base")
 
-    # --- solar_shading --- (full mesh, illumination quality colormap, +0.5 mm)
+    # --- solar_shading --- (full mesh, shadow darkening, +0.5 mm)
     if shading is not None and bool(_get(cfg, "layers", "solar_shading", "enabled", default=True)):
-        colormap = str(_get(cfg, "layers", "solar_shading", "colormap", default="plasma"))
-        sh_alpha = float(_get(cfg, "layers", "solar_shading", "alpha", default=0.85))
-        vmin = float(_get(cfg, "layers", "solar_shading", "vmin", default=0.0))
-        vmax = float(_get(cfg, "layers", "solar_shading", "vmax", default=1.0))
-        sh_np = shading.detach().cpu().numpy().reshape(-1)
-        rgb_map = _scalar_to_rgb_mpl(sh_np, colormap, vmin, vmax)
-        sh_fc = np.concatenate([rgb_map, np.full((F, 1), int(sh_alpha * 255), dtype=np.uint8)], axis=1)
+        sh_alpha_max = float(_get(cfg, "layers", "solar_shading", "alpha", default=0.70))
+        shadow_hex = str(_get(cfg, "layers", "solar_shading", "color", default="#333333"))
+        r_sh, g_sh, b_sh = _parse_color_rgb(shadow_hex)
+        shading_np = shading.detach().cpu().numpy().reshape(-1).astype(np.float32)
+        shadow_w = ((1.0 - shading_np) * sh_alpha_max * 255.0).astype(np.uint8)
+        sh_fc = np.stack([
+            np.full(F, r_sh, dtype=np.uint8),
+            np.full(F, g_sh, dtype=np.uint8),
+            np.full(F, b_sh, dtype=np.uint8),
+            shadow_w,
+        ], axis=1)
         glb_sh = _build_offset_layer_mesh(aeroshell_mesh, None, sh_fc, 0.5)
         if glb_sh is not None:
             scene.add_geometry(glb_sh, node_name="solar_shading")
