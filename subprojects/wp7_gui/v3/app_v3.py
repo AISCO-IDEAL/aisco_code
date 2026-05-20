@@ -62,9 +62,11 @@ else:
 
 def main() -> None:
     print("--- AISCO GUI v3 ---")
+    print(f"Environment: {SETTINGS.runtime_environment}")
     print(f"Templates: {SETTINGS.templates_dir}")
     print(f"Statics:   {SETTINGS.static_dir}")
     print(f"WP4 root:  {SETTINGS.wp4_package_root} (active: {SETTINGS.wp4_active_version})")
+    print(f"Run local script: {SETTINGS.run_local_script}")
     print(f"Local URL: http://localhost:{SETTINGS.port}")
     uvicorn.run(app, host=SETTINGS.host, port=SETTINGS.port, log_level="info")
 
