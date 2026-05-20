@@ -24,11 +24,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import trimesh
-import wandb
 from torch import Tensor
 from torch.optim.optimizer import Optimizer
 from torch.profiler import record_function
 
+import wandb
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm, scale_outer_prism
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager import DiversityLossManager
