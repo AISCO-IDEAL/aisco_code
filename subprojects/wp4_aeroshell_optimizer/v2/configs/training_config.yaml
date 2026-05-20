@@ -4,8 +4,8 @@
 training_params:
   learning_rate: 0.00005  # 0.000008 for WIREV5, 0.0005 for WIREV2 and ConcatWireV2, 0.0001 for basic MLP, 0.0005 for AISCOModel_v0
   optimizer: "adam_fast"  # key from optimizers.json — adam | adamw | sgd_momentum | lbfgs
-  num_epochs: 100 # basic_MLP_v1.py: training_config["training_params"].get("num_epochs", 1000)
-  mesh_save_interval: 200  # basic_MLP_v1.py: training_config["training_params"].get("mesh_save_interval", 50)
+  num_epochs: 250 # basic_MLP_v1.py: training_config["training_params"].get("num_epochs", 1000)
+  mesh_save_interval: 20  # basic_MLP_v1.py: training_config["training_params"].get("mesh_save_interval", 50)
   marching_cubes_usage: "True"  # storage_utils.py: general_config["general_info"].get("marching_cubes_usage", "False") (if True, uses marching cubes with threads for mesh extraction, if False uses kaolin-based mesh extraction without threads, which is more stable but slower)
   gradient_conflict_cadence: 0  # Gradient conflict tracking cadence (0 = disabled, N = every N epochs). Stores per-component gradient vectors and cosine similarities to disk.
   gradient_conflict_output_dir: ""  # Output directory for gradient conflict data. If empty, defaults to <storage_dir>/<model_hash>/<wandb_run>/gradient_conflict/
@@ -31,18 +31,42 @@ training_params:
   #                  forwards. Same final θ.grad as single_pass.
   multi_shape_aggregation:
     method: "l2_norm"  # mean | l2_norm
-    l2_backward_strategy: "two_pass"  # single_pass | two_pass (both only used when method=l2_norm)
+    l2_backward_strategy: "single_pass"  # single_pass | two_pass (both only used when method=l2_norm)
 
 mode:
   training_mode: "diagnostic"  # "performance" or "diagnostic"
   print_timing: true  # print backward timing per epoch (useful when benchmarking performance vs diagnostic mode)
 
 # ===========================================================================
+# Gradient clipping (plan 003 — M2: AutoClip)
+# Controls how gradient norms are clipped before each optimizer step.
+# ---------------------------------------------------------------------------
+# mode:
+#   "static"   — fixed clip at static_clip_norm (legacy behaviour, backward-compatible)
+#   "autoclip" — adaptive 80th-percentile of recent gradient norm history (GINN-style)
+#   "none"     — no gradient clipping
+#
+# static_clip_norm: fallback clip value during AutoClip warm-up (first auto_clip_min_len epochs)
+#   and the sole clip value when mode="static". Should match the previous gradient_clip_norm value.
+# auto_clip_percentile: fraction of history to use as threshold (0.8 = 80th percentile)
+# auto_clip_hist_len:   number of gradient norm observations to keep in rolling buffer
+# auto_clip_min_len:    warm-up epochs before switching from static fallback to adaptive threshold
+# ===========================================================================
+gradient_clipping:
+  mode: "autoclip"           # "static" | "autoclip" | "none"
+  static_clip_norm: 100      # warm-up fallback (first 50 epochs) and static mode value
+  auto_clip_percentile: 0.8
+  auto_clip_hist_len: 50
+  auto_clip_min_len: 50
+
+#used in optimise() path
+gradient_clip_norm: 100
+# ===========================================================================
 # GINN / Diversity parameters (merged from GINN.yaml)
 # ===========================================================================
 
 pretrain_population_size: false # optimisation loop uses same population size as pretraining
-population_size: 16  # used only when pretrain_population_size: false
+population_size: 24 # used only when pretrain_population_size: false
 
 # Initial Z placement when pretrain_population_size: false.
 #   z_init_mode: circle        → slots placed at evenly-spaced angles on the
@@ -83,14 +107,10 @@ force_z0_to_origin: false         # true keeps first latent vector fixed at orig
 z_resample_cadence: 1            # 0 disables resampling, N>0 resamples every N epochs | use 0 to align with latent pretraining spots
 z_resample_start_epoch: 0        # 0 = Mode B (resample from epoch 1); N>0 = Mode C warm-up
 z_resample_stop_epoch: -1        # -1 = never stop resampling; N>0 = freeze Z from epoch N onward (Phase 2 transition)
-z_resample_mode: on_circle        # on_circle | in_circle | random; mode used when z_resample_cadence > 0
+z_resample_mode: in_circle        # on_circle | in_circle | random; mode used when z_resample_cadence > 0
 
-# ===========================================================================
-# Gradient clipping (F3 fix for first-step SDF destruction)
-# ===========================================================================
-# Set to e.g. 1.0 to cap the total parameter gradient L2-norm before each optimizer step.
-# null disables clipping (legacy behaviour).
-gradient_clip_norm: 100
+
+
 
 # ===========================================================================
 # Post-training mesh saving for population validation.

@@ -148,7 +148,9 @@ class ModelLoader:
         self.epoch_name = epoch_name
         self.sdf_model = sdf_model
         verts, faces, loss, surrogate_loss, dL_dvertices = self.extractor.extract_and_compute_loss(
-            sdf_model=sdf_model, loss_fn=self.loss_fn, smooth_vertex_gradients_iters=5
+            sdf_model=sdf_model,
+            loss_fn=self.loss_fn,
+            smooth_vertex_gradients_iters=self.cfd_config.get("grad_smoothing_iters", 5),
         )
         self.extractor.last_dL_dv = dL_dvertices  # type: ignore[attr-defined]
         self.extractor.last_verts = verts  # type: ignore[attr-defined]

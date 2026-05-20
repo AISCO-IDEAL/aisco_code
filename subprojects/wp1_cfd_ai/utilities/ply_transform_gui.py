@@ -18,6 +18,8 @@ import struct
 import threading
 import traceback
 import uuid
+import zipfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from multiprocessing import Pool
 from pathlib import Path
 from typing import Any
@@ -731,32 +733,134 @@ def _natural_sort_key(s):
     return [int(c) if c.isdigit() else c.lower() for c in re.split(r"(\d+)", s)]
 
 
-def _is_valid_data_pt(filepath: str) -> bool:
-    """Check if a .pt file contains valid field data (pos, cp, pressure, x, wall_shear, or face).
+# In-memory cache: filepath -> (mtime, is_valid).  Survives the server process lifetime.
+_validity_cache: dict[str, tuple[float, bool]] = {}
 
-    Returns True only if the file is loadable and contains at least 'pos'.
-    Returns False for model files or incompatible data.
+
+def _pkl_add_str(data: bytes, start: int, slen: int, keys: set[str]) -> None:
+    """Decode a UTF-8 slice from a pickle stream and add it to keys if it is an identifier.
+
+    Args:
+        data: Raw pickle bytes.
+        start: Start index of the string payload.
+        slen: Byte length of the string payload.
+        keys: Set to update in place.
     """
-    if not os.path.isfile(filepath):
-        return False
+    end = start + slen
+    if end > len(data):
+        return
+    try:
+        s = data[start:end].decode("utf-8")
+        if s.isidentifier():
+            keys.add(s)
+    except Exception:
+        pass
+
+
+def _fast_peek_pt_keys(filepath: str) -> frozenset[str] | None:
+    """Extract identifier strings from a PyTorch zip-format .pt pickle stream.
+
+    Reads only the tiny data.pkl entry (~KB) instead of loading tensor blobs
+    (~MB–GB). Returns frozenset of all identifier-like strings found in the
+    pickle, or None if the file is not a zip-format .pt.
+
+    Args:
+        filepath: Path to a .pt file.
+
+    Returns:
+        frozenset of identifier strings, or None for non-zip files.
+    """
+    try:
+        if not zipfile.is_zipfile(filepath):
+            return None
+        with zipfile.ZipFile(filepath, "r") as zf:
+            pkl_name = next((n for n in zf.namelist() if n.endswith(".pkl")), None)
+            if pkl_name is None:
+                return None
+            pkl_bytes = zf.read(pkl_name)
+    except Exception:
+        return None
+
+    # Scan the raw pickle byte stream for string opcodes.
+    # SHORT_BINUNICODE (0x8C): 1-byte length + utf-8 bytes  (protocol ≥ 4, most common)
+    # BINUNICODE      (0x58): 4-byte LE length + utf-8 bytes (protocol ≥ 2)
+    keys: set[str] = set()
+    data = pkl_bytes
+    n = len(data)
+    i = 0
+    while i < n - 1:
+        b = data[i]
+        if b == 0x8C:  # SHORT_BINUNICODE: next byte is length
+            slen = data[i + 1]
+            _pkl_add_str(data, i + 2, slen, keys)
+            i += 2 + slen
+        elif b == 0x58 and i + 5 <= n:  # BINUNICODE: 4-byte LE length
+            slen = int.from_bytes(data[i + 1 : i + 5], "little")
+            if slen < 256:  # attribute names are never >255 chars; skip huge values
+                _pkl_add_str(data, i + 5, slen, keys)
+            i += 5 + slen
+        else:
+            i += 1
+    return frozenset(keys)
+
+
+def _is_valid_data_pt_full(filepath: str) -> bool:
+    """Full validation via torch.load. Fallback for non-zip legacy .pt files.
+
+    Args:
+        filepath: Path to a .pt file.
+
+    Returns:
+        True if the file is a valid dataset file with pos and at least one scalar field.
+    """
     try:
         import torch  # noqa: PLC0415
 
         d = torch.load(filepath, weights_only=False, map_location="cpu")
-        # Require geometry plus at least one displayable attribute.
         if not hasattr(d, "pos"):
             return False
-        # Additional check: pos should be a tensor with shape [N, 3]
         if not hasattr(d.pos, "shape") or len(d.pos.shape) != 2 or d.pos.shape[1] != 3:
             return False
-        has_scalar_or_face = any(
-            hasattr(d, k) and getattr(d, k) is not None for k in ("x", "cp", "pressure", "wall_shear", "face")
-        )
-
+        return any(hasattr(d, k) and getattr(d, k) is not None for k in ("x", "cp", "pressure", "wall_shear", "face"))
     except Exception:
         return False
+
+
+def _is_valid_data_pt(filepath: str) -> bool:
+    """Check if a .pt file contains valid field data (pos + at least one scalar/face).
+
+    Uses an mtime-based in-memory cache so repeated calls for the same file are
+    instant. For new or changed files, uses fast zip-based pickle inspection
+    (reads only the small metadata stream, not tensor blobs) with a torch.load
+    fallback for legacy non-zip format files.
+
+    Args:
+        filepath: Path to a .pt file.
+
+    Returns:
+        True if the file is loadable and has pos + at least one scalar/face field.
+    """
+    if not os.path.isfile(filepath):
+        return False
+    try:
+        mtime = os.path.getmtime(filepath)
+    except OSError:
+        return False
+
+    cached = _validity_cache.get(filepath)
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
+
+    # Fast path: zip inspection — reads only the tiny .pkl metadata entry.
+    keys = _fast_peek_pt_keys(filepath)
+    if keys is not None:
+        result = "pos" in keys and any(k in keys for k in ("x", "cp", "pressure", "wall_shear", "face"))
     else:
-        return has_scalar_or_face
+        # Legacy non-zip format: fall back to full torch.load.
+        result = _is_valid_data_pt_full(filepath)
+
+    _validity_cache[filepath] = (mtime, result)
+    return result
 
 
 def _to_node_scalar(x):
@@ -845,6 +949,49 @@ def _spatial_subsample(pos, n_target):
     return np.sort(best_idx)
 
 
+# Maximum number of directory entries examined before concluding a directory is
+# not a dataset.  Keeps scan fast even for directories with many non-.pt files
+# at the start, while avoiding full directory reads on Lustre.
+_SCAN_MAX_PROBE: int = 30
+
+
+def _quick_dataset_info(dataset_path: str) -> bool:
+    """Detect whether a directory contains a dataset using early-exit scanning.
+
+    Reads at most ``_SCAN_MAX_PROBE`` directory entries — never triggers a full
+    Lustre directory scan, even for directories with tens of thousands of files.
+
+    The actual run count is determined lazily by ``_get_dataset_runs`` when the
+    user opens the dataset; the scan endpoint only needs to know *if* a
+    directory is a dataset.
+
+    Args:
+        dataset_path: Path to the candidate dataset directory.
+
+    Returns:
+        True if the directory looks like a dataset, False otherwise.
+    """
+    try:
+        with os.scandir(dataset_path) as it:
+            for count, entry in enumerate(it):
+                if count >= _SCAN_MAX_PROBE:
+                    break
+                name = entry.name
+                # Flat structure: .pt file directly in the directory
+                if name.endswith(".pt") and entry.is_file(follow_symlinks=False):
+                    return True
+                # Nested structure: subdirectory that contains data.pt
+                if (
+                    "." not in name
+                    and entry.is_dir(follow_symlinks=False)
+                    and os.path.isfile(os.path.join(dataset_path, name, "data.pt"))
+                ):
+                    return True
+    except OSError:
+        pass
+    return False
+
+
 def _get_dataset_runs(dataset_path: str) -> list:
     """Get all valid run paths in a dataset, supporting both flat and nested structures.
 
@@ -855,19 +1002,40 @@ def _get_dataset_runs(dataset_path: str) -> list:
     entries = sorted(os.listdir(dataset_path), key=_natural_sort_key)
     runs = []
 
-    # Detect structure
-    has_flat = False
+    # Detect structure and collect valid flat files in a single pass.
+    # Avoids calling _is_valid_data_pt twice per file (detection + collection).
+    valid_flat: set[str] = set()
     has_nested = False
 
-    for e in entries:
-        if e.endswith(".pt") and _is_valid_data_pt(os.path.join(dataset_path, e)):
-            has_flat = True
-        elif "." not in e and os.path.isfile(os.path.join(dataset_path, e, "data.pt")):
+    # Validate flat .pt files in parallel — each call pays ~50 ms Lustre latency
+    # for zip inspection, so threads overlap the I/O instead of serialising it.
+    pt_candidates = [e for e in entries if e.endswith(".pt")]
+    nested_candidates = [e for e in entries if "." not in e]
+
+    # Check for nested structure (cheap: just os.path.isfile)
+    for e in nested_candidates:
+        if os.path.isfile(os.path.join(dataset_path, e, "data.pt")):
             has_nested = True
+            break
+
+    # Validate flat .pt files concurrently
+    if pt_candidates:
+        max_workers = min(16, len(pt_candidates))
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {pool.submit(_is_valid_data_pt, os.path.join(dataset_path, e)): e for e in pt_candidates}
+            for fut in as_completed(futures):
+                e = futures[fut]
+                try:
+                    if fut.result():
+                        valid_flat.add(e)
+                except Exception:
+                    pass
+
+    has_flat = bool(valid_flat)
 
     # Collect runs based on detected structure
     for e in entries:
-        if has_flat and e.endswith(".pt") and _is_valid_data_pt(os.path.join(dataset_path, e)):
+        if has_flat and e in valid_flat:
             run_name = e[:-3]  # remove .pt
             runs.append((run_name, os.path.join(dataset_path, e)))
         if has_nested and "." not in e:
@@ -875,6 +1043,8 @@ def _get_dataset_runs(dataset_path: str) -> list:
             if os.path.isfile(nested_pt):
                 runs.append((e, nested_pt))
 
+    # Restore sort order (parallel futures complete out of order)
+    runs.sort(key=lambda t: _natural_sort_key(t[0]))
     return runs
 
 
@@ -891,12 +1061,9 @@ def api_dataset_scan():
             full = os.path.join(base_dir, e)
             if not os.path.isdir(full):
                 continue
-            try:
-                runs = _get_dataset_runs(full)
-            except OSError:
-                runs = []
-            if runs:
-                datasets.append({"name": e, "path": full, "num_runs": len(runs)})
+            if _quick_dataset_info(full):
+                # num_runs is null — the count is loaded when the user opens the dataset.
+                datasets.append({"name": e, "path": full, "num_runs": None})
         return jsonify(ok=True, datasets=datasets)
     except Exception as e:
         return jsonify(ok=False, error=str(e))
@@ -1347,15 +1514,20 @@ def api_dataset_export_curated():  # noqa: PLR0912
     try:
         os.makedirs(dst_path)
 
-        # Copy run directories
+        # Copy run directories (nested) or .pt files (flat)
         copied = []
         for run_name in keep_runs:
-            src_run = os.path.join(src_path, run_name)
-            dst_run = os.path.join(dst_path, run_name)
-            if not os.path.isdir(src_run):
-                continue
-            shutil.copytree(src_run, dst_run)
-            copied.append(run_name)
+            src_run_dir = os.path.join(src_path, run_name)
+            src_run_pt = os.path.join(src_path, run_name + ".pt")
+            if os.path.isdir(src_run_dir):
+                # Nested dataset: copy entire run subdirectory
+                shutil.copytree(src_run_dir, os.path.join(dst_path, run_name))
+                copied.append(run_name)
+            elif os.path.isfile(src_run_pt):
+                # Flat dataset: copy single .pt file
+                shutil.copy2(src_run_pt, os.path.join(dst_path, run_name + ".pt"))
+                copied.append(run_name)
+            # Runs that match neither nested dir nor flat .pt are silently skipped.
 
         # Write order_.txt  (same name as training code expects)
         with open(os.path.join(dst_path, "order_.txt"), "w") as f:
