@@ -132,11 +132,8 @@ export PYTHONPATH="$PROJECT_ROOT/subprojects:${PYTHONPATH:-}"
 cd "$PROJECT_ROOT"
 ts "Checkpoint: changed directory to $(pwd)"
 
-PRECHECK_TIMEOUT_SECONDS="${PRECHECK_TIMEOUT_SECONDS:-60}"
-MAIN_TIMEOUT_SECONDS="${MAIN_TIMEOUT_SECONDS:-13800}"
-
-ts "Checkpoint: starting import preflight (${PRECHECK_TIMEOUT_SECONDS}s timeout)"
-if timeout "${PRECHECK_TIMEOUT_SECONDS}s" "$PYTHON_BIN" -u - <<'PY'
+ts "Checkpoint: starting import preflight"
+if "$PYTHON_BIN" -u - <<'PY'
 print('preflight: interpreter ok', flush=True)
 import torch
 print(f'preflight: torch {torch.__version__}', flush=True)
@@ -147,23 +144,19 @@ then
     ts "Checkpoint: import preflight passed"
 else
     rc=$?
-    ts "ERROR: import preflight failed or timed out (rc=$rc)"
+    ts "ERROR: import preflight failed (rc=$rc)"
     exit "$rc"
 fi
 
-ts "Checkpoint: launching main_v2.py with hard timeout"
-if timeout --signal=TERM --kill-after=30s "${MAIN_TIMEOUT_SECONDS}s" "$PYTHON_BIN" -u subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py \
+ts "Checkpoint: launching main_v2.py"
+if "$PYTHON_BIN" -u subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py \
     --save_model \
     --problem_id="AISCO_WP4_Test1" 2>&1 #aalthaus, very unhappy with the arguments, don't do anything
 then
     ts "Checkpoint: main_v2.py finished successfully"
 else
     rc=$?
-    if [ "$rc" -eq 124 ]; then
-        ts "ERROR: main_v2.py hit timeout (${MAIN_TIMEOUT_SECONDS}s)"
-    else
-        ts "ERROR: main_v2.py exited non-zero (rc=$rc)"
-    fi
+    ts "ERROR: main_v2.py exited non-zero (rc=$rc)"
     exit "$rc"
 fi
 

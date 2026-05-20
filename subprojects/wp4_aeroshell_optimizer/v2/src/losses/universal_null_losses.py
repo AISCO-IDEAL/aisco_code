@@ -18,6 +18,7 @@ Design:
     - Caches the value as a constant tensor — no per-step allocations
     - Sets requires_grad=False: the tensor is not model-derived, so gradients are zero
     - Returns immediately without model evaluation
+    - NullLossAero and NullLossSolar override with cse_defaults when CSE=True
 
 Compliance:
     - Ruff: Passes all checks including ARG002 (unused arguments)
@@ -26,6 +27,8 @@ Compliance:
 """
 
 from __future__ import annotations
+
+from typing import ClassVar
 
 import torch
 
@@ -37,8 +40,12 @@ class _BaseNullLoss(ParentLoss):
 
     Returns the configured weight value as a constant tensor with no gradients.
     The return value is determined by the second element of the [compute, weight, path]
-    tuple in losses_config — e.g. `null_loss_solar: [1, 0.0, "..."]` returns 0.0.
+    tuple in losses_config. The `is_null_loss` marker tells TotalLossV2 to store
+    training weight=0.0 regardless of the YAML value, so the YAML weight field can
+    safely serve as the CSE surrogate constant without inflating competition charts.
     """
+
+    is_null_loss: ClassVar[bool] = True
 
     def _setup(self) -> None:
         """Initialize cached constant tensor from configured weight value.
@@ -118,7 +125,7 @@ class NullLossSolar(_BaseNullLoss):
 
 
 class NullLossAero(_BaseNullLoss):
-    """Null loss for solar energy objectives, returns a default so the CSE can work properly"""
+    """Null loss for aerodynamic objectives, returns a default so the CSE can work properly"""
 
     def _setup(self) -> None:
         """Initialize cached constant tensor from configured weight value.

@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Any
 
 import torch
-import wandb
 
+import wandb
 from subprojects.wp4_aeroshell_optimizer.v2.scripts.postprocess_gradient_conflict import build_conflict_gif
 from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_manager import DiversityTrainer
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
@@ -586,6 +586,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             model_lr=learning_rate,
             optimizer_config=training_config["training_params"],
             gradient_clip_norm=training_config.get("gradient_clip_norm"),
+            autoclip_config=training_config.get("gradient_clipping"),
             diversity_manager=diversity_loss_manager,
             diversity_num_points=ginn_config.get("diversity_num_points", 2048),
             diversity_norm_order=ginn_config.get("diversity_norm_order", 2),
