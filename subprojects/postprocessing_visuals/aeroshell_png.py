@@ -706,6 +706,48 @@ def _scalar_to_rgb_mpl(values: np.ndarray, colormap: str, vmin: float, vmax: flo
     return (rgba[:, :3] * 255).astype(np.uint8)
 
 
+def _register_solar_quality_cmap() -> None:
+    """Register a custom 'solar_quality' matplotlib colormap if not already registered.
+
+    Designed to match physical solar irradiance maps (e.g. SolarGIS, PVGIS, NREL):
+
+      0.0 → deep navy   (no illumination, shadow — like night sky)
+      0.2 → dark blue    (grazing, almost no direct sun)
+      0.4 → ocean blue   (partial illumination)
+      0.55→ teal-green   (moderate sun angle)
+      0.70→ warm yellow  (good sunlight, typical solar peak area)
+      0.85→ orange       (high-quality, near-perpendicular faces)
+      1.0 → cream-white  (full perpendicular sun, theoretical max irradiance)
+
+    Call once at import or before any use of the colormap name.
+    """
+    import matplotlib  # noqa: PLC0415
+    import matplotlib.colors as mc  # noqa: PLC0415
+
+    _NAME = "solar_quality"
+    if _NAME in matplotlib.colormaps:
+        return
+    # Control points: (value, (R, G, B)) all in [0, 1]
+    nodes = [
+        (0.00, (0.03, 0.02, 0.20)),  # deep navy — night / no sun
+        (0.15, (0.08, 0.10, 0.55)),  # dark blue — deep shadow
+        (0.30, (0.00, 0.38, 0.78)),  # ocean blue — grazing incidence
+        (0.50, (0.05, 0.72, 0.72)),  # teal — moderate angle
+        (0.65, (0.30, 0.82, 0.20)),  # lime green — good angle
+        (0.78, (0.98, 0.85, 0.05)),  # golden yellow — solar peak zone
+        (0.90, (1.00, 0.45, 0.05)),  # orange — near-perpendicular
+        (1.00, (1.00, 0.97, 0.82)),  # cream-white — full normal incidence
+    ]
+    cmap = mc.LinearSegmentedColormap.from_list(
+        _NAME, [(v, rgb) for v, rgb in nodes], N=256
+    )
+    matplotlib.colormaps.register(cmap)
+
+
+# Eagerly register so the name is always available
+_register_solar_quality_cmap()
+
+
 def _bbox_wireframe_mesh(
     box_mesh: trimesh.Trimesh,
     color_rgba: tuple[float, float, float, float],
@@ -1008,30 +1050,40 @@ def _bake_solar_into_aeroshell(
     """
     F = len(base_mesh.faces)
 
+    # Resolve cone face indices once (used to suppress solar layers in windshield zone)
+    windshield_enabled = cone_mask is not None and bool(_get(cfg, "layers", "windshield", "enabled", default=True))
+    cone_np: np.ndarray | None = None
+    if windshield_enabled and cone_mask is not None:
+        cone_np = cone_mask.detach().cpu().numpy().reshape(-1).astype(bool)
+        if len(cone_np) != F:
+            cone_np = None
+
     # Layer 1: aeroshell base color for all faces
     ae_hex = _get(cfg, "layers", "aeroshell", "color", default="#33FFFF")
     ae_alpha = float(_get(cfg, "layers", "aeroshell", "alpha", default=0.82))
     r, g, b = _parse_color_rgb(ae_hex)
     face_colors = np.full((F, 4), [r, g, b, int(ae_alpha * 255)], dtype=np.uint8)
 
-    # Layer 2: shading — dark grey overlay whose opacity scales with (1 - illumination):
-    # shadowed faces get full shadow_alpha, fully-lit faces stay transparent.
-    # This "darkens" the shadow side while leaving sun-facing faces near their base color.
+    # Layer 2: solar shading colormap blended over ALL non-windshield faces.
+    # Windshield faces are excluded — they will be overridden in layer 4.
     shading_enabled = bool(_get(cfg, "layers", "solar_shading", "enabled", default=True))
     if shading is not None and shading_enabled and len(shading) == F:
-        sh_alpha_max = float(_get(cfg, "layers", "solar_shading", "alpha", default=0.70))
-        shadow_hex = str(_get(cfg, "layers", "solar_shading", "color", default="#333333"))
-        r_sh, g_sh, b_sh = _parse_color_rgb(shadow_hex)
+        colormap = str(_get(cfg, "layers", "solar_shading", "colormap", default="solar_quality"))
+        sh_alpha = float(_get(cfg, "layers", "solar_shading", "alpha", default=0.90))
+        vmin = float(_get(cfg, "layers", "solar_shading", "vmin", default=0.0))
+        vmax = float(_get(cfg, "layers", "solar_shading", "vmax", default=1.0))
         shading_np = shading.detach().cpu().numpy().reshape(-1).astype(np.float32)
-        # shadow weight = 1 - illumination: 1 on dark faces, 0 on lit faces
-        shadow_w = (1.0 - shading_np) * sh_alpha_max
+        # Zero out illumination on windshield faces so shading doesn't compete with layer 4
+        if cone_np is not None:
+            shading_np = shading_np.copy()
+            shading_np[cone_np] = 0.0
+        rgb_map = _scalar_to_rgb_mpl(shading_np, colormap, vmin, vmax).astype(np.float32) / 255.0
         existing_rgb = face_colors[:, :3].astype(np.float32) / 255.0
-        sh_rgb = np.array([r_sh / 255.0, g_sh / 255.0, b_sh / 255.0], dtype=np.float32)
-        blended = sh_rgb * shadow_w[:, np.newaxis] + existing_rgb * (1.0 - shadow_w[:, np.newaxis])
+        blended = rgb_map * sh_alpha + existing_rgb * (1.0 - sh_alpha)
         face_colors[:, :3] = np.clip(blended * 255.0, 0, 255).astype(np.uint8)
 
     # Layer 3: binary mask gold — HARD OVERRIDE on selected faces.
-    # Placed above shading so selected area is always clearly gold.
+    # Windshield faces are excluded from solar selection (cone suppresses selection to -1).
     mask_enabled = bool(_get(cfg, "layers", "solar_binary_mask", "enabled", default=True))
     if binary_mask is not None and mask_enabled and len(binary_mask) == F:
         color_on_hex = _get(cfg, "layers", "solar_binary_mask", "color_on", default="#FFD700")
@@ -1039,19 +1091,18 @@ def _bake_solar_into_aeroshell(
         r_on, g_on, b_on = _parse_color_rgb(color_on_hex)
         color_on = np.array([r_on, g_on, b_on, int(mask_alpha * 255)], dtype=np.uint8)
         mask_np = binary_mask.detach().cpu().numpy().reshape(-1)
-        face_colors[mask_np > 0.5] = color_on
+        sel = mask_np > 0.5
+        if cone_np is not None:
+            sel = sel & ~cone_np  # never gold inside the windshield zone
+        face_colors[sel] = color_on
 
-    # Layer 4: windshield cone mask — HARD SET (not a blend).
-    # alpha=0 → transparent cut-through (inner assembly visible, no aeroshell).
-    # alpha>0 → opaque-to-semi-transparent gray, suppressing ALL other layers.
-    # The windshield zone never shows any other layer beneath it.
-    if cone_mask is not None and bool(_get(cfg, "layers", "windshield", "enabled", default=True)):
+    # Layer 4: windshield cone mask — HARD SET, suppresses all layers above.
+    # alpha=0 → transparent cut-through; alpha>0 → opaque-to-semi-transparent gray.
+    if windshield_enabled and cone_np is not None:
         ws_hex = str(_get(cfg, "layers", "windshield", "color", default="#AAAAAA"))
         ws_alpha = float(_get(cfg, "layers", "windshield", "alpha", default=0.65))
         r_ws, g_ws, b_ws = _parse_color_rgb(ws_hex)
-        cone_np = cone_mask.detach().cpu().numpy().reshape(-1).astype(bool)
-        if len(cone_np) == F:
-            face_colors[cone_np] = [r_ws, g_ws, b_ws, int(ws_alpha * 255)]
+        face_colors[cone_np] = [r_ws, g_ws, b_ws, int(ws_alpha * 255)]
 
     return _build_flat_mesh_with_colors(base_mesh, face_colors)
 
@@ -1345,44 +1396,46 @@ def _export_glb_layers(  # noqa: PLR0912, PLR0915  # layer-builder — many bran
             bbox.visual = trimesh.visual.ColorVisuals(mesh=bbox, face_colors=fc)
             scene.add_geometry(bbox, node_name="outer_bbox")
 
-    # --- aeroshell_base --- (base color + windshield hard override)
+    # --- aeroshell_base --- (base color only; windshield faces excluded entirely)
     ae_rgba = _fc("aeroshell", "#33FFFF", 0.82)
     base_fc = np.tile(ae_rgba, (F, 1))
+    cone_np_glb: np.ndarray | None = None
     if cone_mask is not None and bool(_get(cfg, "layers", "windshield", "enabled", default=True)):
-        cone_np = cone_mask.detach().cpu().numpy().reshape(-1).astype(bool)
-        if len(cone_np) == F:
-            ws_alpha = float(_get(cfg, "layers", "windshield", "alpha", default=0.65))
-            ws_hex = str(_get(cfg, "layers", "windshield", "color", default="#AAAAAA"))
-            r_ws, g_ws, b_ws = _parse_color_rgb(ws_hex)
-            base_fc[cone_np] = [r_ws, g_ws, b_ws, int(ws_alpha * 255)]
-    glb_base = _build_offset_layer_mesh(aeroshell_mesh, None, base_fc, 0.0)
+        _cn = cone_mask.detach().cpu().numpy().reshape(-1).astype(bool)
+        if len(_cn) == F:
+            cone_np_glb = _cn
+    # Build aeroshell without windshield faces (they live in windshield_zone node)
+    non_cone_mask = ~cone_np_glb if cone_np_glb is not None else None
+    glb_base = _build_offset_layer_mesh(aeroshell_mesh, non_cone_mask, base_fc, 0.0)
     if glb_base is not None:
         scene.add_geometry(glb_base, node_name="aeroshell_base")
 
-    # --- solar_shading --- (full mesh, shadow darkening, +0.5 mm)
+    # --- solar_shading --- (non-windshield faces, solar_quality colormap, +0.5 mm)
     if shading is not None and bool(_get(cfg, "layers", "solar_shading", "enabled", default=True)):
-        sh_alpha_max = float(_get(cfg, "layers", "solar_shading", "alpha", default=0.70))
-        shadow_hex = str(_get(cfg, "layers", "solar_shading", "color", default="#333333"))
-        r_sh, g_sh, b_sh = _parse_color_rgb(shadow_hex)
-        shading_np = shading.detach().cpu().numpy().reshape(-1).astype(np.float32)
-        shadow_w = ((1.0 - shading_np) * sh_alpha_max * 255.0).astype(np.uint8)
-        sh_fc = np.stack([
-            np.full(F, r_sh, dtype=np.uint8),
-            np.full(F, g_sh, dtype=np.uint8),
-            np.full(F, b_sh, dtype=np.uint8),
-            shadow_w,
-        ], axis=1)
-        glb_sh = _build_offset_layer_mesh(aeroshell_mesh, None, sh_fc, 0.5)
+        colormap = str(_get(cfg, "layers", "solar_shading", "colormap", default="solar_quality"))
+        sh_alpha = float(_get(cfg, "layers", "solar_shading", "alpha", default=0.90))
+        vmin = float(_get(cfg, "layers", "solar_shading", "vmin", default=0.0))
+        vmax = float(_get(cfg, "layers", "solar_shading", "vmax", default=1.0))
+        sh_np = shading.detach().cpu().numpy().reshape(-1).astype(np.float32)
+        if cone_np_glb is not None:
+            sh_np = sh_np.copy()
+            sh_np[cone_np_glb] = 0.0
+        rgb_map = _scalar_to_rgb_mpl(sh_np, colormap, vmin, vmax)
+        sh_fc = np.concatenate([rgb_map, np.full((F, 1), int(sh_alpha * 255), dtype=np.uint8)], axis=1)
+        shading_mask = ~cone_np_glb if cone_np_glb is not None else None
+        glb_sh = _build_offset_layer_mesh(aeroshell_mesh, shading_mask, sh_fc, 0.5)
         if glb_sh is not None:
             scene.add_geometry(glb_sh, node_name="solar_shading")
 
-    # --- solar_selection --- (only selected faces, gold, +1.0 mm)
+    # --- solar_selection --- (selected non-windshield faces, gold, +1.0 mm)
     if binary_mask is not None and bool(_get(cfg, "layers", "solar_binary_mask", "enabled", default=True)):
         color_on_hex = str(_get(cfg, "layers", "solar_binary_mask", "color_on", default="#FFD700"))
         mask_alpha = float(_get(cfg, "layers", "solar_binary_mask", "alpha", default=1.0))
         r_on, g_on, b_on = _parse_color_rgb(color_on_hex)
         sel_fc = np.full((F, 4), [r_on, g_on, b_on, int(mask_alpha * 255)], dtype=np.uint8)
         sel_mask = binary_mask.detach().cpu().numpy().reshape(-1) > 0.5
+        if cone_np_glb is not None:
+            sel_mask = sel_mask & ~cone_np_glb
         glb_sel = _build_offset_layer_mesh(aeroshell_mesh, sel_mask, sel_fc, 1.0)
         if glb_sel is not None:
             scene.add_geometry(glb_sel, node_name="solar_selection")

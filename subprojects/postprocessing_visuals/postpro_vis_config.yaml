@@ -41,8 +41,10 @@ layers:
 
   solar_shading:
     enabled: true
-    color: "#333333"          # dark grey shadow; overlaid with opacity = (1 - illumination) * alpha
-    alpha: 0.70               # max shadow opacity (shadowed face = this value, lit face = 0)
+    colormap: "solar_quality"  # custom: navy→blue→teal→lime→gold→orange→cream (physical solar map)
+    alpha: 0.90               # blend strength over aeroshell base color
+    vmin: 0.0                 # illumination quality range (cos angle)
+    vmax: 1.0
 
 # ---------------------------------------------------------------------------
 # Camera views — one PNG is written per entry.
