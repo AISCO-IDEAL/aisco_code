@@ -20,6 +20,7 @@ from subprojects.wp7_gui.v3.core.settings import SETTINGS
 from subprojects.wp7_gui.v3.modes.launcher.routes import router as launcher_router
 from subprojects.wp7_gui.v3.modes.viewer.routes import router as viewer_router
 from subprojects.wp7_gui.v3.shared.api_router import router as api_router
+from subprojects.wp7_gui.v3.shared.theme import build_template_theme_context
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 LOGGER = logging.getLogger(__name__)
@@ -31,6 +32,7 @@ templates = Jinja2Templates(directory=str(SETTINGS.templates_dir))
 
 @app.get("/")
 def root(request: Request):
+    theme_ctx = build_template_theme_context()
     return templates.TemplateResponse(
         request,
         "introduction.html",
@@ -38,6 +40,7 @@ def root(request: Request):
             "active_mode": None,
             "active_page": "introduction",
             "page_title": "Welcome",
+            **theme_ctx,
         },
     )
 

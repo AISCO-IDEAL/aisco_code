@@ -6,13 +6,13 @@ Mounted at /api so both launcher and viewer pages can fetch
 
 from __future__ import annotations
 
-import yaml
 from fastapi import APIRouter
 from fastapi.responses import FileResponse, JSONResponse
 
 from subprojects.wp7_gui.v3.core.settings import SETTINGS
 from subprojects.wp7_gui.v3.shared import gif_serving
 from subprojects.wp7_gui.v3.shared.run_paths import default_storage_root
+from subprojects.wp7_gui.v3.shared.theme import get_gui_theme, get_mesh_assembly_config, load_vis_config
 
 router = APIRouter(prefix="/api", tags=["api"])
 
@@ -29,9 +29,12 @@ def artifact_slow_gif(path: str = "", factor: float = 2.5) -> FileResponse:
 
 @router.get("/artifacts/glb-config")
 def artifact_glb_config() -> JSONResponse:
-    try:
-        vis_cfg = yaml.safe_load((SETTINGS.wp4_configs_dir / "vis_config.yaml").read_text(encoding="utf-8")) or {}
-        assembly_cfg = vis_cfg.get("visual_types", {}).get("mesh_assembly_v4", {})
-    except Exception:
-        assembly_cfg = {}
+    vis_cfg = load_vis_config()
+    assembly_cfg = get_mesh_assembly_config(vis_cfg)
     return JSONResponse(assembly_cfg)
+
+
+@router.get("/theme-config")
+def theme_config() -> JSONResponse:
+    vis_cfg = load_vis_config()
+    return JSONResponse(get_gui_theme(vis_cfg))

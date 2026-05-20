@@ -8,14 +8,7 @@
   <div class="dark-card toolbar">
     <button class="btn" id="btnRun">Run with Overrides</button>
     <button class="btn secondary" id="btnStop" disabled>Stop</button>
-    <div style="flex:1; min-width:120px;">
-      <div class="progress-bar-wrap" id="progressWrap">
-        <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
-      </div>
-      <div style="font-size:0.78rem; color:var(--muted); margin-top:3px;" id="progressLabel">Idle</div>
-    </div>
-    <div class="console" style="width:220px; max-height:48px; font-size:0.75rem; padding:4px 8px; overflow:hidden;"
-      id="miniLog">—</div>
+    <div style="flex:1;"></div>
     <a href="/launcher/output?pipeline={{ pipeline }}" class="btn">Output →</a>
   </div>
 
@@ -24,31 +17,31 @@
 
     <!-- Live Stats Panel -->
     <div class="dark-card" style="min-height:0; display:grid; grid-template-rows: auto 1fr; gap:10px; padding:12px;">
-      <div style="font-size:0.82rem; color:#f8d9d9; font-weight:600;">Live Metrics</div>
+      <div style="font-size:0.82rem; color:var(--theme-warning-text); font-weight:600;">Live Metrics</div>
       <div style="display:flex; flex-direction:column; gap:12px; overflow-y:auto;">
 
         <!-- Drag -->
-        <div style="border-left:2px solid #66a3ff; padding-left:8px;">
-          <div style="font-size:0.7rem; color:#a8d8f8; text-transform:uppercase; letter-spacing:0.5px;">Aerodynamic Drag
+        <div style="border-left:2px solid var(--theme-metric-drag-border); padding-left:8px;">
+          <div style="font-size:0.7rem; color:var(--theme-metric-drag-text); text-transform:uppercase; letter-spacing:0.5px;">Aerodynamic Drag
           </div>
-          <div style="font-size:1.2rem; font-weight:600; color:#fff; margin-top:2px;" id="dragValue">—</div>
-          <div style="font-size:0.68rem; color:#888; margin-top:2px;">N (Newtons)</div>
+          <div style="font-size:1.2rem; font-weight:600; color:var(--theme-white); margin-top:2px;" id="dragValue">—</div>
+          <div style="font-size:0.68rem; color:var(--theme-metric-unit-text); margin-top:2px;">N (Newtons)</div>
         </div>
 
         <!-- Solar -->
-        <div style="border-left:2px solid #ffd966; padding-left:8px;">
-          <div style="font-size:0.7rem; color:#ffd966; text-transform:uppercase; letter-spacing:0.5px;">Solar Output
+        <div style="border-left:2px solid var(--theme-metric-solar-border); padding-left:8px;">
+          <div style="font-size:0.7rem; color:var(--theme-metric-solar-text); text-transform:uppercase; letter-spacing:0.5px;">Solar Output
           </div>
-          <div style="font-size:1.2rem; font-weight:600; color:#fff; margin-top:2px;" id="solarValue">—</div>
-          <div style="font-size:0.68rem; color:#888; margin-top:2px;">W (Watts)</div>
+          <div style="font-size:1.2rem; font-weight:600; color:var(--theme-white); margin-top:2px;" id="solarValue">—</div>
+          <div style="font-size:0.68rem; color:var(--theme-metric-unit-text); margin-top:2px;">W (Watts)</div>
         </div>
 
         <!-- Cruising Speed -->
-        <div style="border-left:2px solid #66cc99; padding-left:8px;">
-          <div style="font-size:0.7rem; color:#66cc99; text-transform:uppercase; letter-spacing:0.5px;">Cruising Speed
+        <div style="border-left:2px solid var(--theme-metric-speed-border); padding-left:8px;">
+          <div style="font-size:0.7rem; color:var(--theme-metric-speed-text); text-transform:uppercase; letter-spacing:0.5px;">Cruising Speed
           </div>
-          <div style="font-size:1.2rem; font-weight:600; color:#fff; margin-top:2px;" id="speedValue">—</div>
-          <div style="font-size:0.68rem; color:#888; margin-top:2px;">m/s</div>
+          <div style="font-size:1.2rem; font-weight:600; color:var(--theme-white); margin-top:2px;" id="speedValue">—</div>
+          <div style="font-size:0.68rem; color:var(--theme-metric-unit-text); margin-top:2px;">m/s</div>
         </div>
 
       </div>
@@ -56,7 +49,13 @@
 
     <!-- Log console -->
     <div class="dark-card" style="min-height:0; display:grid; grid-template-rows: auto 1fr; gap:6px;">
-      <div style="font-size:0.82rem; color:#f8d9d9; font-weight:600;">Run Log</div>
+      <div style="display:flex; align-items:center; gap:10px; font-size:0.82rem; color:var(--theme-warning-text); font-weight:600;">
+        <span>Run Log</span>
+        <span id="progressLabel" style="font-size:0.76rem; color:var(--theme-muted); font-weight:500;">Idle</span>
+        <span style="display:none;" id="progressWrap">
+          <span id="progressFill" style="display:none; width:0%"></span>
+        </span>
+      </div>
       <div class="console" id="logConsole" style="min-height:0;"></div>
     </div>
 
@@ -71,7 +70,6 @@
   const btnStop = document.getElementById("btnStop");
   const progressFill = document.getElementById("progressFill");
   const progressLabel = document.getElementById("progressLabel");
-  const miniLog = document.getElementById("miniLog");
   const logConsole = document.getElementById("logConsole");
 
   // ---------- SSE log stream ----------
@@ -83,7 +81,6 @@
       const { line } = JSON.parse(e.data);
       logConsole.textContent += line + "\n";
       logConsole.scrollTop = logConsole.scrollHeight;
-      miniLog.textContent = line.slice(-60);
     });
     logEventSource.addEventListener("epoch", e => {
       const { epoch, total, drag_value, solar_power_w, cruising_speed_ms } = JSON.parse(e.data);
@@ -128,7 +125,6 @@
       const r = await fetch(`${API}/run/start`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cfg_folder: cfgFolder }) });
       const d = await r.json();
       if (!r.ok) throw new Error(d.detail?.message || r.status);
-      miniLog.textContent = `PID ${d.pid}`;
       startSSELog();
     } catch (err) {
       progressLabel.textContent = "Error: " + err.message;
@@ -157,12 +153,12 @@
     const badge = document.createElement("div");
     badge.style.cssText = "font-size:0.82rem;padding:4px 10px;border-radius:4px;white-space:nowrap;";
     if (cfgFolder) {
-      badge.style.color = "#b8f0b8";
-      badge.style.background = "rgba(0,120,0,0.25)";
+      badge.style.color = "var(--theme-ok-text)";
+      badge.style.background = "var(--theme-ok-bg)";
       badge.textContent = "Session: " + cfgFolder.split("/").pop();
     } else {
-      badge.style.color = "#f8d9d9";
-      badge.style.background = "rgba(200,100,0,0.25)";
+      badge.style.color = "var(--theme-warning-text)";
+      badge.style.background = "var(--theme-warning-bg)";
       badge.textContent = "No config override session \u2014 go to Config Overrides to set one.";
       btnRun.disabled = true;
     }

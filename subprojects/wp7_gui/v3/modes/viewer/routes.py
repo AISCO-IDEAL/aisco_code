@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
-import yaml
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
@@ -17,6 +16,7 @@ from subprojects.wp7_gui.v3.shared.artifact_index import list_artifacts
 from subprojects.wp7_gui.v3.shared.panel_visibility import load_panel_visibility_defaults
 from subprojects.wp7_gui.v3.shared.pretraining import PretrainingService
 from subprojects.wp7_gui.v3.shared.run_paths import default_storage_root, get_storage_root_for_session, list_all_runs
+from subprojects.wp7_gui.v3.shared.theme import build_template_theme_context, get_mesh_assembly_config, load_vis_config
 
 router = APIRouter(prefix="/viewer", tags=["viewer"])
 _templates = Jinja2Templates(directory=str(SETTINGS.templates_dir))
@@ -44,6 +44,7 @@ def _resolve_cfg_folder(cfg_folder: str | None) -> Path | None:
 # ---------------------------------------------------------------------------
 @router.get("")
 def viewer_index(request: Request):
+    theme_ctx = build_template_theme_context()
     return _templates.TemplateResponse(
         request,
         "viewer/index.html",
@@ -54,12 +55,14 @@ def viewer_index(request: Request):
             "panel_visibility_defaults_json": json.dumps(
                 load_panel_visibility_defaults(SETTINGS.panel_visibility_defaults_path)
             ),
+            **theme_ctx,
         },
     )
 
 
 @router.get("/pretraining")
 def viewer_pretraining(request: Request):
+    theme_ctx = build_template_theme_context()
     return _templates.TemplateResponse(
         request,
         "viewer/pretraining.html",
@@ -67,6 +70,7 @@ def viewer_pretraining(request: Request):
             "active_mode": "viewer",
             "active_page": "pretraining",
             "page_title": "Viewer — Pretraining GIFs",
+            **theme_ctx,
         },
     )
 
@@ -77,11 +81,8 @@ def viewer_pretraining(request: Request):
 # ---------------------------------------------------------------------------
 @router.get("/api/vis-config")
 def api_vis_config() -> JSONResponse:
-    try:
-        vis_cfg = yaml.safe_load((SETTINGS.wp4_configs_dir / "vis_config.yaml").read_text())
-        assembly_cfg: dict[str, Any] = vis_cfg.get("visual_types", {}).get("mesh_assembly_v4", {})
-    except Exception:
-        assembly_cfg = {}
+    vis_cfg = load_vis_config()
+    assembly_cfg: dict[str, Any] = get_mesh_assembly_config(vis_cfg)
     return JSONResponse(content=assembly_cfg)
 
 

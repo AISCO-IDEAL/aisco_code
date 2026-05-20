@@ -34,7 +34,7 @@
   <!-- Config form -->
   <div class="card" style="overflow-y: auto; min-height: 0;">
     <div id="formArea">
-      <div style="color: #496456; font-style: italic; text-align: center; padding: 40px 10px;">
+      <div style="color: var(--theme-muted); font-style: italic; text-align: center; padding: 40px 10px;">
         {% if pipeline == 'live' %}Click &ldquo;Start new session&rdquo; to copy configs and begin editing.{% else
         %}Select a session above to view its configuration.{% endif %}
       </div>
@@ -43,7 +43,7 @@
 
   <!-- Output console -->
   <div class="dark-card" style="max-height: 200px; display: grid; grid-template-rows: auto 1fr; gap: 6px;">
-    <div style="font-size: 0.82rem; color: #f8d9d9; font-weight: 600;">Output</div>
+    <div style="font-size: 0.82rem; color: var(--theme-warning-text); font-weight: 600;">Output</div>
     <div class="console" id="outputConsole">Ready.</div>
   </div>
 </div>

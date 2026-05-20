@@ -8,19 +8,19 @@ endblock %}
 </script>
 <style>
     :root {
-        --sel-border: #d7dde5;
-        --sel-panel: #f7f9fc;
-        --sel-text: #111827;
-        --sel-muted: #667085;
-        --sel-blue: #2563eb;
-        --sel-green: #138a43;
-        --sel-red: #b42318;
+        --sel-border: var(--theme-sel-border);
+        --sel-panel: var(--theme-sel-panel);
+        --sel-text: var(--theme-sel-text);
+        --sel-muted: var(--theme-sel-muted);
+        --sel-blue: var(--theme-sel-blue);
+        --sel-green: var(--theme-sel-green);
+        --sel-red: var(--theme-sel-red);
     }
 
     .selection-root {
         width: 100%;
         color: var(--sel-text);
-        font-family: Arial, sans-serif;
+        font-family: var(--theme-font-ui);
     }
 
     .selection-layout {
@@ -34,7 +34,7 @@ endblock %}
     .mesh-card {
         border: 1px solid var(--sel-border);
         border-radius: 6px;
-        background: #fff;
+        background: var(--theme-bg);
         overflow: hidden;
     }
 
@@ -45,7 +45,7 @@ endblock %}
         padding: 8px 10px;
         border-bottom: 1px solid var(--sel-border);
         background: var(--sel-panel);
-        color: var(--sel-muted);
+        color: var(--sel-text);
     }
 
     .left-body {
@@ -64,19 +64,19 @@ endblock %}
     .map-load-row input {
         width: 100%;
         box-sizing: border-box;
-        border: 1px solid var(--sel-border);
+        border: 1px solid var(--theme-surface-large);
         border-radius: 6px;
         padding: 8px;
         font: inherit;
         font-size: 13px;
         color: var(--sel-text);
-        background: #fff;
+        background: var(--theme-panel);
     }
 
     .map-load-row button {
         border: 1px solid var(--sel-border);
         border-radius: 6px;
-        background: #fff;
+        background: var(--theme-panel);
         padding: 8px 10px;
         cursor: pointer;
         font: inherit;
@@ -85,19 +85,43 @@ endblock %}
         white-space: nowrap;
     }
 
+    .map-load-row button:hover {
+        background: var(--theme-panel-2);
+    }
+
     #preview {
         width: 100%;
         height: 620px;
         display: block;
         border: 1px solid var(--sel-border);
         border-radius: 6px;
-        background: #fbfcff;
+        background: var(--theme-sel-canvas-bg);
         cursor: grab;
         touch-action: none;
     }
 
     #preview.dragging {
         cursor: grabbing;
+    }
+
+    .move-btn {
+        padding: 3px 8px;
+        border: 1px solid var(--theme-border);
+        border-radius: 4px;
+        background: var(--theme-panel-2);
+        color: var(--sel-text);
+        cursor: pointer;
+        font-size: 12px;
+        line-height: 1;
+    }
+
+    .move-btn:hover {
+        background: var(--theme-panel-top-start);
+    }
+
+    .move-btn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
     }
 
     .selection-table {
@@ -107,7 +131,7 @@ endblock %}
         border: 1px solid var(--sel-border);
         border-radius: 6px;
         overflow: hidden;
-        background: #fff;
+        background: var(--theme-bg);
     }
 
     .selection-table th,
@@ -120,8 +144,8 @@ endblock %}
     }
 
     .selection-table th {
-        background: var(--sel-panel);
-        color: var(--sel-muted);
+        background: var(--theme-panel);
+        color: var(--theme-muted);
         font-weight: 600;
     }
 
@@ -132,23 +156,23 @@ endblock %}
     .selection-table input[type="number"] {
         width: 100%;
         box-sizing: border-box;
-        border: 1px solid var(--sel-border);
+        border: 1px solid var(--theme-surface-large);
         border-radius: 4px;
         padding: 6px;
         font: inherit;
         color: var(--sel-text);
-        background: #fff;
+        background: var(--theme-panel);
     }
 
     .selection-table input[type="number"]:disabled {
-        background: var(--sel-panel);
-        color: var(--sel-muted);
+        background: var(--theme-bg);
+        color: var(--theme-muted);
         border-color: transparent;
         cursor: not-allowed;
     }
 
     .part-name {
-        font-family: monospace;
+        font-family: var(--theme-font-mono);
         font-weight: 600;
     }
 
@@ -159,21 +183,39 @@ endblock %}
     }
 
     .selection-actions button {
-        border: 1px solid var(--sel-border);
+        border: 1px solid var(--theme-surface-large);
         border-radius: 6px;
-        background: #fff;
+        background: var(--theme-white);
         padding: 8px 10px;
         cursor: pointer;
         font: inherit;
         font-size: 13px;
-        color: var(--sel-text);
+        color: var(--theme-bg);
     }
+
+    .selection-actions button#btnAddWheel {
+        border-color: var(--theme-surface-large);
+        background: var(--theme-white);
+        color: var(--theme-bg);
+        font-weight: 700;
+    }
+
+    .selection-actions button#btnAddWheel:hover { background: color-mix(in srgb, var(--theme-white) 86%, var(--theme-surface-large) 14%); }
+
+    .selection-actions button#btnRemoveWheel {
+        border-color: var(--theme-title-2);
+        background: var(--theme-white);
+        color: var(--theme-bg);
+        font-weight: 700;
+    }
+
+    .selection-actions button#btnRemoveWheel:hover { background: color-mix(in srgb, var(--theme-white) 86%, var(--theme-title-2) 14%); }
 
     .selection-actions button.primary {
         grid-column: span 2;
         border-color: var(--sel-blue);
         background: var(--sel-blue);
-        color: #fff;
+        color: var(--theme-white);
     }
 
     .selection-actions button:disabled {
@@ -199,9 +241,10 @@ endblock %}
         padding: 10px;
         border: 1px solid var(--sel-border);
         border-radius: 6px;
-        background: var(--sel-panel);
+        background: var(--theme-panel);
+        color: var(--sel-text);
         white-space: pre-wrap;
-        font: 12px/1.35 monospace;
+        font: 12px/1.35 var(--theme-font-mono);
     }
 
     #map-status {
@@ -229,7 +272,7 @@ endblock %}
         width: 100%;
         height: 620px;
         border-bottom: 1px solid var(--sel-border);
-        background: #eef3f0;
+        background: var(--theme-mesh-bg);
         overflow: hidden;
         position: relative;
     }
@@ -239,7 +282,7 @@ endblock %}
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        color: #496456;
+        color: var(--theme-muted);
         font-size: 13px;
         z-index: 1;
         text-align: center;
@@ -249,7 +292,7 @@ endblock %}
         padding: 8px 10px;
         font-size: 12px;
         color: var(--sel-muted);
-        background: #f0f5f2;
+        background: var(--sel-panel);
     }
 
     .mesh-controls {
@@ -258,7 +301,7 @@ endblock %}
         gap: 10px;
         padding: 10px;
         border-top: 1px solid var(--sel-border);
-        background: #fff;
+        background: var(--theme-bg);
     }
 
     @media (max-width: 900px) {
@@ -304,6 +347,7 @@ endblock %}
                                     <th>X</th>
                                     <th>Y</th>
                                     <th>Z</th>
+                                    <th style="width:80px;">Order</th>
                                 </tr>
                             </thead>
                             <tbody id="controls"></tbody>
@@ -374,6 +418,25 @@ endblock %}
     const wheelRadius = 145;
     const seatHalfX = 330;
     const seatHalfY = 180;
+
+    function cssVar(name, fallback) {
+        const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+        return value || fallback;
+    }
+
+    const C_CANVAS_GRID = cssVar("--theme-sel-canvas-grid");
+    const C_CANVAS_AXIS = cssVar("--theme-sel-canvas-axis");
+    const C_CANVAS_LABEL = cssVar("--theme-sel-canvas-label");
+    const C_CANVAS_AXIS_X = cssVar("--theme-sel-canvas-axis-x");
+    const C_CANVAS_AXIS_Y = cssVar("--theme-sel-canvas-axis-y");
+    const C_CANVAS_POLY_STROKE = cssVar("--theme-sel-canvas-poly-stroke");
+    const C_CANVAS_POLY_FILL = cssVar("--theme-sel-canvas-poly-fill");
+    const C_CANVAS_WHEEL = cssVar("--theme-sel-canvas-wheel");
+    const C_CANVAS_WHEEL_HOVER = cssVar("--theme-sel-canvas-wheel-hover");
+    const C_CANVAS_SEAT = cssVar("--theme-sel-canvas-seat");
+    const C_CANVAS_SEAT_HOVER = cssVar("--theme-sel-canvas-seat-hover");
+    const C_CANVAS_SEAT_STROKE = cssVar("--theme-sel-canvas-seat-stroke");
+    const C_CANVAS_FONT = cssVar("--theme-font-mono", "'Courier New', monospace");
 
     function parseRgbTriplet(rgb) {
         if (!Array.isArray(rgb) || rgb.length !== 3) {
@@ -453,15 +516,20 @@ endblock %}
     function renderTable() {
         const body = document.getElementById("controls");
         body.innerHTML = "";
+        const wheels = orderedParts().filter(([p]) => p.startsWith("wheel_"));
         for (const [part, vals] of orderedParts()) {
             const isWheel = part.startsWith("wheel_");
+            const wIdx = wheels.findIndex(([p]) => p === part);
+            const canUp = isWheel && wIdx > 0;
+            const canDn = isWheel && wIdx < wheels.length - 1;
             const row = document.createElement("tr");
             row.innerHTML = `
-        <td class="part-name">${part}</td>
-        ${inputCell(part, "x", vals.x)}
-        ${inputCell(part, "y", vals.y)}
-        ${inputCell(part, "z", vals.z, isWheel)}
-      `;
+                <td class="part-name">${part}</td>
+                ${inputCell(part, "x", vals.x)}
+                ${inputCell(part, "y", vals.y)}
+                ${inputCell(part, "z", vals.z, isWheel)}
+                <td style="padding:4px 6px;">${isWheel ? `<div style="display:flex; gap:10px;"><button class="move-btn" ${canUp ? "" : "disabled"} style="background:var(--theme-white); border-color:var(--theme-surface-large); color:var(--theme-bg); min-width:34px;" onclick="movePart('${part}',-1)" title="Move up">&#8593;</button><button class="move-btn" ${canDn ? "" : "disabled"} style="background:var(--theme-white); border-color:var(--theme-title-2); color:var(--theme-bg); min-width:34px;" onclick="movePart('${part}',1)" title="Move down">&#8595;</button></div>` : ""}</td>
+            `;
             body.appendChild(row);
         }
     }
@@ -489,6 +557,23 @@ endblock %}
         sourceStatusEl.textContent = `Loaded ID ${loadedAssemblyMapId} was edited. Add to map to create a new ID.`;
         updateAddToMapButton();
     }
+
+    window.movePart = function movePart(part, dir) {
+        const wheels = orderedParts().filter(([p]) => p.startsWith("wheel_"));
+        const idx = wheels.findIndex(([p]) => p === part);
+        if (idx === -1) return;
+        const swapIdx = idx + dir;
+        if (swapIdx < 0 || swapIdx >= wheels.length) return;
+        const aKey = wheels[idx][0];
+        const bKey = wheels[swapIdx][0];
+        const tmp = { ...params[aKey] };
+        params[aKey] = { ...params[bKey] };
+        params[bKey] = tmp;
+        markAssemblyEdited();
+        renderTable();
+        drawPreview();
+        scheduleAutosave(260);
+    };
 
     window.onEdit = function onEdit(el) {
         const key = el.dataset.key;
@@ -521,7 +606,7 @@ endblock %}
 
     function drawGrid() {
         const zero = toCanvas(0, 0);
-        ctx.strokeStyle = "#e5e7eb";
+        ctx.strokeStyle = C_CANVAS_GRID;
         ctx.lineWidth = 1;
 
         for (let x = -3000; x <= 3000; x += 1000) {
@@ -540,19 +625,34 @@ endblock %}
             ctx.stroke();
         }
 
-        ctx.strokeStyle = "#9ca3af";
+        // X axis (red) + label
+        ctx.strokeStyle = C_CANVAS_AXIS_X;
+        ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(zero.x, 20);
-        ctx.lineTo(zero.x, canvas.height - 20);
         ctx.moveTo(20, zero.y);
         ctx.lineTo(canvas.width - 20, zero.y);
         ctx.stroke();
+        ctx.fillStyle = C_CANVAS_AXIS_X;
+        ctx.font = `bold 11px ${C_CANVAS_FONT}`;
+        ctx.textAlign = "right";
+        ctx.fillText("X \u2192", canvas.width - 4, zero.y - 6);
+
+        // Y axis (blue) + label
+        ctx.strokeStyle = C_CANVAS_AXIS_Y;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(zero.x, 20);
+        ctx.lineTo(zero.x, canvas.height - 20);
+        ctx.stroke();
+        ctx.fillStyle = C_CANVAS_AXIS_Y;
+        ctx.textAlign = "left";
+        ctx.fillText("\u2191 Y", zero.x + 4, 16);
     }
 
     function drawLabel(text, x, y) {
-        ctx.font = "12px monospace";
+        ctx.font = `12px ${C_CANVAS_FONT}`;
         ctx.textAlign = "center";
-        ctx.fillStyle = "#374151";
+        ctx.fillStyle = C_CANVAS_LABEL;
         ctx.fillText(text, x, y);
     }
 
@@ -561,8 +661,8 @@ endblock %}
         if (wheels.length < 3) {
             return;
         }
-        ctx.strokeStyle = "#93c5fd";
-        ctx.fillStyle = "rgba(147, 197, 253, 0.14)";
+        ctx.strokeStyle = C_CANVAS_POLY_STROKE;
+        ctx.fillStyle = C_CANVAS_POLY_FILL;
         ctx.lineWidth = 2;
         ctx.beginPath();
         wheels.forEach(([_, vals], i) => {
@@ -581,7 +681,7 @@ endblock %}
     function drawWheel(part, vals) {
         const p = toCanvas(vals.x, vals.y);
         const r = Math.max(8, wheelRadius * p.s);
-        ctx.fillStyle = part === hoverPart ? "#1d4ed8" : "#111827";
+        ctx.fillStyle = part === hoverPart ? C_CANVAS_WHEEL_HOVER : C_CANVAS_WHEEL;
         ctx.beginPath();
         ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
         ctx.fill();
@@ -592,9 +692,9 @@ endblock %}
         const p = toCanvas(vals.x, vals.y);
         const w = seatHalfX * 2 * p.s;
         const h = seatHalfY * 2 * p.s;
-        ctx.fillStyle = part === hoverPart ? "#f97316" : "#f59e0b";
+        ctx.fillStyle = part === hoverPart ? C_CANVAS_SEAT_HOVER : C_CANVAS_SEAT;
         ctx.fillRect(p.x - w / 2, p.y - h / 2, w, h);
-        ctx.strokeStyle = "#92400e";
+        ctx.strokeStyle = C_CANVAS_SEAT_STROKE;
         ctx.strokeRect(p.x - w / 2, p.y - h / 2, w, h);
         drawLabel(part, p.x, p.y - h / 2 - 8);
     }

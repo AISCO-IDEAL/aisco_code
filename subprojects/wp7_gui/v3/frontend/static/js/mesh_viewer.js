@@ -15,8 +15,30 @@ import { PLYLoader } from "three/addons/loaders/PLYLoader.js";
  * @returns {{ loadMesh: function(string): void }}
  */
 export function initMeshViewer(containerEl) {
+    function cssVar(name, fallback) {
+        const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+        return value || fallback;
+    }
+
+    function hexToInt(hex, fallback) {
+        const raw = String(hex || "").trim();
+        if (!raw.startsWith("#")) {
+            return fallback;
+        }
+        const normalized = raw.length === 4
+            ? `#${raw[1]}${raw[1]}${raw[2]}${raw[2]}${raw[3]}${raw[3]}`
+            : raw;
+        const parsed = Number.parseInt(normalized.slice(1), 16);
+        return Number.isFinite(parsed) ? parsed : fallback;
+    }
+
+    const meshBgHex = hexToInt(cssVar("--theme-mesh-bg", "#F1F7F3"), 0xf1f7f3);
+    const sliderAccent = cssVar("--theme-slider-accent", "#C33531");
+    const controlTextColor = cssVar("--theme-control-text", "#000000");
+    const fallbackMeshHex = hexToInt(cssVar("--theme-mesh-fallback", "#99A3A4"), 0x99a3a4);
+
     const scene = new Scene();
-    scene.background = new Color(0xf1f7f3);
+    scene.background = new Color(meshBgHex);
 
     // Fetch vis-config from the GUI backend once and cache it.
     // Falls back to {} when not available (e.g. assembly_selection page).
@@ -39,7 +61,7 @@ export function initMeshViewer(containerEl) {
     let onControlsChange = null;
     let suppressControlsCallback = false;
     let glbControlsHost = null;
-    let plyFallbackColorHex = 0x99A3A4;
+    let plyFallbackColorHex = fallbackMeshHex;
 
     function rgbTripletToHex(rgb) {
         if (!Array.isArray(rgb) || rgb.length !== 3) {
@@ -56,6 +78,22 @@ export function initMeshViewer(containerEl) {
             return null;
         }
         return (channels[0] << 16) | (channels[1] << 8) | channels[2];
+    }
+
+    function fallbackHexForComponent(name) {
+        if (!name || typeof name !== "string") {
+            return fallbackMeshHex;
+        }
+        const componentRgb =
+            name === "inner_assembly"
+                ? _visConfig.inner_color
+                : name === "sdf_mesh"
+                    ? _visConfig.sdf_color
+                    : name === "outer_bbox"
+                        ? _visConfig.outer_color
+                        : null;
+        const componentHex = rgbTripletToHex(componentRgb);
+        return componentHex === null ? fallbackMeshHex : componentHex;
     }
 
     function setPlyFallbackColorRgb(rgb) {
@@ -83,7 +121,7 @@ export function initMeshViewer(containerEl) {
                 padding: 0;
                 margin: 0;
                 outline: none;
-                accent-color: #c33531;
+                accent-color: ${sliderAccent};
             }
         `;
         document.head.appendChild(style);
@@ -93,7 +131,7 @@ export function initMeshViewer(containerEl) {
         if (!slider) {
             return;
         }
-        slider.style.accentColor = "#c33531";
+        slider.style.accentColor = sliderAccent;
     }
 
     scene.add(new HemisphereLight(0xffffff, 0x444444, 1.0));
@@ -275,7 +313,7 @@ export function initMeshViewer(containerEl) {
             const name = document.createElement("span");
             name.textContent = component.name.replace(/_/g, " ");
             name.style.fontSize = "0.68rem";
-            name.style.color = "#000000";
+            name.style.color = controlTextColor;
             name.style.whiteSpace = "nowrap";
             name.style.overflow = "hidden";
             name.style.textOverflow = "ellipsis";
@@ -441,7 +479,7 @@ export function initMeshViewer(containerEl) {
                             });
                         } else {
                             node.material = new MeshStandardMaterial({
-                                color: 0x99A3A4,
+                                color: fallbackHexForComponent(node.name),
                                 roughness: 0.6,
                                 metalness: 0.2,
                                 side: DoubleSide,

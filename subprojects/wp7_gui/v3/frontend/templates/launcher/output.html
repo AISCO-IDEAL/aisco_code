@@ -20,9 +20,9 @@
         <div style="flex:1;"></div>
         <a href="/" class="btn">Done — Home</a>
         <div class="dark-card" id="panelEditorCard"
-            style="display:none; position:absolute; top:calc(100% + 8px); right:0; z-index:20; width:min(680px, calc(100vw - 48px)); gap:10px; padding:10px 12px; box-shadow:0 18px 38px rgba(0,0,0,0.22);">
+            style="display:none; position:absolute; top:calc(100% + 8px); right:0; z-index:20; width:min(680px, calc(100vw - 48px)); gap:10px; padding:10px 12px; box-shadow:0 18px 38px color-mix(in srgb, var(--theme-black) 22%, transparent);">
             <div style="display:flex; align-items:center; gap:10px;">
-                <div style="font-size:0.82rem; color:#f8d9d9; font-weight:700;">Panel Visibility</div>
+                <div style="font-size:0.82rem; color:var(--theme-warning-text); font-weight:700;">Panel Visibility</div>
                 <div style="font-size:0.75rem; color:var(--muted);">Session-only. Resets on reload.</div>
                 <div style="flex:1;"></div>
                 <button class="btn secondary" id="btnClosePanelEditor"
@@ -64,12 +64,12 @@
             <div class="visual-title">Aeroshell Mesh</div>
             <div class="mesh-container" id="meshContainer">
                 <span id="meshPlaceholder"
-                    style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#496456;font-size:0.9rem;z-index:1;">No
+                    style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--theme-muted);font-size:0.9rem;z-index:1;">No
                     mesh loaded</span>
                 <div class="mesh-status" id="meshStatus" style="display:none;"></div>
             </div>
             <div>
-                <div style="font-size:0.82rem; color:#496456; font-weight:600;">Epoch Slider</div>
+                <div style="font-size:0.82rem; color:var(--theme-muted); font-weight:600;">Epoch Slider</div>
                 <input type="range" id="meshSlider" min="0" max="0" value="0" disabled>
             </div>
         </div>
@@ -79,7 +79,7 @@
     {% if pipeline == 'live' %}
     <div id="extraPlySection" style="display:none;" data-panel-id="panel_mesh_shape">
         <div style="display:flex; align-items:center; gap:12px; margin-bottom:6px; flex-wrap:wrap;">
-            <div style="font-size:0.82rem; color:#f8d9d9; font-weight:600;">Live Mesh Outputs</div>
+            <div style="font-size:0.82rem; color:var(--theme-warning-text); font-weight:600;">Live Mesh Outputs</div>
             <label style="display:flex; align-items:center; gap:6px; font-size:0.78rem; color:var(--muted);">
                 <input type="checkbox" id="cameraSyncToggle">
                 Sync camera across mesh boxes
@@ -218,7 +218,7 @@
         if (!slider) {
             return;
         }
-        slider.style.accentColor = "#c33531";
+        slider.style.accentColor = getComputedStyle(document.documentElement).getPropertyValue("--theme-slider-accent").trim();
         slider.style.height = "14px";
         slider.style.background = "transparent";
         slider.style.padding = "0";
@@ -390,11 +390,11 @@
         card.dataset.panelId = panelId;
         card.innerHTML = `
             <div class="visual-title">${label}</div>
-            <div class="mesh-container mesh-container--four-up" style="position:relative; background:#f1f7f3; border-radius:8px; overflow:hidden;">
-                <span class="placeholder-text" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#496456;font-size:0.9rem;z-index:1;">Loading…</span>
-                <div class="mesh-status" style="position:absolute;bottom:8px;left:8px;font-size:0.75rem;color:#496456;z-index:2;background:rgba(255,255,255,0.8);padding:2px 6px;border-radius:4px;display:none;"></div>
+            <div class="mesh-container mesh-container--four-up" style="position:relative; background:var(--theme-mesh-bg); border-radius:8px; overflow:hidden;">
+                <span class="placeholder-text" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--theme-muted);font-size:0.9rem;z-index:1;">Loading…</span>
+                <div class="mesh-status" style="position:absolute;bottom:8px;left:8px;font-size:0.75rem;color:var(--theme-muted);z-index:2;background:color-mix(in srgb, var(--theme-white) 80%, transparent);padding:2px 6px;border-radius:4px;display:none;"></div>
             </div>
-            <div class="glb-controls" style="display:none; margin-top:8px; padding:6px 8px; border:1px solid #dce8df; border-radius:6px; background:#f7fbf8; gap:6px;"></div>
+            <div class="glb-controls" style="display:none; margin-top:8px; padding:6px 8px; border:1px solid color-mix(in srgb, var(--theme-text-box) 65%, var(--theme-white) 35%); border-radius:6px; background:color-mix(in srgb, var(--theme-text-box) 24%, var(--theme-white) 76%); gap:6px;"></div>
             <div style="display:flex; gap:8px; align-items:center; font-size:0.82rem;">
                 <input type="range" class="epoch-slider" min="0" max="${files.length - 1}" value="0" style="flex:1;">
                 <button class="play-btn" style="font-size:0.8rem;padding:4px 8px; width:50px;">Play</button>

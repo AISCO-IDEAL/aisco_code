@@ -21,6 +21,7 @@ from subprojects.wp7_gui.v3.shared.assembly_selection import AssemblySelectionSe
 from subprojects.wp7_gui.v3.shared.config_overrides import ConfigOverrideManager
 from subprojects.wp7_gui.v3.shared.panel_visibility import load_panel_visibility_defaults
 from subprojects.wp7_gui.v3.shared.run_paths import default_storage_root, detect_current_run_dir
+from subprojects.wp7_gui.v3.shared.theme import build_template_theme_context
 
 router = APIRouter(prefix="/launcher", tags=["launcher"])
 _templates = Jinja2Templates(directory=str(SETTINGS.templates_dir))
@@ -134,6 +135,7 @@ def _get_total_epochs(cfg_folder: str = "") -> int:
 # ---------------------------------------------------------------------------
 @router.get("")
 def launcher_index(request: Request, pipeline: str = "live"):
+    theme_ctx = build_template_theme_context()
     return _templates.TemplateResponse(
         request,
         "launcher/index.html",
@@ -145,6 +147,7 @@ def launcher_index(request: Request, pipeline: str = "live"):
             "panel_visibility_defaults_json": json.dumps(
                 load_panel_visibility_defaults(SETTINGS.panel_visibility_defaults_path)
             ),
+            **theme_ctx,
         },
     )
 
@@ -154,6 +157,7 @@ def launcher_subpage(request: Request, page_key: str, pipeline: str = "live"):
     if page_key not in _SUBPAGES:
         raise HTTPException(status_code=404, detail={"message": f"Unknown launcher page '{page_key}'"})
     title, template = _SUBPAGES[page_key]
+    theme_ctx = build_template_theme_context()
     return _templates.TemplateResponse(
         request,
         template,
@@ -165,6 +169,7 @@ def launcher_subpage(request: Request, page_key: str, pipeline: str = "live"):
             "panel_visibility_defaults_json": json.dumps(
                 load_panel_visibility_defaults(SETTINGS.panel_visibility_defaults_path)
             ),
+            **theme_ctx,
         },
     )
 

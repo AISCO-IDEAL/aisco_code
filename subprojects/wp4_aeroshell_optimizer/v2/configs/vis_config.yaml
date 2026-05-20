@@ -18,6 +18,97 @@ corporate_identity:
     graphic_surface_large: "#C33531"
     text_box: "#D2E0F2"
 
+# --- WP7 GUI theme (global, editable) ---
+gui_theme:
+  fonts:
+    ui: "Questrial, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"  # #FFFFFF
+    mono: "'Courier New', monospace"  # #FFFFFF
+
+  palette:
+    background: "#23283E"            # #23283E
+    background_soft: "#1D2233"       # #1D2233
+    background_deep: "#151A28"       # #151A28
+    panel: "#27314A"                 # #27314A
+    panel_2: "#303D5D"               # #303D5D
+    panel_top_start: "#35466D"       # #35466D
+    panel_top_end: "#2B3754"         # #2B3754
+    border: "#2D3A55"                # #2D3A55
+    text: "#FFFFFF"                  # #FFFFFF
+    muted: "#D2E0F2"                 # #D2E0F2
+    title_1: "#FFFFFF"               # #FFFFFF
+    title_2: "#FF504D"               # #FF504D
+    surface_large: "#C33531"         # #C33531
+    text_box: "#D2E0F2"              # #D2E0F2
+    assembly: "#F39C12"              # #F39C12
+    aeroshell: "#5DADE2"             # #5DADE2
+    outer_bbox: "#23283E"            # #23283E
+    white: "#FFFFFF"                 # #FFFFFF
+    black: "#000000"                 # #000000
+
+  status:
+    success_text: "#2D5016"          # #2D5016
+    success_bg: "#E8F5E9"            # #E8F5E9
+    error_text: "#7A0E0E"            # #7A0E0E
+    error_bg: "#FFEBEE"              # #FFEBEE
+    warning_text: "#F8D9D9"          # #F8D9D9
+    warning_bg: "rgba(200, 100, 0, 0.25)"  # #C86400
+    ok_text: "#B8F0B8"               # #B8F0B8
+    ok_bg: "rgba(0, 120, 0, 0.25)"   # #007800
+
+  metrics:
+    drag_border: "#5DADE2"           # aeroshell blue (aerodynamic)
+    drag_text: "#FFFFFF"             # white text (legibility)
+    solar_border: "#F39C12"          # assembly orange (solar/energy)
+    solar_text: "#FFFFFF"            # white text (legibility)
+    speed_border: "#FF504D"          # title_2 red (performance/speed)
+    speed_text: "#FFFFFF"            # white text (legibility)
+    unit_text: "#D2E0F2"             # muted light blue (secondary info)
+
+  rgba_effects:
+    shadow: "0 14px 30px rgba(0, 0, 0, 0.26)"  # #000000
+    hover_glow: "0 0 10px 2px rgba(200, 33, 33, 0.4)"  # #C82121
+    active_glow: "0 0 14px 2px rgba(200, 33, 33, 0.5)"  # #C82121
+    panel_overlay: "rgba(255, 255, 255, 0.06)"  # #FFFFFF
+    workspace_top: "rgba(0, 0, 0, 0.22)"  # #000000
+
+  gradients:
+    page_bg: "radial-gradient(circle at top left, #344267 0%, #1D2233 45%, #151A28 100%)"  # #344267
+    top_bar: "linear-gradient(180deg, #35466D 0%, #2B3754 100%)"  # #35466D
+    intro_card: "linear-gradient(135deg, #1A2744 0%, #0D1120 100%)"  # #1A2744
+    arcade_bg: "radial-gradient(ellipse at 38% 28%, #27366B 0%, #18233D 45%, #0D1120 100%)"  # #27366B
+
+  threejs:
+    mesh_background: "#F1F7F3"       # #F1F7F3
+    mesh_fallback: "#99A3A4"         # #99A3A4
+    slider_accent: "#C33531"         # #C33531
+    control_text: "#000000"          # #000000
+
+  assembly_selection:
+    border: "#374670"                # dark blue border
+    panel: "#1D2233"                 # dark panel background
+    text: "#FFFFFF"                  # white text
+    muted: "#8FA3B1"                 # light muted text
+    blue: "#2563EB"                  # blue accent
+    green: "#22C55E"                 # bright green
+    red: "#FF504D"                   # theme title-2 red
+    canvas_bg: "#111827"             # dark canvas background
+    canvas_grid: "rgba(255,255,255,0.10)"  # subtle white grid lines
+    canvas_axis: "rgba(255,255,255,0.4)"   # fallback axis (unused when axis_x/y set)
+    canvas_axis_x: "#C33531"         # X axis = corporate red
+    canvas_axis_y: "#5DADE2"         # Y axis = aeroshell blue
+    canvas_label: "#FFFFFF"          # white axis/part labels
+    canvas_poly_stroke: "#FFFFFF"    # white wheelbase polygon
+    canvas_poly_fill: "rgba(255,255,255,0.10)"  # white polygon fill
+    canvas_wheel: "#FFFFFF"          # white wheels
+    canvas_wheel_hover: "#FFFFFF"    # white wheel hover
+    canvas_seat: "#FFFFFF"           # white seat
+    canvas_seat_hover: "#FFFFFF"     # white seat hover
+    canvas_seat_stroke: "#FFFFFF"    # white seat stroke
+
+  colormaps:
+    cfd_ai: "jet"                    # #FF504D
+    sdf: "inferno"                   # #5DADE2
+
 # --- GIF / PNG rendering ---
 fps: 10
 window_width: 1280 # pixels; only used for GIF & PNG rendering. Increase for higher-res images, but beware of OOM errors on HPC.
@@ -75,7 +166,7 @@ visual_types:
   aero:
     cp_field:
       enabled: true
-      colormap: "RdBu_r"     # diverging; aligned with corporate red/light-blue contrast
+      colormap: "jet"     # CFD AI colormap
       interval: 50
       alpha_enabled: null
       coordinate_system: true
@@ -95,7 +186,7 @@ visual_types:
 
     sdf_influence:
       enabled: true
-      colormap: "RdYlGn"  # negative=red, zero=yellow, positive=green
+      colormap: "inferno"  # SDF colormap
       interval: 10
       alpha_enabled: null
       coordinate_system: true
@@ -174,22 +265,22 @@ visual_types:
   mesh_assembly_v4:
     enabled: true
     colormap: null          # colours specified per-component via method arguments
-    interval: 50
+    interval: 1
     alpha_enabled: true
     coordinate_system: null
     vmin: null
     vmax: null
     solid_color_rgb: [0.7608, 0.2078, 0.1922]
     # Per-component colours (RGB in [0, 1]) and opacities (in [0, 1]):
-    sdf_color: [0.365, 0.678, 0.886]          # aeroshell mesh — corporate large-surface red (#C33531)
+    sdf_color: [0.365, 0.678, 0.886]          # aeroshell mesh (#5DADE2)
     sdf_alpha: 0.6                            # aeroshell opacity
-    inner_color: [0.953, 0.612, 0.071]  # inner assembly — corporate text-box blue (#D2E0F2)
-    outer_color: [0.824, 0.878, 0.949]  # outer bbox — corporate highlight red (#FF504D)
-    outer_alpha: 0.2                      # outer bbox opacity (used by legacy solid mode)
+    inner_color: [0.953, 0.612, 0.071]  # inner assembly (#F39C12)
+    outer_color: [0.137, 0.157, 0.243]  # outer bbox (#23283E)
+    outer_alpha: 0.2                    # outer bbox opacity (used by legacy solid mode)
     outer_render_style: "outer_lines_only"  # outer_lines_only|solid+edges
     outer_lines_color: [0.137, 0.157, 0.243] # dark corporate background tone for outlines
-    outer_lines_width: 0.6    # target line width in viewer (browser-dependent)
-    outer_lines_threshold: 45 # EdgesGeometry angle (°); if degree between two potential lines is less  
+    outer_lines_width: 0.6              # target line width in viewer (browser-dependent)
+    outer_lines_threshold: 45           # EdgesGeometry angle threshold (degrees): larger = fewer edges
 
   # Per-loss gradient visualisation (`vis_mesh_gradient`). Each call writes
   # ``mesh_gradients/<loss_key>/epoch_XXXXX.ply`` and finalize() generates the
