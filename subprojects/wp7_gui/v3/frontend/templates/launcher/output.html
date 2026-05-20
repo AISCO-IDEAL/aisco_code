@@ -289,20 +289,25 @@
     const modeKey = isLive ? "live" : "completed";
     const modePanelDefaults = PANEL_DEFAULTS[modeKey] || {};
 
-    // ── Priority list ──────────────────────────────────────────────────────────
-    // Edit this array to change which meshes appear on the right and in what
-    // order. The first N entries that have data will be shown.
+    // ── Priority list (loaded from schema/mesh_priority.json via server) ────────
     //   type "glb_cone"    -> data.meshes_glb_cone
     //   type "ply"         -> data.meshes
     //   type "extra_group" -> data.extra_ply_groups filtered by match regex
-    const MESH_PRIORITY = [
-        { type: "glb_cone", label: "Aeroshell Mesh (GLB, Vision Cone)" },
-        { type: "ply", label: "Aeroshell Mesh (PLY)" },
-        { type: "extra_group", match: /\bcp\b|pressure/i, label: "Cp Field" },
-        { type: "extra_group", match: /solar/i, label: "Solar Mesh" },
-        { type: "extra_group", match: /gradient/i, label: "Mesh Gradients" },
-        { type: "extra_group", match: /.*/, label: "Other" },
-    ];
+    (function () {
+        var _cfg = {{ mesh_priority_json | safe
+    }};
+    var _raw = Array.isArray(_cfg.priority) ? _cfg.priority : [];
+    window._MESH_PRIORITY_MAX_SHOWN = typeof _cfg.max_shown === "number" ? _cfg.max_shown : 5;
+    window._MESH_PRIORITY = _raw.map(function (e) {
+        return {
+            type: e.type,
+            label: e.label,
+            match: (e.type === "extra_group" && e.match) ? new RegExp(e.match, "i") : null,
+        };
+    });
+    }());
+    var MESH_PRIORITY = window._MESH_PRIORITY;
+    var MESH_PRIORITY_MAX_SHOWN = window._MESH_PRIORITY_MAX_SHOWN;
 
     // ── DOM references ─────────────────────────────────────────────────────────
     const runNameDisplay = document.getElementById("runNameDisplay");
@@ -526,6 +531,7 @@
         var extras = Array.isArray(data.extra_ply_groups) ? data.extra_ply_groups : [];
 
         for (var i = 0; i < MESH_PRIORITY.length; i++) {
+            if (result.length >= MESH_PRIORITY_MAX_SHOWN) break;
             var entry = MESH_PRIORITY[i];
 
             if (entry.type === "glb_cone") {
@@ -538,6 +544,7 @@
 
             } else if (entry.type === "extra_group") {
                 for (var j = 0; j < extras.length; j++) {
+                    if (result.length >= MESH_PRIORITY_MAX_SHOWN) break;
                     var group = extras[j];
                     if (usedExtras[group.label]) continue;
                     var testStr = group.label || "";
@@ -604,10 +611,12 @@
 
         activeRightLabel = label;
 
-        // Update active class on selector labels
+        // Update active class AND checked state on selector inputs
         Array.from(rightPanelSelector.querySelectorAll("label")).forEach(function (lbl) {
             var r = lbl.querySelector("input[type=radio]");
-            lbl.className = (r && r.value === activeRightLabel) ? "active" : "";
+            var isActive = r && r.value === activeRightLabel;
+            lbl.className = isActive ? "active" : "";
+            if (r) r.checked = !!isActive;
         });
 
         var item = availableItems.find(function (it) { return it.label === label; });

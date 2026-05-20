@@ -145,6 +145,7 @@ def launcher_index(request: Request, pipeline: str = "live"):
             "page_title": "Launcher",
             "pipeline": pipeline,
             "panel_visibility_defaults_json": json.dumps(load_panel_visibility_defaults(SETTINGS.panel_visibility_defaults_path)),
+            "mesh_priority_json": SETTINGS.mesh_priority_path.read_text(encoding="utf-8"),
             **theme_ctx,
         },
     )
@@ -165,6 +166,7 @@ def launcher_subpage(request: Request, page_key: str, pipeline: str = "live"):
             "page_title": title,
             "pipeline": pipeline,
             "panel_visibility_defaults_json": json.dumps(load_panel_visibility_defaults(SETTINGS.panel_visibility_defaults_path)),
+            "mesh_priority_json": SETTINGS.mesh_priority_path.read_text(encoding="utf-8"),
             **theme_ctx,
         },
     )

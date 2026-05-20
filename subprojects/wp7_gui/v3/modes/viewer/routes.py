@@ -53,6 +53,7 @@ def viewer_index(request: Request):
             "active_page": "runs",
             "page_title": "Viewer — Runs",
             "panel_visibility_defaults_json": json.dumps(load_panel_visibility_defaults(SETTINGS.panel_visibility_defaults_path)),
+            "mesh_priority_json": SETTINGS.mesh_priority_path.read_text(encoding="utf-8"),
             **theme_ctx,
         },
     )

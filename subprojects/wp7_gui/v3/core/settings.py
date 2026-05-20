@@ -45,6 +45,7 @@ class Settings:
     static_dir: Path
     schema_path: Path
     panel_visibility_defaults_path: Path
+    mesh_priority_path: Path
     logs_dir: Path
     cache_dir: Path
     config_overrides_root: Path
@@ -111,6 +112,7 @@ def build_settings() -> Settings:
         static_dir=gui_root / "frontend" / "static",
         schema_path=gui_root / "schema" / "gui_schema.json",
         panel_visibility_defaults_path=gui_root / "schema" / "panel_visibility_defaults.json",
+        mesh_priority_path=gui_root / "schema" / "mesh_priority.json",
         logs_dir=gui_root / "logs",
         cache_dir=gui_root / "cache",
         config_overrides_root=gui_root / "config_overrides",
