@@ -166,7 +166,7 @@ visual_types:
   aero:
     cp_field:
       enabled: true
-      colormap: "jet"     # diverging; aligned with corporate red/light-blue contrast
+      colormap: "jet"     # CFD AI colormap
       interval: 1
       alpha_enabled: null
       coordinate_system: true

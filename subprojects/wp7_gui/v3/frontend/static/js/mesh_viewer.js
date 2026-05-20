@@ -167,6 +167,7 @@ export function initMeshViewer(containerEl) {
 
     let currentObj = null;
     let currentGlbComponents = [];
+    let currentMeshType = null;
 
     (function animate() {
         requestAnimationFrame(animate);
