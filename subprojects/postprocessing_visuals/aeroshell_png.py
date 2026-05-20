@@ -64,14 +64,6 @@ import yaml
 from PIL import Image
 from torch import Tensor
 
-# ---------------------------------------------------------------------------
-# Domain constants — prism bounds (mm) matching the wp2 assembler definition
-# ---------------------------------------------------------------------------
-
-_PRISM_X = (-2900.0, 2900.0)
-_PRISM_Y = (-1150.0, 1150.0)
-_PRISM_Z = (0.0, 1650.0)
-
 _DEFAULT_CONFIG = Path(__file__).parent / "postpro_vis_config.yaml"
 
 _MODELS_DIR = Path(__file__).parents[1] / "wp4_aeroshell_optimizer" / "v2" / "src" / "models"
@@ -228,8 +220,15 @@ def _ensure_wp4_model_imports() -> None:
        source files, bypassing the package import machinery entirely.
     """
     # Stub parent packages for both models and sampling_visualization paths.
-    # The v2.src stub must have its __path__ set to the real directory to allow
-    # both subpackages (models, sampling_visualization) to be discovered.
+    # _MODELS_DIR is already the canonical path (subprojects/wp4.../models); use
+    # its parent so we never have to reconstruct the path independently.
+    _src_dir = _MODELS_DIR.parent  # subprojects/wp4_aeroshell_optimizer/v2/src
+    _real_paths: dict[str, str] = {
+        "subprojects.wp4_aeroshell_optimizer.v2.src": str(_src_dir),
+        "subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization": str(
+            _src_dir / "sampling_visualization"
+        ),
+    }
     for pkg in [
         "subprojects.wp4_aeroshell_optimizer",
         "subprojects.wp4_aeroshell_optimizer.v2",
@@ -239,12 +238,9 @@ def _ensure_wp4_model_imports() -> None:
     ]:
         if pkg not in sys.modules:
             m = types.ModuleType(pkg)
-            # Only set __path__ = [] for the leaf packages (models).
-            # For v2.src, we need to allow subpackage discovery, so we don't set __path__.
-            if pkg == "subprojects.wp4_aeroshell_optimizer.v2.src":
-                # Set __path__ to the real directory so Python can find both subpackages
-                src_dir = str(Path(__file__).parents[2] / "wp4_aeroshell_optimizer" / "v2" / "src")
-                m.__path__ = [src_dir]  # type: ignore[attr-defined]
+            if pkg in _real_paths:
+                # Set __path__ to the real directory so Python can discover submodules.
+                m.__path__ = [_real_paths[pkg]]  # type: ignore[attr-defined]
             else:
                 m.__path__ = []  # type: ignore[attr-defined]
             sys.modules[pkg] = m
@@ -392,13 +388,44 @@ def _parse_epoch_from_stem(stem: str) -> int | None:
 # ---------------------------------------------------------------------------
 
 
-def build_extractor(device: torch.device, resolution: int, bbox_padding: float = 0.0) -> Any:
+def _load_prism(scale: float = 1.0) -> dict[str, tuple[float, float]]:
+    """Return outer-prism bounds in mm, optionally scaled around each axis centre.
+
+    Single source of truth is WP2 ``get_outer_prism_bounds_mm()``.  The
+    *scale* factor is applied via ``scale_outer_prism()`` so each axis
+    half-span is multiplied while the centre is preserved.
+
+    Args:
+        scale: Scale factor for the prism half-spans (1.0 = no change).
+
+    Returns:
+        Dict with keys ``'x'``, ``'y'``, ``'z'``, each a ``(lo, hi)`` tuple in mm.
+    """
+    from subprojects.wp2_assembler.version4.utils.reg_imp import (  # noqa: PLC0415
+        get_outer_prism_bounds_mm,
+        scale_outer_prism,
+    )
+
+    prism = get_outer_prism_bounds_mm()
+    if scale != 1.0:
+        prism = scale_outer_prism(prism, scale)
+    return prism
+
+
+def build_extractor(
+    device: torch.device,
+    resolution: int,
+    prism: dict[str, tuple[float, float]],
+    bbox_padding: float = 0.0,
+) -> Any:
     """Build a MeshSDFExtractor configured for the WP4 aeroshell prism.
 
     Args:
         device: Torch device for grid evaluation.
         resolution: Marching-cubes grid resolution per axis.
-        bbox_padding: Expand each prism face by this many mm.
+        prism: Outer-prism bounds dict from ``_load_prism()``.
+        bbox_padding: Expand each lateral/top face by this many mm (Z floor
+            is never padded — car rests on the ground).
 
     Returns:
         Configured MeshSDFExtractor instance.
@@ -410,9 +437,9 @@ def build_extractor(device: torch.device, resolution: int, bbox_padding: float =
     extractor = MeshSDFExtractor(config=cfg)
     extractor.set_grid(
         bbox=[
-            [_PRISM_X[0] - bbox_padding, _PRISM_X[1] + bbox_padding],
-            [_PRISM_Y[0] - bbox_padding, _PRISM_Y[1] + bbox_padding],
-            [_PRISM_Z[0], _PRISM_Z[1] + bbox_padding],
+            [prism["x"][0] - bbox_padding, prism["x"][1] + bbox_padding],
+            [prism["y"][0] - bbox_padding, prism["y"][1] + bbox_padding],
+            [prism["z"][0], prism["z"][1] + bbox_padding],
         ],
         resolution=resolution,
     )
@@ -1055,7 +1082,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # orchestrator — large by desig
 
         resolution = int(_c("compute", "resolution", default=64))
         bbox_padding = float(_c("compute", "bbox_padding", default=1.25))
-        extractor = build_extractor(device, resolution, bbox_padding)
+        prism_scale = float(_c("compute", "prism_scale", default=1.0))
+        prism = _load_prism(prism_scale)
+        extractor = build_extractor(device, resolution, prism, bbox_padding)
 
         aeroshell_mesh = extract_mesh(model, extractor, z_vec, z_dim, device)
         if aeroshell_mesh is None or len(aeroshell_mesh.vertices) == 0:
@@ -1189,6 +1218,25 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # orchestrator — large by desig
             )
 
     # ------------------------------------------------------------------
+    # Build outer bbox mesh from WP2 prism (shared by both modes)
+    # ------------------------------------------------------------------
+    outer_bbox: trimesh.Trimesh | None = None
+    if bool(_get(cfg, "layers", "outer_bbox", "enabled", default=False)):
+        bbox_prism_scale = float(_get(cfg, "layers", "outer_bbox", "prism_scale", default=1.0))
+        bp = _load_prism(bbox_prism_scale)
+        extents = [
+            bp["x"][1] - bp["x"][0],
+            bp["y"][1] - bp["y"][0],
+            bp["z"][1] - bp["z"][0],
+        ]
+        centre = np.array(
+            [(bp["x"][0] + bp["x"][1]) / 2.0, (bp["y"][0] + bp["y"][1]) / 2.0, (bp["z"][0] + bp["z"][1]) / 2.0]
+        )
+        outer_bbox = trimesh.creation.box(extents=extents)
+        outer_bbox.apply_translation(centre)
+        print(f"[aeroshell_png] outer_bbox: extents={extents}  centre={centre}  (scale={bbox_prism_scale})")
+
+    # ------------------------------------------------------------------
     # Render one PNG per camera view
     # ------------------------------------------------------------------
     renderer = pyrender.OffscreenRenderer(w, h)
@@ -1219,7 +1267,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # orchestrator — large by desig
         render_list = _build_render_list(
             aeroshell_mesh=aeroshell_mesh,
             inner_assembly=inner_assembly,
-            outer_bbox=None,  # not loaded from file; reserved for future artifact
+            outer_bbox=outer_bbox,
             solar_binary_mesh=solar_binary_mesh,
             solar_shading_mesh=solar_shading_mesh,
             cfg=cfg,

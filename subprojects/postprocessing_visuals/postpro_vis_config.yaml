@@ -22,6 +22,7 @@ layers:
     enabled: false            # disabled by default — enable to inspect bounding box
     color: "#FF504D"          # red-orange
     alpha: 0.12
+    prism_scale: 1.0          # scale factor applied to WP2 prism bounds (1.0 = exact prism)
 
   solar_binary_mask:
     enabled: true
@@ -74,7 +75,8 @@ background_color: "#23283E"   # AISCO dark navy
 # ---------------------------------------------------------------------------
 compute:
   resolution: 64              # marching-cubes grid resolution per axis
-  bbox_padding: 1.25          # expand each prism face by this many mm
+  bbox_padding: 1.25          # expand each prism face by this many mm (Z floor never padded)
+  prism_scale: 1.0            # scale WP2 outer-prism bounds before mesh extraction (1.0 = exact)
 
 # ---------------------------------------------------------------------------
 # Solar computation (used only in .pth compute mode)
