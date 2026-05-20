@@ -957,11 +957,6 @@ def _build_render_list(
         alpha = float(_get(cfg, "layers", layer_name, "alpha", default=default_alpha))
         return _parse_color_rgba_float(color, alpha=alpha)
 
-    # --- Inner assembly (opaque, rendered first) ---
-    if _layer_enabled("inner_assembly") and inner_assembly is not None:
-        rgba = _layer_rgba("inner_assembly", "#F39C12", 1.0)
-        render_list.append((inner_assembly, rgba))
-
     # --- Outer bbox: solid face or wireframe depending on config ---
     if _layer_enabled("outer_bbox") and outer_bbox is not None:
         rgba = _layer_rgba("outer_bbox", "#FF504D", 0.12)
@@ -978,6 +973,11 @@ def _build_render_list(
         else:
             rgba = _layer_rgba("aeroshell", "#33FFFF", 0.82)
             render_list.append((aeroshell_mesh, rgba))
+
+    # --- Inner assembly last so it is always drawn on top (no Z-fighting) ---
+    if _layer_enabled("inner_assembly") and inner_assembly is not None:
+        rgba = _layer_rgba("inner_assembly", "#F39C12", 1.0)
+        render_list.append((inner_assembly, rgba))
 
     return render_list
 
