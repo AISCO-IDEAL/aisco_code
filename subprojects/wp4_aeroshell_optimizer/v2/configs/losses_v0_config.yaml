@@ -156,8 +156,8 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
   connectedness:
     _role: constraint
     _disabled_epochs: []
-    null_loss_connectedness: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
-    connectedness_v1: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py"]
+    null_loss_connectedness: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    connectedness_v1: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/connectedness_loss/connectedness_v1.py"]
 
 
   developability:
@@ -205,8 +205,8 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     field_diversity_v0:         [0, 0.001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_v0.py"]
     # Constraint-aware variants — flip compute=1 on exactly one of these to activate.
     # See field_diversity_{masked,surface,hybrid}_v0_config blocks below for cutoffs (mm) and knobs.
-    field_diversity_masked_v0:  [1, 0.03, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_masked_v0.py"]
-    field_diversity_surface_v0: [0, 0.03, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_surface_v0.py"]
+    field_diversity_masked_v0:  [0, 0.03, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_masked_v0.py"]
+    field_diversity_surface_v0: [1, 0.06, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_surface_v0.py"]
     field_diversity_hybrid_v0:  [0, 0.001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_hybrid_v0.py"]
 
   total: # Unused with the implementation of TotalLossV2 and main_v2.py? To Be Confirmed
@@ -238,7 +238,7 @@ field_diversity_surface_v0_config:
   bb_inner_cutoff_mm: 350.0
   wheel_sampling_density: 10
   bb_inner_target_point_count: 10000
-  surface_resample_cadence: 50  # re-extract per-shape surface via marching cubes every N get_loss calls
+  surface_resample_cadence: 1  # re-extract per-shape surface via marching cubes every N get_loss calls
   surface_subsample_n: 4096     # max retained vertices per shape after subsample
   mc_resolution: 64             # marching-cubes grid resolution
   mc_bbox_scale: 1.0            # outer-prism bbox multiplier for the extractor
@@ -250,7 +250,7 @@ field_diversity_hybrid_v0_config:
   max_div: null              # clamp applied once on the weighted sum
 
 connectedness_config:
-  eval_period: 15  # evaluate PH loss every N epochs (expensive persistent homology computation)
+  eval_period: 6  # evaluate PH loss every N epochs (expensive persistent homology computation)
   return_cached_on_skip: "False"  # if True, reuse last computed scalar on skipped epochs
   grid_dim: 3
   grid_resolution: 64
@@ -305,9 +305,9 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
   # v4.3 analytic specific:
   analytic_options:
     penalty: "relu"  # "relu" (default) or "softplus"
-    softplus_beta: 10.0  # only used when penalty="softplus"
-    inner_margin: 35.0  # tighten upper bound: sdf_model <= sdf_inner - inner_margin
-    outer_margin: 15.0  # tighten lower bound: sdf_outer + outer_margin <= sdf_model
+    softplus_beta: 0.0  # only used when penalty="softplus"
+    inner_margin: 0.0  # tighten upper bound: sdf_model <= sdf_inner - inner_margin
+    outer_margin: 0.0  # tighten lower bound: sdf_outer + outer_margin <= sdf_model
     inner_tolerance: 0.0  # GINN-style "satisfied" deadband on aggregated bb_inner L2 loss: clamp(loss - tol, 0). Stops λ from drifting once practically satisfied. 0 = disabled.
     outer_tolerance: 0.0  # same for bb_outer
     topk_fraction: 0.6  # (BbV5/BbV6) fraction of worst-violating points to include in loss reduction; 0.1 = top 10%
@@ -385,8 +385,8 @@ wheel_loss_config:
   sampling_density: 10 # points per edge of the rectangle
   weight_position: 0.33  # weight for position vs. gradient in the loss calculation
   threshold_huber: 10.0  # Huber loss threshold for wheel loss v3
-  threshold_relu: -0.3  # z-gradient threshold for wheel loss v3; gradients above this value are penalized linearly, while gradients below are not penalized (should be negative, e.g. -0.3 means z gradients above -0.3 are penalized, while z gradients of -0.3 or smaller are not penalized)
-  manual_z_shift: -5.0 # manual shift applied to z-coordinate of wheel loss sample points, to give more room for the SDF to find a solution
+  threshold_relu: -0.0 # z-gradient threshold for wheel loss v3; gradients above this value are penalized linearly, while gradients below are not penalized (should be negative, e.g. -0.3 means z gradients above -0.3 are penalized, while z gradients of -0.3 or smaller are not penalized)
+  manual_z_shift: 0.0 # manual shift applied to z-coordinate of wheel loss sample points, to give more room for the SDF to find a solution
   enforce_alignment_weight: 0.4 # wheel_loss_enforce_v2 only: weight on the ∇sdf ∥ ẑ ground-tangency aux relative to the primary projection-as-target loss
-  interface_tolerance: 155.0  # GINN-style "satisfied" deadband on aggregated wheel_interface L2 loss: clamp(loss - tol, 0). Stops λ from drifting once practically satisfied. 0 = disabled.
-  alignment_tolerance: 0.08  # same for wheel_alignment
+  interface_tolerance: 0.0  # GINN-style "satisfied" deadband on aggregated wheel_interface L2 loss: clamp(loss - tol, 0). Stops λ from drifting once practically satisfied. 0 = disabled.
+  alignment_tolerance: 0.0  # same for wheel_alignment
