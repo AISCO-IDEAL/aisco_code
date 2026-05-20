@@ -65,7 +65,7 @@ visual_types:
   mesh_shape:
     enabled: true
     colormap: null          # uniform dark-blue — shape is the information
-    interval: 50
+    interval: 1
     alpha_enabled: true
     coordinate_system: null
     vmin: null
@@ -76,7 +76,7 @@ visual_types:
     cp_field:
       enabled: true
       colormap: "RdBu_r"     # diverging; aligned with corporate red/light-blue contrast
-      interval: 50
+      interval: 10
       alpha_enabled: null
       coordinate_system: true
       vmin: -2.0            # fixed range for cross-epoch comparability
@@ -86,7 +86,7 @@ visual_types:
     gradient:
       enabled: false       # aalthaus: did this ever work?
       colormap: "RdBu_r"
-      interval: 50
+      interval: 10
       alpha_enabled: null
       coordinate_system: null
       vmin: null
@@ -106,7 +106,7 @@ visual_types:
     quality:
       enabled: true
       colormap: "Reds"   # [0,1] bounded selection weight (corporate red ramp)
-      interval: 1
+      interval: 10
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -115,7 +115,7 @@ visual_types:
     selection:
       enabled: true
       colormap: "RdBu_r"  # [0,1] bounded selection weight
-      interval: 1
+      interval: 10
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -125,7 +125,7 @@ visual_types:
     shading:
       enabled: true
       colormap: "Blues" # [0,1] bounded shading visibility (corporate light-blue family)
-      interval: 50
+      interval: 10
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -135,7 +135,7 @@ visual_types:
     penalty:
       enabled: true
       colormap: "Reds"     # per-face power lost to shading, lower-bounded at 0
-      interval: 50
+      interval: 10
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -145,7 +145,7 @@ visual_types:
     numerical_factor:
       enabled: true
       colormap: "Reds"   # [0,1] effective loss multiplier after λ/κ applied to visibility
-      interval: 50
+      interval: 10
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -155,7 +155,7 @@ visual_types:
     receiver_mask:
       enabled: true
       colormap: "RdYlGn"  # 0=back-facing (skipped), 1=sun-facing (raytraced)
-      interval: 50
+      interval: 10
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -164,7 +164,7 @@ visual_types:
     vision_cone_mask:
       enabled: true
       colormap: "RdYlGn"  # 0=selectable (green), 1=excluded by vision cone (red)
-      interval: 1
+      interval: 10
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -176,7 +176,7 @@ visual_types:
       binary_colors_rgb:
         - [0.365, 0.678, 0.886]   # 0 = not selected (light grey)
         - [0.137, 0.157, 0.247]   # 1 = solar cell placed (solar yellow)
-      interval: 1
+      interval: 10
       alpha_enabled: null
       coordinate_system: null
       vmin: 0.0
@@ -185,7 +185,7 @@ visual_types:
   bb_constraint:
     enabled: true          # disabled by default — confirm with user before enabling
     colormap: "Reds"        # violation magnitude, lower-bounded at 0
-    interval: 50
+    interval: 1
     alpha_enabled: null
     coordinate_system: null
     vmin: 0.0
@@ -195,7 +195,7 @@ visual_types:
   mesh_assembly_v4:
     enabled: true
     colormap: null          # colours specified per-component via method arguments
-    interval: 50
+    interval: 1
     alpha_enabled: true
     coordinate_system: null
     vmin: null
@@ -218,7 +218,7 @@ visual_types:
   mesh_gradients:
     enabled: true
     colormap: "RdYlGn"
-    interval: 50
+    interval: 10
     alpha_enabled: null
     coordinate_system: null
     vmin: null
