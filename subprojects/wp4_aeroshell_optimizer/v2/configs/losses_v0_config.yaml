@@ -301,7 +301,7 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
     outer_inward_offset_mm: 0.0      # BbOuterV1: inward offset on non-bottom faces (top, sides, ramps)
     outer_bottom_offset_mm: 0.0      # BbOuterV1: inward offset on flat ground face only; keep small or 0
     mask_downward_normal_threshold: 0.99  # dot(normal, -ẑ) above this counts as flat-down face
-    cap_z_tolerance_mm: 0.5          # BbInnerV1: face at z < wheel_clearance + tol AND downward-normal = wheel cap (masked)
+    cap_z_tolerance_mm: 0.5          # BbInnerV1: ensures the bottom of the wheel is masked out from the inner bb
   # v4.3 analytic specific:
   analytic_options:
     penalty: "relu"  # "relu" (default) or "softplus"
