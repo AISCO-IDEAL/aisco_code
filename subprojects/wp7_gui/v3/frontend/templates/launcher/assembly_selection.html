@@ -200,7 +200,9 @@ endblock %}
         font-weight: 700;
     }
 
-    .selection-actions button#btnAddWheel:hover { background: color-mix(in srgb, var(--theme-white) 86%, var(--theme-surface-large) 14%); }
+    .selection-actions button#btnAddWheel:hover {
+        background: color-mix(in srgb, var(--theme-white) 86%, var(--theme-surface-large) 14%);
+    }
 
     .selection-actions button#btnRemoveWheel {
         border-color: var(--theme-title-2);
@@ -209,7 +211,9 @@ endblock %}
         font-weight: 700;
     }
 
-    .selection-actions button#btnRemoveWheel:hover { background: color-mix(in srgb, var(--theme-white) 86%, var(--theme-title-2) 14%); }
+    .selection-actions button#btnRemoveWheel:hover {
+        background: color-mix(in srgb, var(--theme-white) 86%, var(--theme-title-2) 14%);
+    }
 
     .selection-actions button.primary {
         grid-column: span 2;
@@ -596,7 +600,7 @@ endblock %}
         params[key][axis] = parseFloat(el.value || "0");
         markAssemblyEdited();
         drawPreview();
-        scheduleAutosave(260);
+        scheduleAutosave(800);
     };
 
     function canvasTransform() {
@@ -993,7 +997,11 @@ endblock %}
             if (d.params) {
                 params = d.params;
             }
-            renderTable();
+            const controlsEl = document.getElementById("controls");
+            const activeInControls = controlsEl && controlsEl.contains(document.activeElement);
+            if (!activeInControls) {
+                renderTable();
+            }
             drawPreview();
             loadAssemblyMesh();
             await loadChecks();
