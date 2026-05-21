@@ -112,9 +112,7 @@ def parse_epoch_blocks(log_text: str) -> dict[int, dict[str, float | None]]:
         Empty dict when no epoch markers are found.
     """
     positions: list[tuple[int, int]] = []
-    for pattern in _EPOCH_PATTERNS:
-        for m in pattern.finditer(log_text):
-            positions.append((m.start(), int(m.group(1))))
+    positions.extend((m.start(), int(m.group(1))) for pattern in _EPOCH_PATTERNS for m in pattern.finditer(log_text))
     if not positions:
         return {}
 

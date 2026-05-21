@@ -369,6 +369,55 @@ def run_artifacts() -> dict[str, Any]:
     return {**list_artifacts(run_dir, storage_root), "message": "Artifacts loaded"}
 
 
+# ---------------------------------------------------------------------------
+# SSE log-stream helpers
+# ---------------------------------------------------------------------------
+
+
+def _sse_init_last_written_epoch(active_cfg_folder: str) -> int:
+    """Return the last epoch already written to the per-run CSV, or -1.
+
+    Called once when an SSE log stream opens so that reconnecting clients
+    don't re-write rows that already exist.
+    """
+    try:
+        if active_cfg_folder:
+            session_dir = Path(active_cfg_folder)
+            storage_root = get_storage_root_for_session(session_dir)
+            run_dir = detect_current_run_dir(storage_root, preferred_cfg_session=session_dir.name)
+            if run_dir is not None:
+                metrics = _csv_metrics.read_latest_metrics(run_dir)
+                if metrics and metrics.get("epoch") is not None:
+                    return int(metrics["epoch"])  # type: ignore[arg-type]
+    except Exception:
+        pass
+    return -1
+
+
+def _sse_flush_epoch_csv(
+    log_text: str,
+    active_cfg_folder: str,
+    last_written_epoch: int,
+    *,
+    include_last: bool = False,
+) -> int:
+    """Write CSV rows for completed epoch blocks found in *log_text*.
+
+    Skips the final block by default because it may still be accumulating
+    lines.  Pass ``include_last=True`` when the run has finished.
+
+    Returns the updated ``last_written_epoch`` value.
+    """
+    epoch_blocks = log_parser.parse_epoch_blocks(log_text)
+    all_epochs = sorted(epoch_blocks.keys())
+    epochs_to_write = all_epochs if include_last else all_epochs[:-1]
+    for ep in epochs_to_write:
+        if ep > last_written_epoch:
+            _write_epoch_csv(active_cfg_folder=active_cfg_folder, epoch=ep, **epoch_blocks[ep])
+            last_written_epoch = ep
+    return last_written_epoch
+
+
 @router.get("/api/run/stream/logs")
 async def run_stream_logs() -> StreamingResponse:
     async def _gen():
@@ -376,22 +425,9 @@ async def run_stream_logs() -> StreamingResponse:
         # never stalls once the log exceeds the tail_log display cap.
         raw_file_size: int = -1  # log_path.stat().st_size
         sent_offset: int = 0  # char offset into the FULL log text sent so far
-        last_written_epoch: int = -1
         log_path: Path | None = None  # exposed to the finally block
         active_cfg_folder: str = (_runtime_state["active_cfg_folder"] or "").strip()
-
-        # Initialise from the per-run CSV so reconnects don't re-write old rows
-        try:
-            if active_cfg_folder:
-                _sd = Path(active_cfg_folder)
-                _sr = get_storage_root_for_session(_sd)
-                _rd = detect_current_run_dir(_sr, preferred_cfg_session=_sd.name)
-                if _rd is not None:
-                    _m = _csv_metrics.read_latest_metrics(_rd)
-                    if _m and _m.get("epoch") is not None:
-                        last_written_epoch = int(_m["epoch"])  # type: ignore[arg-type]
-        except Exception:
-            pass
+        last_written_epoch: int = _sse_init_last_written_epoch(active_cfg_folder)
 
         try:
             while True:
@@ -420,20 +456,9 @@ async def run_stream_logs() -> StreamingResponse:
                         epoch = log_parser.parse_epoch(full_text)
                         if epoch >= 0:
                             metrics = log_parser.parse_metrics(full_text)
-                            # Write CSV *before* yielding to the client so that
-                            # the rows are persisted even when the client disconnects
-                            # mid-yield.
-                            epoch_blocks = log_parser.parse_epoch_blocks(full_text)
-                            all_block_epochs = sorted(epoch_blocks.keys())
-                            for ep in all_block_epochs[:-1]:  # skip last (may be incomplete)
-                                if ep > last_written_epoch:
-                                    _write_epoch_csv(
-                                        active_cfg_folder=active_cfg_folder,
-                                        epoch=ep,
-                                        **epoch_blocks[ep],
-                                    )
-                                    last_written_epoch = ep
-
+                            # Write CSV *before* yielding so rows persist even
+                            # when the client disconnects mid-yield.
+                            last_written_epoch = _sse_flush_epoch_csv(full_text, active_cfg_folder, last_written_epoch)
                             yield sse.event(
                                 "epoch",
                                 {
@@ -446,18 +471,12 @@ async def run_stream_logs() -> StreamingResponse:
                             )
 
                 if not state["running"]:
-                    # Flush the final epoch block — it is now complete
+                    # Flush the final epoch block — it is now complete.
                     if log_path and log_path.exists():
                         final_text = log_path.read_text(encoding="utf-8", errors="replace")
-                        final_blocks = log_parser.parse_epoch_blocks(final_text)
-                        for ep in sorted(final_blocks.keys()):
-                            if ep > last_written_epoch:
-                                _write_epoch_csv(
-                                    active_cfg_folder=active_cfg_folder,
-                                    epoch=ep,
-                                    **final_blocks[ep],
-                                )
-                                last_written_epoch = ep
+                        last_written_epoch = _sse_flush_epoch_csv(
+                            final_text, active_cfg_folder, last_written_epoch, include_last=True
+                        )
                     yield sse.event("done", {"return_code": state["return_code"]})
                     break
                 await asyncio.sleep(1.0)
@@ -467,15 +486,7 @@ async def run_stream_logs() -> StreamingResponse:
             if log_path and log_path.exists():
                 try:
                     final_text = log_path.read_text(encoding="utf-8", errors="replace")
-                    final_blocks = log_parser.parse_epoch_blocks(final_text)
-                    for ep in sorted(final_blocks.keys()):
-                        if ep > last_written_epoch:
-                            _write_epoch_csv(
-                                active_cfg_folder=active_cfg_folder,
-                                epoch=ep,
-                                **final_blocks[ep],
-                            )
-                            last_written_epoch = ep
+                    _sse_flush_epoch_csv(final_text, active_cfg_folder, last_written_epoch, include_last=True)
                 except Exception:
                     pass
 
