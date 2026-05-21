@@ -142,7 +142,7 @@ def build_settings() -> Settings:
         cache_dir=gui_root / "cache",
         config_overrides_root=gui_root / "config_overrides",
         host="0.0.0.0",
-        port=8001,
+        port=8004,
         runtime_environment=runtime_environment.value,
     )
 

@@ -60,7 +60,7 @@ model_name: "AISCOModel"
 # Exactly one shape — analogous to a single entry of latent_population in the
 # latent config, but flattened into the top-level dict.
 shape:
-  shape_type: "ply"        # "sphere" | "cube" | "ply"
+  shape_type: "sphere"        # "sphere" | "cube" | "ply"
   name: "bunny"        # used in output paths / wandb logs
   radius: null             # iff shape_type == "sphere"
   side_length: null        # iff shape_type == "cube"

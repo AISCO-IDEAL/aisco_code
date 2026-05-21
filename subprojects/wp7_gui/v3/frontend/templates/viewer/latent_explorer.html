@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% block hint %}Explore the 2D latent space of a pretrained ConcatWIREV5 checkpoint.{% endblock %}
+
+{% block head %}
+<script type="importmap">
+  {"imports": {"three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+{% endblock %}
+
+{% block content %}
+<div style="display:grid; grid-template-columns:320px 1fr; gap:14px; height:100%; min-height:0;">
+
+    <!-- ====== LEFT PANEL: controls + canvas ====== -->
+    <div style="display:flex; flex-direction:column; gap:10px; min-height:0; overflow:auto;">
+
+        <div class="dark-card" style="display:flex; flex-direction:column; gap:8px;">
+            <label style="font-size:0.78rem; color:var(--theme-muted);">Checkpoint path or run directory</label>
+            <input id="ckptInput" type="text" placeholder="/cluster/work/fuge/AISCO/…" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:0.80rem;
+               background:var(--theme-bg-input, #1e1e2e); color:var(--theme-fg, #cdd6f4);
+               border:1px solid var(--theme-border, #45475a); border-radius:4px; outline:none;" />
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <button class="btn" id="btnLoad">Load checkpoint</button>
+                <label style="font-size:0.78rem; color:var(--theme-muted); white-space:nowrap;">
+                    Resolution
+                    <input id="resInput" type="number" value="35" min="10" max="80" style="width:52px; margin-left:4px; padding:3px 5px; font-size:0.78rem;
+                   background:var(--theme-bg-input, #1e1e2e); color:var(--theme-fg, #cdd6f4);
+                   border:1px solid var(--theme-border, #45475a); border-radius:4px; outline:none;" />
+                </label>
+            </div>
+            <div id="statusMsg" style="font-size:0.75rem; color:var(--theme-muted); min-height:1em;">—</div>
+        </div>
+
+        <!-- Latent space canvas -->
+        <div class="dark-card" style="display:flex; flex-direction:column; gap:6px; align-items:center;">
+            <div style="font-size:0.75rem; color:var(--theme-muted);">
+                Click a point to extract its mesh. Red dots = pretrained anchors.
+            </div>
+            <canvas id="latentCanvas" width="300" height="300" style="background:#0d1117; border:1px solid var(--theme-border, #45475a);
+               border-radius:4px; cursor:crosshair; display:block;"></canvas>
+            <div id="coordLabel" style="font-size:0.74rem; color:var(--theme-muted); min-height:1em;">—</div>
+        </div>
+
+    </div>
+
+    <!-- ====== RIGHT PANEL: Three.js mesh viewer ====== -->
+    <div style="display:flex; flex-direction:column; gap:8px; min-height:0;">
+        <div class="dark-card" style="flex:1; min-height:0; position:relative; overflow:hidden;" id="meshContainer">
+            <div id="meshPlaceholder" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+                  color:var(--theme-muted); font-size:0.85rem; pointer-events:none;">
+                Click a latent point to load a mesh.
+            </div>
+        </div>
+        <div class="dark-card" id="glbControls"
+            style="display:none; gap:8px; grid-template-columns:repeat(3,minmax(0,1fr));"></div>
+    </div>
+
+</div>
+
+<script>
+    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260521_1";
+
+    // ---------------------------------------------------------------------------
+    // State
+    // ---------------------------------------------------------------------------
+    let resolvedPath = "";
+    let zRadius = 2.0;
+    let zPretrained = [];   // [[z0, z1], ...]
+    let clickedZ = null;    // [z0, z1] of last click
+    let viewer = null;
+
+    // ---------------------------------------------------------------------------
+    // Canvas setup
+    // ---------------------------------------------------------------------------
+    const canvas = document.getElementById("latentCanvas");
+    const ctx = canvas.getContext("2d");
+    const coordLabel = document.getElementById("coordLabel");
+    const statusMsg = document.getElementById("statusMsg");
+
+    function drawCanvas(hoverZ) {
+        const w = canvas.width, h = canvas.height;
+        const cx = w / 2, cy = h / 2;
+        const scale = (Math.min(w, h) * 0.40) / Math.max(zRadius * 1.5, 1e-6);
+
+        ctx.clearRect(0, 0, w, h);
+
+        // Axes
+        ctx.strokeStyle = "#2d3748";
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, h); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(w, cy); ctx.stroke();
+
+        // z_radius reference circle
+        ctx.strokeStyle = "#3b4a61";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.arc(cx, cy, zRadius * scale, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Pretrained anchor dots
+        ctx.fillStyle = "#e05252";
+        for (const [z0, z1] of zPretrained) {
+            const px = cx + z0 * scale;
+            const py = cy - z1 * scale;
+            ctx.beginPath();
+            ctx.arc(px, py, 4.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Hover cross
+        if (hoverZ) {
+            const px = cx + hoverZ[0] * scale;
+            const py = cy - hoverZ[1] * scale;
+            ctx.strokeStyle = "rgba(110,200,255,0.55)";
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(px - 8, py); ctx.lineTo(px + 8, py); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(px, py - 8); ctx.lineTo(px, py + 8); ctx.stroke();
+        }
+
+        // Clicked marker
+        if (clickedZ) {
+            const px = cx + clickedZ[0] * scale;
+            const py = cy - clickedZ[1] * scale;
+            ctx.fillStyle = "#5bbffa";
+            ctx.beginPath();
+            ctx.arc(px, py, 5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    function canvasToLatent(offsetX, offsetY) {
+        const w = canvas.width, h = canvas.height;
+        const cx = w / 2, cy = h / 2;
+        const scale = (Math.min(w, h) * 0.40) / Math.max(zRadius * 1.5, 1e-6);
+        return [(offsetX - cx) / scale, -(offsetY - cy) / scale];
+    }
+
+    canvas.addEventListener("mousemove", (e) => {
+        if (!resolvedPath) return;
+        const z = canvasToLatent(e.offsetX, e.offsetY);
+        coordLabel.textContent = `z = (${z[0].toFixed(3)}, ${z[1].toFixed(3)})`;
+        drawCanvas(z);
+    });
+
+    canvas.addEventListener("mouseleave", () => {
+        coordLabel.textContent = clickedZ
+            ? `z = (${clickedZ[0].toFixed(3)}, ${clickedZ[1].toFixed(3)})`
+            : "—";
+        drawCanvas(null);
+    });
+
+    canvas.addEventListener("click", async (e) => {
+        if (!resolvedPath) {
+            statusMsg.textContent = "Load a checkpoint first.";
+            return;
+        }
+        const z = canvasToLatent(e.offsetX, e.offsetY);
+        clickedZ = z;
+        drawCanvas(null);
+        await queryMesh(z[0], z[1]);
+    });
+
+    // Initial blank draw
+    drawCanvas(null);
+
+    // ---------------------------------------------------------------------------
+    // Checkpoint loading
+    // ---------------------------------------------------------------------------
+    document.getElementById("btnLoad").addEventListener("click", async () => {
+        const rawPath = document.getElementById("ckptInput").value.trim();
+        if (!rawPath) { statusMsg.textContent = "Enter a path first."; return; }
+        statusMsg.textContent = "Loading…";
+        try {
+            const resp = await fetch("/viewer/api/latent/load-checkpoint", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ checkpoint_path: rawPath }),
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                statusMsg.textContent = "Error: " + (data.detail?.message || resp.statusText);
+                return;
+            }
+            resolvedPath = data.resolved_path;
+            zRadius = data.z_radius || 2.0;
+            zPretrained = data.z_pretrained || [];
+            clickedZ = null;
+            statusMsg.textContent =
+                `Loaded · z_dim=${data.z_dim} · z_radius=${zRadius.toFixed(3)} ` +
+                `· ${zPretrained.length} anchors · ${data.resolved_path.split("/").pop()}`;
+            drawCanvas(null);
+        } catch (err) {
+            statusMsg.textContent = "Network error: " + err.message;
+        }
+    });
+
+    // ---------------------------------------------------------------------------
+    // Mesh extraction
+    // ---------------------------------------------------------------------------
+    async function queryMesh(z0, z1) {
+        const resolution = parseInt(document.getElementById("resInput").value, 10) || 35;
+        statusMsg.textContent = `Extracting mesh at z=(${z0.toFixed(3)}, ${z1.toFixed(3)})…`;
+        try {
+            const resp = await fetch("/viewer/api/latent/query-mesh", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    checkpoint_path: resolvedPath,
+                    z0, z1,
+                    resolution,
+                }),
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                statusMsg.textContent = "Error: " + (data.detail?.message || resp.statusText);
+                return;
+            }
+            const meshUrl = data.mesh_url;
+            statusMsg.textContent = "Rendering mesh…";
+
+            // Hide placeholder
+            const placeholder = document.getElementById("meshPlaceholder");
+            if (placeholder) placeholder.style.display = "none";
+
+            // Initialise viewer on first mesh load
+            const container = document.getElementById("meshContainer");
+            if (!viewer) {
+                const { initMeshViewer } = await import(MESH_VIEWER_MODULE);
+                viewer = initMeshViewer(container, { turntable: true });
+                const glbControls = document.getElementById("glbControls");
+                viewer.setGlbControlsHost(glbControls);
+            }
+
+            // Preserve camera position across latent-point switches.
+            const savedView = viewer ? viewer.getViewState() : null;
+
+            viewer.loadMesh(
+                meshUrl,
+                () => {
+                    if (savedView) {
+                        viewer.setViewState(savedView);
+                    }
+                    statusMsg.textContent =
+                        `Mesh loaded · z=(${z0.toFixed(3)}, ${z1.toFixed(3)})`;
+                    const glbControls = document.getElementById("glbControls");
+                    glbControls.style.display = "grid";
+                },
+                (err) => {
+                    statusMsg.textContent = "Mesh render error: " + (err?.message || err);
+                },
+            );
+        } catch (err) {
+            statusMsg.textContent = "Network error: " + err.message;
+        }
+    }
+</script>
+{% endblock %}
