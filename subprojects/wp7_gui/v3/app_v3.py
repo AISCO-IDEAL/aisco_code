@@ -23,11 +23,11 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from subprojects.wp7_gui.v3.core.settings import SETTINGS
-from subprojects.wp7_gui.v3.modes.launcher.routes import router as launcher_router
-from subprojects.wp7_gui.v3.modes.viewer.routes import router as viewer_router
-from subprojects.wp7_gui.v3.shared.api_router import router as api_router
-from subprojects.wp7_gui.v3.shared.theme import build_template_theme_context
+from subprojects.wp7_gui.v3.core.settings import SETTINGS  # noqa: E402
+from subprojects.wp7_gui.v3.modes.launcher.routes import router as launcher_router  # noqa: E402
+from subprojects.wp7_gui.v3.modes.viewer.routes import router as viewer_router  # noqa: E402
+from subprojects.wp7_gui.v3.shared.api_router import router as api_router  # noqa: E402
+from subprojects.wp7_gui.v3.shared.theme import build_template_theme_context  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 LOGGER = logging.getLogger(__name__)

@@ -39,7 +39,7 @@ def _is_local_runtime() -> bool:
     return env in {RuntimeEnv.AISCO_BEAST, RuntimeEnv.WSL}
 
 
-def get_storage_root(
+def get_storage_root(  # noqa: PLR0911
     general_config_path: Path,
     default_local: Path,
     default_bulk: Path,
@@ -54,7 +54,6 @@ def get_storage_root(
     - run_locally=True  -> beast_storage_dir, then local_storage_dir
     - run_locally=False -> storage_dir
     """
-    resolved: Path
     try:
         with general_config_path.open(encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}

@@ -70,7 +70,7 @@ def _detect_wp4_active_version(wp4_package_root: Path) -> str:
     return match.group(1) if match else "v2"
 
 
-def _detect_runtime_environment() -> RuntimeEnvironment:
+def _detect_runtime_environment() -> RuntimeEnvironment:  # noqa: PLR0911
     """Detect whether we run on Beast/WSL or cluster-like hosts."""
     # Keep GUI detection aligned with WP4 runtime logic when possible.
     with_wp4 = {

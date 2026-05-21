@@ -53,7 +53,7 @@ def detect_environment() -> Environment:
     hostname = socket.gethostname().strip().lower()
     if hostname in {"aisco-beast", "aisco_beast"} or hostname.startswith("aisco-beast"):
         return Environment.AISCO_BEAST
-    if hostname.startswith("eu-") or hostname.startswith("euler"):
+    if hostname.startswith(("eu-", "euler")):
         return Environment.EULER
 
     # Check for SLURM environment

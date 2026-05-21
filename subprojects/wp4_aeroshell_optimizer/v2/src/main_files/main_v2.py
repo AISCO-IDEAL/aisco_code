@@ -434,10 +434,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         if conflict_output_dir_str:
             conflict_output_dir = Path(conflict_output_dir_str)
         elif wandb_name is not None:
-            if run_locally:
-                base_dir = Path(_local_storage_root)
-            else:
-                base_dir = Path(general_config["storage_paths"]["storage_dir"])
+            base_dir = Path(_local_storage_root) if run_locally else Path(general_config["storage_paths"]["storage_dir"])
             conflict_output_dir = base_dir / model_hash / reformat_wandb_name(wandb_name) / "gradient_conflict"
         else:
             conflict_output_dir = Path("/tmp/gradient_conflict")
