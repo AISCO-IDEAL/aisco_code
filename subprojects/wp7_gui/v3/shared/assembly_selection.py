@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse
 class AssemblySelectionService:
     def __init__(self, repo_root: Path, subdir: str = "") -> None:
         self._script = repo_root / "wp2_assembler" / "version4" / "GUI_helpers" / "GUI_assembly.py"
+        self._assembly_map_path = repo_root / "wp2_assembler" / "version4" / "config" / "assembly_map.yaml"
         # GUI_assembly.py writes all I/O to frontend/assembly/<subdir>/
         base = repo_root / "wp7_gui" / "v3" / "frontend" / "assembly"
         self._assembly_dir = base / subdir if subdir else base
@@ -70,6 +71,65 @@ class AssemblySelectionService:
 
     def get_params(self) -> dict[str, dict[str, float]]:
         return self._read_params()
+
+    def _read_map_yaml(self) -> dict[Any, Any]:
+        if not self._assembly_map_path.exists():
+            raise HTTPException(status_code=500, detail={"message": f"Missing assembly map at {self._assembly_map_path}"})
+        try:
+            with self._assembly_map_path.open(encoding="utf-8") as f:
+                raw_map = yaml.safe_load(f) or {}
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail={"message": str(exc)}) from exc
+        if not isinstance(raw_map, dict):
+            raise HTTPException(status_code=500, detail={"message": "assembly_map.yaml has invalid format"})
+        return raw_map
+
+    def get_map_meta(self) -> dict[str, int | None]:
+        raw_map = self._read_map_yaml()
+        numeric_keys: list[int] = []
+        for key in raw_map:
+            try:
+                numeric_keys.append(int(key))
+            except (TypeError, ValueError):
+                continue
+        return {"max_assembly_id": max(numeric_keys) if numeric_keys else None}
+
+    def _read_map_entry(self, assembly_id: int) -> dict[str, dict[str, float]]:
+        raw_map = self._read_map_yaml()
+
+        entry: Any | None = raw_map.get(assembly_id)
+        if entry is None:
+            entry = raw_map.get(str(assembly_id))
+        if not isinstance(entry, dict):
+            raise HTTPException(status_code=404, detail={"message": f"Assembly ID {assembly_id} not found in assembly_map.yaml"})
+
+        params: dict[str, dict[str, float]] = {}
+        for section, values in entry.items():
+            if not isinstance(section, str) or section == "real id" or not isinstance(values, dict):
+                continue
+            axes = {ax: float(values[ax]) for ax in ("x", "y", "z") if isinstance(values.get(ax), (int, float))}
+            if axes:
+                params[section] = axes
+
+        if not params:
+            raise HTTPException(status_code=500, detail={"message": f"Assembly ID {assembly_id} has no valid part coordinates"})
+        if "seat" not in params:
+            raise HTTPException(status_code=500, detail={"message": f"Assembly ID {assembly_id} is missing seat coordinates"})
+
+        return params
+
+    def load_from_map_id(self, assembly_id: int) -> dict[str, Any]:
+        with self._lock:
+            params = self._read_map_entry(assembly_id)
+            self._write_params(params)
+            self._rebuild()
+        return {
+            "status": "ok",
+            "message": f"Loaded assembly ID {assembly_id} from assembly_map.yaml.",
+            "assembly_map_id": assembly_id,
+            "params": params,
+            "mesh_url": "/launcher/api/assembly-selection/mesh",
+        }
 
     def update_params(self, payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(payload, dict):

@@ -62,7 +62,8 @@ rendering_modes:
       assembly_color: [1.0, 0.55, 0.0]
       outer_color: [1.0, 0.35, 0.15]
       outer_alpha: 0.2
-      outer_edge_color: [0.0, 0.0, 0.0]
+      outer_render_style: "outer_lines_only"  # outer_lines_only|solid+edges
+      outer_edge_color: [0.137, 0.157, 0.243]
       outer_edge_strength: 1.0
       tolerance: 2.0
       angular_tolerance: 0.4

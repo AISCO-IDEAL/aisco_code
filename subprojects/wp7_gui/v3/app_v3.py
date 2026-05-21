@@ -4,8 +4,7 @@ Thin by design: this file only wires the FastAPI app to the two mode routers,
 the introduction page, and the static-asset mount. All business logic lives
 under core/, shared/, modes/<mode>/, and shared/.
 
-Run directly:   python app_v3.py           (from anywhere)
-Run as module:  python -m subprojects.wp7_gui.v3.app_v3   (from repo root)
+Run as directly:  python3 subprojects/wp7_gui/v3/app_v3.py   (from repo root)
 """
 
 from __future__ import annotations
@@ -21,6 +20,7 @@ from subprojects.wp7_gui.v3.core.settings import SETTINGS
 from subprojects.wp7_gui.v3.modes.launcher.routes import router as launcher_router
 from subprojects.wp7_gui.v3.modes.viewer.routes import router as viewer_router
 from subprojects.wp7_gui.v3.shared.api_router import router as api_router
+from subprojects.wp7_gui.v3.shared.theme import build_template_theme_context
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 LOGGER = logging.getLogger(__name__)
@@ -32,6 +32,7 @@ templates = Jinja2Templates(directory=str(SETTINGS.templates_dir))
 
 @app.get("/")
 def root(request: Request):
+    theme_ctx = build_template_theme_context()
     return templates.TemplateResponse(
         request,
         "introduction.html",
@@ -39,6 +40,7 @@ def root(request: Request):
             "active_mode": None,
             "active_page": "introduction",
             "page_title": "Welcome",
+            **theme_ctx,
         },
     )
 
@@ -60,9 +62,11 @@ else:
 
 def main() -> None:
     print("--- AISCO GUI v3 ---")
+    print(f"Environment: {SETTINGS.runtime_environment}")
     print(f"Templates: {SETTINGS.templates_dir}")
     print(f"Statics:   {SETTINGS.static_dir}")
     print(f"WP4 root:  {SETTINGS.wp4_package_root} (active: {SETTINGS.wp4_active_version})")
+    print(f"Run local script: {SETTINGS.run_local_script}")
     print(f"Local URL: http://localhost:{SETTINGS.port}")
     uvicorn.run(app, host=SETTINGS.host, port=SETTINGS.port, log_level="info")
 

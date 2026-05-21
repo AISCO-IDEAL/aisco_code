@@ -1317,6 +1317,7 @@ class DiversityTrainer:
         # Merge competition charts + slot charts into single log call to avoid WandB step corruption
         log_dict.update(competition_log)
         log_dict.update(slot_log)
+
         wandb.log(log_dict, step=epoch)
 
     def _log_slot_line_charts(

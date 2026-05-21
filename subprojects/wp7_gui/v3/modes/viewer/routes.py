@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from subprojects.wp7_gui.v3.core.settings import SETTINGS
 from subprojects.wp7_gui.v3.shared.artifact_index import list_artifacts
+from subprojects.wp7_gui.v3.shared.panel_visibility import load_panel_visibility_defaults
 from subprojects.wp7_gui.v3.shared.pretraining import PretrainingService
 from subprojects.wp7_gui.v3.shared.run_paths import default_storage_root, get_storage_root_for_session, list_all_runs
+from subprojects.wp7_gui.v3.shared.theme import build_template_theme_context, get_mesh_assembly_config, load_vis_config
 
 router = APIRouter(prefix="/viewer", tags=["viewer"])
 _templates = Jinja2Templates(directory=str(SETTINGS.templates_dir))
@@ -41,6 +44,7 @@ def _resolve_cfg_folder(cfg_folder: str | None) -> Path | None:
 # ---------------------------------------------------------------------------
 @router.get("")
 def viewer_index(request: Request):
+    theme_ctx = build_template_theme_context()
     return _templates.TemplateResponse(
         request,
         "viewer/index.html",
@@ -48,12 +52,16 @@ def viewer_index(request: Request):
             "active_mode": "viewer",
             "active_page": "runs",
             "page_title": "Viewer — Runs",
+            "panel_visibility_defaults_json": json.dumps(load_panel_visibility_defaults(SETTINGS.panel_visibility_defaults_path)),
+            "mesh_priority_json": SETTINGS.mesh_priority_path.read_text(encoding="utf-8"),
+            **theme_ctx,
         },
     )
 
 
 @router.get("/pretraining")
 def viewer_pretraining(request: Request):
+    theme_ctx = build_template_theme_context()
     return _templates.TemplateResponse(
         request,
         "viewer/pretraining.html",
@@ -61,8 +69,20 @@ def viewer_pretraining(request: Request):
             "active_mode": "viewer",
             "active_page": "pretraining",
             "page_title": "Viewer — Pretraining GIFs",
+            **theme_ctx,
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Vis-config API — serves mesh_assembly_v4 style keys from vis_config.yaml so
+# mesh_viewer.js can apply outer_lines_only rendering without hardcoded values.
+# ---------------------------------------------------------------------------
+@router.get("/api/vis-config")
+def api_vis_config() -> JSONResponse:
+    vis_cfg = load_vis_config()
+    assembly_cfg: dict[str, Any] = get_mesh_assembly_config(vis_cfg)
+    return JSONResponse(content=assembly_cfg)
 
 
 # ---------------------------------------------------------------------------

@@ -8,19 +8,19 @@ endblock %}
 </script>
 <style>
     :root {
-        --sel-border: #d7dde5;
-        --sel-panel: #f7f9fc;
-        --sel-text: #111827;
-        --sel-muted: #667085;
-        --sel-blue: #2563eb;
-        --sel-green: #138a43;
-        --sel-red: #b42318;
+        --sel-border: var(--theme-sel-border);
+        --sel-panel: var(--theme-sel-panel);
+        --sel-text: var(--theme-sel-text);
+        --sel-muted: var(--theme-sel-muted);
+        --sel-blue: var(--theme-sel-blue);
+        --sel-green: var(--theme-sel-green);
+        --sel-red: var(--theme-sel-red);
     }
 
     .selection-root {
         width: 100%;
         color: var(--sel-text);
-        font-family: Arial, sans-serif;
+        font-family: var(--theme-font-ui);
     }
 
     .selection-layout {
@@ -34,7 +34,7 @@ endblock %}
     .mesh-card {
         border: 1px solid var(--sel-border);
         border-radius: 6px;
-        background: #fff;
+        background: var(--theme-bg);
         overflow: hidden;
     }
 
@@ -45,7 +45,7 @@ endblock %}
         padding: 8px 10px;
         border-bottom: 1px solid var(--sel-border);
         background: var(--sel-panel);
-        color: var(--sel-muted);
+        color: var(--sel-text);
     }
 
     .left-body {
@@ -55,19 +55,73 @@ endblock %}
         padding: 10px;
     }
 
+    .map-load-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+    }
+
+    .map-load-row input {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid var(--theme-surface-large);
+        border-radius: 6px;
+        padding: 8px;
+        font: inherit;
+        font-size: 13px;
+        color: var(--sel-text);
+        background: var(--theme-panel);
+    }
+
+    .map-load-row button {
+        border: 1px solid var(--sel-border);
+        border-radius: 6px;
+        background: var(--theme-panel);
+        padding: 8px 10px;
+        cursor: pointer;
+        font: inherit;
+        font-size: 13px;
+        color: var(--sel-text);
+        white-space: nowrap;
+    }
+
+    .map-load-row button:hover {
+        background: var(--theme-panel-2);
+    }
+
     #preview {
         width: 100%;
         height: 620px;
         display: block;
         border: 1px solid var(--sel-border);
         border-radius: 6px;
-        background: #fbfcff;
+        background: var(--theme-sel-canvas-bg);
         cursor: grab;
         touch-action: none;
     }
 
     #preview.dragging {
         cursor: grabbing;
+    }
+
+    .move-btn {
+        padding: 3px 8px;
+        border: 1px solid var(--theme-border);
+        border-radius: 4px;
+        background: var(--theme-panel-2);
+        color: var(--sel-text);
+        cursor: pointer;
+        font-size: 12px;
+        line-height: 1;
+    }
+
+    .move-btn:hover {
+        background: var(--theme-panel-top-start);
+    }
+
+    .move-btn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
     }
 
     .selection-table {
@@ -77,7 +131,7 @@ endblock %}
         border: 1px solid var(--sel-border);
         border-radius: 6px;
         overflow: hidden;
-        background: #fff;
+        background: var(--theme-bg);
     }
 
     .selection-table th,
@@ -90,8 +144,8 @@ endblock %}
     }
 
     .selection-table th {
-        background: var(--sel-panel);
-        color: var(--sel-muted);
+        background: var(--theme-panel);
+        color: var(--theme-muted);
         font-weight: 600;
     }
 
@@ -102,16 +156,23 @@ endblock %}
     .selection-table input[type="number"] {
         width: 100%;
         box-sizing: border-box;
-        border: 1px solid var(--sel-border);
+        border: 1px solid var(--theme-surface-large);
         border-radius: 4px;
         padding: 6px;
         font: inherit;
         color: var(--sel-text);
-        background: #fff;
+        background: var(--theme-panel);
+    }
+
+    .selection-table input[type="number"]:disabled {
+        background: var(--theme-bg);
+        color: var(--theme-muted);
+        border-color: transparent;
+        cursor: not-allowed;
     }
 
     .part-name {
-        font-family: monospace;
+        font-family: var(--theme-font-mono);
         font-weight: 600;
     }
 
@@ -122,21 +183,43 @@ endblock %}
     }
 
     .selection-actions button {
-        border: 1px solid var(--sel-border);
+        border: 1px solid var(--theme-surface-large);
         border-radius: 6px;
-        background: #fff;
+        background: var(--theme-white);
         padding: 8px 10px;
         cursor: pointer;
         font: inherit;
         font-size: 13px;
-        color: var(--sel-text);
+        color: var(--theme-bg);
+    }
+
+    .selection-actions button#btnAddWheel {
+        border-color: var(--theme-surface-large);
+        background: var(--theme-white);
+        color: var(--theme-bg);
+        font-weight: 700;
+    }
+
+    .selection-actions button#btnAddWheel:hover {
+        background: color-mix(in srgb, var(--theme-white) 86%, var(--theme-surface-large) 14%);
+    }
+
+    .selection-actions button#btnRemoveWheel {
+        border-color: var(--theme-title-2);
+        background: var(--theme-white);
+        color: var(--theme-bg);
+        font-weight: 700;
+    }
+
+    .selection-actions button#btnRemoveWheel:hover {
+        background: color-mix(in srgb, var(--theme-white) 86%, var(--theme-title-2) 14%);
     }
 
     .selection-actions button.primary {
         grid-column: span 2;
         border-color: var(--sel-blue);
         background: var(--sel-blue);
-        color: #fff;
+        color: var(--theme-white);
     }
 
     .selection-actions button:disabled {
@@ -150,15 +233,22 @@ endblock %}
         font-size: 13px;
     }
 
+    #source-status {
+        min-height: 18px;
+        font-size: 12px;
+        color: var(--sel-muted);
+    }
+
     #checks {
         min-height: 96px;
         margin: 0;
         padding: 10px;
         border: 1px solid var(--sel-border);
         border-radius: 6px;
-        background: var(--sel-panel);
+        background: var(--theme-panel);
+        color: var(--sel-text);
         white-space: pre-wrap;
-        font: 12px/1.35 monospace;
+        font: 12px/1.35 var(--theme-font-mono);
     }
 
     #map-status {
@@ -186,7 +276,7 @@ endblock %}
         width: 100%;
         height: 620px;
         border-bottom: 1px solid var(--sel-border);
-        background: #eef3f0;
+        background: var(--theme-mesh-bg);
         overflow: hidden;
         position: relative;
     }
@@ -196,7 +286,7 @@ endblock %}
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        color: #496456;
+        color: var(--theme-muted);
         font-size: 13px;
         z-index: 1;
         text-align: center;
@@ -206,7 +296,7 @@ endblock %}
         padding: 8px 10px;
         font-size: 12px;
         color: var(--sel-muted);
-        background: #f0f5f2;
+        background: var(--sel-panel);
     }
 
     .mesh-controls {
@@ -215,7 +305,7 @@ endblock %}
         gap: 10px;
         padding: 10px;
         border-top: 1px solid var(--sel-border);
-        background: #fff;
+        background: var(--theme-bg);
     }
 
     @media (max-width: 900px) {
@@ -236,7 +326,7 @@ endblock %}
     <div class="dark-card toolbar">
         <a href="/" class="btn secondary">← Back to Home</a>
         <div style="flex:1;"></div>
-        <a href="/launcher/config-overrides?pipeline={{ pipeline }}" class="btn">Next →</a>
+        <a id="btnNextToOverrides" href="/launcher/config-overrides?pipeline={{ pipeline }}" class="btn">Next →</a>
     </div>
 
     <div class="card" style="padding:14px; min-height:0; overflow:auto;">
@@ -245,6 +335,13 @@ endblock %}
                 <div class="left-card">
                     <div class="left-title">Assembly Editor (Autosave)</div>
                     <div class="left-body">
+                        <div class="map-load-row">
+                            <input id="assemblyIdInput" type="number" min="0" step="1"
+                                placeholder="Assembly map ID (e.g. 42)">
+                            <button id="btnLoadAssemblyId">Load ID</button>
+                        </div>
+                        <div id="source-status">Editing current GUI assembly.</div>
+
                         <canvas id="preview" width="760" height="620"></canvas>
 
                         <table class="selection-table">
@@ -254,6 +351,7 @@ endblock %}
                                     <th>X</th>
                                     <th>Y</th>
                                     <th>Z</th>
+                                    <th style="width:80px;">Order</th>
                                 </tr>
                             </thead>
                             <tbody id="controls"></tbody>
@@ -298,34 +396,113 @@ endblock %}
     let saveInFlight = false;
     let saveQueued = false;
     let addToMapInFlight = false;
+    let loadedAssemblyMapId = null;
+    let hasUnsavedMapCloneChanges = false;
+    let hasCheckWarnings = true;
+    let maxAssemblyMapId = null;
+    let assemblyPlyColorRgb = null;
 
     const statusEl = document.getElementById("status");
+    const sourceStatusEl = document.getElementById("source-status");
     const checksEl = document.getElementById("checks");
     const mapStatusEl = document.getElementById("map-status");
     const mapIdEl = document.getElementById("map-id");
     const btnAddToMap = document.getElementById("btnAddToMap");
+    const btnLoadAssemblyId = document.getElementById("btnLoadAssemblyId");
+    const btnNextToOverrides = document.getElementById("btnNextToOverrides");
+    const assemblyIdInputEl = document.getElementById("assemblyIdInput");
     const meshContainer = document.getElementById("meshContainer");
     const meshPlaceholder = document.getElementById("meshPlaceholder");
     const meshMeta = document.getElementById("meshMeta");
 
     const canvas = document.getElementById("preview");
     const ctx = canvas.getContext("2d");
+    let canvasDrawSize = { width: canvas.width, height: canvas.height };
 
     const bounds = { xmin: -3000, xmax: 3000, ymin: -2200, ymax: 2200 };
-    const wheelRadius = 145;
-    const seatHalfX = 330;
-    const seatHalfY = 180;
+    const maxCarEnvelope = { length: 5800, width: 2300 };
+    const gridStepMm = 500;
+    const majorGridStepMm = 1000;
+
+    const previewSizeAdjust = {
+        wheel: { x: 1.0, y: 1.0 },
+        seat: { x: 1.0, y: 1.0 }
+    };
+
+    const partFootprints = {
+        // Same XY AABB margins used by GUI_assembly.py collision checks.
+        wheel: { xBack: 278.5, xFwd: 278.5, yDown: 48, yUp: 48 },
+        seat: { xBack: 379.081, xFwd: 1000, yDown: 225, yUp: 225 }
+    };
+
+    function cssVar(name, fallback) {
+        const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+        return value || fallback;
+    }
+
+    const C_CANVAS_GRID = cssVar("--theme-sel-canvas-grid");
+    const C_CANVAS_AXIS = cssVar("--theme-sel-canvas-axis");
+    const C_CANVAS_LABEL = cssVar("--theme-sel-canvas-label");
+    const C_CANVAS_AXIS_X = cssVar("--theme-sel-canvas-axis-x");
+    const C_CANVAS_AXIS_Y = cssVar("--theme-sel-canvas-axis-y");
+    const C_CANVAS_POLY_STROKE = cssVar("--theme-sel-canvas-poly-stroke");
+    const C_CANVAS_POLY_FILL = cssVar("--theme-sel-canvas-poly-fill");
+    const C_CANVAS_WHEEL = cssVar("--theme-sel-canvas-wheel");
+    const C_CANVAS_WHEEL_HOVER = cssVar("--theme-sel-canvas-wheel-hover");
+    const C_CANVAS_SEAT = cssVar("--theme-sel-canvas-seat");
+    const C_CANVAS_SEAT_HOVER = cssVar("--theme-sel-canvas-seat-hover");
+    const C_CANVAS_SEAT_STROKE = cssVar("--theme-sel-canvas-seat-stroke");
+    const C_CANVAS_FONT = cssVar("--theme-font-mono", "'Courier New', monospace");
+
+    function parseRgbTriplet(rgb) {
+        if (!Array.isArray(rgb) || rgb.length !== 3) {
+            return null;
+        }
+        const parsed = rgb.map((value) => Number(value));
+        if (parsed.some((value) => !Number.isFinite(value))) {
+            return null;
+        }
+        return parsed.map((value) => Math.min(1, Math.max(0, value)));
+    }
+
+    async function loadAssemblyPlyColorConfig() {
+        try {
+            const r = await fetch(`/api/artifacts/glb-config?t=${Date.now()}`, { cache: "no-store" });
+            if (!r.ok) {
+                return;
+            }
+            const d = await r.json();
+            const nextColor = parseRgbTriplet(d?.inner_color);
+            if (!nextColor) {
+                return;
+            }
+            assemblyPlyColorRgb = nextColor;
+            if (meshViewer && typeof meshViewer.setPlyFallbackColorRgb === "function") {
+                meshViewer.setPlyFallbackColorRgb(assemblyPlyColorRgb);
+            }
+        } catch (_err) {
+            // Keep existing mesh viewer fallback color if config cannot be fetched.
+        }
+    }
 
     function loadAssemblyMesh() {
         const url = `${API}/assembly-selection/mesh?pipeline=${pipeline}&t=${Date.now()}`;
         meshMeta.textContent = "Loading assembly.ply...";
         import("/static/js/mesh_viewer.js").then(({ initMeshViewer }) => {
+            const isFirstLoad = !meshViewer;
             if (!meshViewer) {
                 meshViewer = initMeshViewer(meshContainer);
             }
+            if (assemblyPlyColorRgb && typeof meshViewer.setPlyFallbackColorRgb === "function") {
+                meshViewer.setPlyFallbackColorRgb(assemblyPlyColorRgb);
+            }
+            const savedView = isFirstLoad ? null : meshViewer.getViewState();
             meshViewer.loadMesh(url, () => {
                 meshPlaceholder.style.display = "none";
                 meshMeta.textContent = `Showing assembly.ply at ${new Date().toLocaleTimeString()}`;
+                if (savedView) {
+                    meshViewer.setViewState(savedView);
+                }
             });
         }).catch(() => {
             meshMeta.textContent = "Unable to load mesh viewer.";
@@ -342,11 +519,12 @@ endblock %}
         });
     }
 
-    function inputCell(part, axis, value) {
+    function inputCell(part, axis, value, disabled = false) {
+        const disabledAttr = disabled ? " disabled title=\"Wheel Z is fixed and cannot be changed\"" : "";
         return `
       <td>
         <input type="number" step="1" value="${Math.round(value)}"
-          data-key="${part}" data-axis="${axis}" oninput="onEdit(this)">
+          data-key="${part}" data-axis="${axis}"${disabledAttr} oninput="onEdit(this)">
       </td>
     `;
     }
@@ -354,14 +532,20 @@ endblock %}
     function renderTable() {
         const body = document.getElementById("controls");
         body.innerHTML = "";
+        const wheels = orderedParts().filter(([p]) => p.startsWith("wheel_"));
         for (const [part, vals] of orderedParts()) {
+            const isWheel = part.startsWith("wheel_");
+            const wIdx = wheels.findIndex(([p]) => p === part);
+            const canUp = isWheel && wIdx > 0;
+            const canDn = isWheel && wIdx < wheels.length - 1;
             const row = document.createElement("tr");
             row.innerHTML = `
-        <td class="part-name">${part}</td>
-        ${inputCell(part, "x", vals.x)}
-        ${inputCell(part, "y", vals.y)}
-        ${inputCell(part, "z", vals.z)}
-      `;
+                <td class="part-name">${part}</td>
+                ${inputCell(part, "x", vals.x)}
+                ${inputCell(part, "y", vals.y)}
+                ${inputCell(part, "z", vals.z, isWheel)}
+                <td style="padding:4px 6px;">${isWheel ? `<div style="display:flex; gap:10px;"><button class="move-btn" ${canUp ? "" : "disabled"} style="background:var(--theme-white); border-color:var(--theme-surface-large); color:var(--theme-bg); min-width:34px;" onclick="movePart('${part}',-1)" title="Move up">&#8593;</button><button class="move-btn" ${canDn ? "" : "disabled"} style="background:var(--theme-white); border-color:var(--theme-title-2); color:var(--theme-bg); min-width:34px;" onclick="movePart('${part}',1)" title="Move down">&#8595;</button></div>` : ""}</td>
+            `;
             body.appendChild(row);
         }
     }
@@ -373,6 +557,40 @@ endblock %}
         }, delayMs);
     }
 
+    function setLoadedAssemblySource(assemblyId) {
+        loadedAssemblyMapId = assemblyId;
+        hasUnsavedMapCloneChanges = false;
+        sourceStatusEl.textContent = `Loaded from assembly map ID ${assemblyId}.`;
+        assemblyIdInputEl.value = String(assemblyId);
+        updateAddToMapButton();
+    }
+
+    function markAssemblyEdited() {
+        if (loadedAssemblyMapId === null || hasUnsavedMapCloneChanges) {
+            return;
+        }
+        hasUnsavedMapCloneChanges = true;
+        sourceStatusEl.textContent = `Loaded ID ${loadedAssemblyMapId} was edited. Add to map to create a new ID.`;
+        updateAddToMapButton();
+    }
+
+    window.movePart = function movePart(part, dir) {
+        const wheels = orderedParts().filter(([p]) => p.startsWith("wheel_"));
+        const idx = wheels.findIndex(([p]) => p === part);
+        if (idx === -1) return;
+        const swapIdx = idx + dir;
+        if (swapIdx < 0 || swapIdx >= wheels.length) return;
+        const aKey = wheels[idx][0];
+        const bKey = wheels[swapIdx][0];
+        const tmp = { ...params[aKey] };
+        params[aKey] = { ...params[bKey] };
+        params[bKey] = tmp;
+        markAssemblyEdited();
+        renderTable();
+        drawPreview();
+        scheduleAutosave(260);
+    };
+
     window.onEdit = function onEdit(el) {
         const key = el.dataset.key;
         const axis = el.dataset.axis;
@@ -380,61 +598,182 @@ endblock %}
             return;
         }
         params[key][axis] = parseFloat(el.value || "0");
+        markAssemblyEdited();
         drawPreview();
-        scheduleAutosave(260);
+        scheduleAutosave(800);
     };
 
-    function toCanvas(x, y) {
+    function canvasTransform() {
         const pad = 42;
-        const sx = (canvas.width - 2 * pad) / (bounds.xmax - bounds.xmin);
-        const sy = (canvas.height - 2 * pad) / (bounds.ymax - bounds.ymin);
+        const worldWidth = bounds.xmax - bounds.xmin;
+        const worldHeight = bounds.ymax - bounds.ymin;
+        const sx = (canvasDrawSize.width - 2 * pad) / worldWidth;
+        const sy = (canvasDrawSize.height - 2 * pad) / worldHeight;
         const s = Math.min(sx, sy);
-        const cx = pad + (x - bounds.xmin) * s;
-        const cy = canvas.height - pad - (y - bounds.ymin) * s;
+        const offsetX = (canvasDrawSize.width - worldWidth * s) / 2;
+        const offsetY = (canvasDrawSize.height - worldHeight * s) / 2;
+        return { s, offsetX, offsetY };
+    }
+
+    function toCanvas(x, y) {
+        const { s, offsetX, offsetY } = canvasTransform();
+        const cx = offsetX + (x - bounds.xmin) * s;
+        const cy = canvasDrawSize.height - offsetY - (y - bounds.ymin) * s;
         return { x: cx, y: cy, s };
     }
 
     function fromCanvas(cx, cy) {
-        const origin = toCanvas(bounds.xmin, bounds.ymin);
-        const x = bounds.xmin + (cx - origin.x) / origin.s;
-        const y = bounds.ymin + (origin.y - cy) / origin.s;
+        const { s, offsetX, offsetY } = canvasTransform();
+        const x = bounds.xmin + (cx - offsetX) / s;
+        const y = bounds.ymin + (canvasDrawSize.height - offsetY - cy) / s;
         return { x: Math.round(x), y: Math.round(y) };
+    }
+
+    function scaledFootprint(part) {
+        const kind = part === "seat" ? "seat" : "wheel";
+        const fp = partFootprints[kind];
+        const adjust = previewSizeAdjust[kind];
+        return {
+            xBack: fp.xBack * adjust.x,
+            xFwd: fp.xFwd * adjust.x,
+            yDown: fp.yDown * adjust.y,
+            yUp: fp.yUp * adjust.y
+        };
+    }
+
+    function footprintRect(part, vals) {
+        const fp = scaledFootprint(part);
+        const min = toCanvas(vals.x - fp.xBack, vals.y - fp.yDown);
+        const max = toCanvas(vals.x + fp.xFwd, vals.y + fp.yUp);
+        return {
+            left: min.x,
+            right: max.x,
+            top: max.y,
+            bottom: min.y,
+            width: max.x - min.x,
+            height: min.y - max.y
+        };
     }
 
     function drawGrid() {
         const zero = toCanvas(0, 0);
-        ctx.strokeStyle = "#e5e7eb";
         ctx.lineWidth = 1;
+        ctx.font = `10px ${C_CANVAS_FONT}`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
 
-        for (let x = -3000; x <= 3000; x += 1000) {
+        const firstGridX = Math.ceil(bounds.xmin / gridStepMm) * gridStepMm;
+        const firstGridY = Math.ceil(bounds.ymin / gridStepMm) * gridStepMm;
+
+        for (let x = firstGridX; x <= bounds.xmax; x += gridStepMm) {
             const p = toCanvas(x, 0);
+            const isMajor = x % majorGridStepMm === 0;
+            ctx.strokeStyle = isMajor ? C_CANVAS_AXIS : C_CANVAS_GRID;
+            ctx.globalAlpha = isMajor ? 0.55 : 0.32;
             ctx.beginPath();
             ctx.moveTo(p.x, 20);
-            ctx.lineTo(p.x, canvas.height - 20);
+            ctx.lineTo(p.x, canvasDrawSize.height - 20);
             ctx.stroke();
+            if (isMajor) {
+                ctx.globalAlpha = 1;
+                ctx.fillStyle = C_CANVAS_LABEL;
+                ctx.fillText(String(x), p.x, canvasDrawSize.height - 34);
+            }
         }
 
-        for (let y = -2000; y <= 2000; y += 1000) {
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        for (let y = firstGridY; y <= bounds.ymax; y += gridStepMm) {
             const p = toCanvas(0, y);
+            const isMajor = y % majorGridStepMm === 0;
+            ctx.strokeStyle = isMajor ? C_CANVAS_AXIS : C_CANVAS_GRID;
+            ctx.globalAlpha = isMajor ? 0.55 : 0.32;
             ctx.beginPath();
             ctx.moveTo(20, p.y);
-            ctx.lineTo(canvas.width - 20, p.y);
+            ctx.lineTo(canvasDrawSize.width - 20, p.y);
             ctx.stroke();
+            if (isMajor) {
+                ctx.globalAlpha = 1;
+                ctx.fillStyle = C_CANVAS_LABEL;
+                ctx.fillText(String(y), 24, p.y);
+            }
         }
+        ctx.globalAlpha = 1;
 
-        ctx.strokeStyle = "#9ca3af";
+        // X axis (red) + label
+        ctx.strokeStyle = C_CANVAS_AXIS_X;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(20, zero.y);
+        ctx.lineTo(canvasDrawSize.width - 20, zero.y);
+        ctx.stroke();
+        ctx.fillStyle = C_CANVAS_AXIS_X;
+        ctx.font = `bold 11px ${C_CANVAS_FONT}`;
+        ctx.textAlign = "right";
+        ctx.textBaseline = "alphabetic";
+        ctx.fillText("X \u2192", canvasDrawSize.width - 4, zero.y - 6);
+
+        // Y axis (blue) + label
+        ctx.strokeStyle = C_CANVAS_AXIS_Y;
+        ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(zero.x, 20);
-        ctx.lineTo(zero.x, canvas.height - 20);
-        ctx.moveTo(20, zero.y);
-        ctx.lineTo(canvas.width - 20, zero.y);
+        ctx.lineTo(zero.x, canvasDrawSize.height - 20);
         ctx.stroke();
+        ctx.fillStyle = C_CANVAS_AXIS_Y;
+        ctx.textAlign = "left";
+        ctx.fillText("\u2191 Y", zero.x + 4, 16);
+
+        drawMaxCarEnvelope();
+        drawEnvelopeBadge();
+    }
+
+    function drawEnvelopeBadge() {
+        const right = canvasDrawSize.width - 18;
+        const top = 18;
+        const width = 178;
+        const height = 48;
+        const left = right - width;
+
+        ctx.save();
+        ctx.fillStyle = cssVar("--theme-panel", "rgba(255,255,255,0.92)");
+        ctx.strokeStyle = C_CANVAS_AXIS_X;
+        ctx.lineWidth = 2;
+        ctx.fillRect(left, top, width, height);
+        ctx.strokeRect(left, top, width, height);
+        ctx.font = `bold 11px ${C_CANVAS_FONT}`;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = C_CANVAS_AXIS_X;
+        ctx.fillText(`max length: ${maxCarEnvelope.length} mm`, left + 10, top + 16);
+        ctx.fillStyle = C_CANVAS_AXIS_Y;
+        ctx.fillText(`max width: ${maxCarEnvelope.width} mm`, left + 10, top + 33);
+        ctx.restore();
+    }
+
+    function drawMaxCarEnvelope() {
+        const halfLength = maxCarEnvelope.length / 2;
+        const halfWidth = maxCarEnvelope.width / 2;
+        const min = toCanvas(-halfLength, -halfWidth);
+        const max = toCanvas(halfLength, halfWidth);
+        const left = min.x;
+        const top = max.y;
+        const width = max.x - min.x;
+        const height = min.y - max.y;
+
+        ctx.save();
+        ctx.strokeStyle = C_CANVAS_LABEL;
+        ctx.fillStyle = C_CANVAS_LABEL;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 6]);
+        ctx.strokeRect(left, top, width, height);
+        ctx.restore();
     }
 
     function drawLabel(text, x, y) {
-        ctx.font = "12px monospace";
+        ctx.font = `12px ${C_CANVAS_FONT}`;
         ctx.textAlign = "center";
-        ctx.fillStyle = "#374151";
+        ctx.fillStyle = C_CANVAS_LABEL;
         ctx.fillText(text, x, y);
     }
 
@@ -443,8 +782,8 @@ endblock %}
         if (wheels.length < 3) {
             return;
         }
-        ctx.strokeStyle = "#93c5fd";
-        ctx.fillStyle = "rgba(147, 197, 253, 0.14)";
+        ctx.strokeStyle = C_CANVAS_POLY_STROKE;
+        ctx.fillStyle = C_CANVAS_POLY_FILL;
         ctx.lineWidth = 2;
         ctx.beginPath();
         wheels.forEach(([_, vals], i) => {
@@ -462,27 +801,50 @@ endblock %}
 
     function drawWheel(part, vals) {
         const p = toCanvas(vals.x, vals.y);
-        const r = Math.max(8, wheelRadius * p.s);
-        ctx.fillStyle = part === hoverPart ? "#1d4ed8" : "#111827";
+        const rect = footprintRect(part, vals);
+        ctx.fillStyle = part === hoverPart ? C_CANVAS_WHEEL_HOVER : C_CANVAS_WHEEL;
+        ctx.fillRect(rect.left, rect.top, rect.width, rect.height);
+        ctx.strokeStyle = C_CANVAS_SEAT_STROKE;
+        ctx.strokeRect(rect.left, rect.top, rect.width, rect.height);
+        ctx.fillStyle = C_CANVAS_LABEL;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
         ctx.fill();
-        drawLabel(part, p.x, p.y - r - 8);
+        drawLabel(part, p.x, rect.top - 8);
     }
 
     function drawSeat(part, vals) {
         const p = toCanvas(vals.x, vals.y);
-        const w = seatHalfX * 2 * p.s;
-        const h = seatHalfY * 2 * p.s;
-        ctx.fillStyle = part === hoverPart ? "#f97316" : "#f59e0b";
-        ctx.fillRect(p.x - w / 2, p.y - h / 2, w, h);
-        ctx.strokeStyle = "#92400e";
-        ctx.strokeRect(p.x - w / 2, p.y - h / 2, w, h);
-        drawLabel(part, p.x, p.y - h / 2 - 8);
+        const rect = footprintRect(part, vals);
+        ctx.fillStyle = part === hoverPart ? C_CANVAS_SEAT_HOVER : C_CANVAS_SEAT;
+        ctx.fillRect(rect.left, rect.top, rect.width, rect.height);
+        ctx.strokeStyle = C_CANVAS_SEAT_STROKE;
+        ctx.strokeRect(rect.left, rect.top, rect.width, rect.height);
+        ctx.fillStyle = C_CANVAS_LABEL;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+        drawLabel(part, p.x, rect.top - 8);
+    }
+
+    function syncCanvasResolution() {
+        const rect = canvas.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        const cssWidth = Math.max(1, Math.round(rect.width));
+        const cssHeight = Math.max(1, Math.round(rect.height));
+        const bitmapWidth = Math.max(1, Math.round(cssWidth * dpr));
+        const bitmapHeight = Math.max(1, Math.round(cssHeight * dpr));
+        if (canvas.width !== bitmapWidth || canvas.height !== bitmapHeight) {
+            canvas.width = bitmapWidth;
+            canvas.height = bitmapHeight;
+        }
+        canvasDrawSize = { width: cssWidth, height: cssHeight };
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
     function drawPreview() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        syncCanvasResolution();
+        ctx.clearRect(0, 0, canvasDrawSize.width, canvasDrawSize.height);
         drawGrid();
         drawWheelPolygon();
         for (const [part, vals] of orderedParts()) {
@@ -497,18 +859,15 @@ endblock %}
     function hitTest(cx, cy) {
         const parts = orderedParts().reverse();
         for (const [part, vals] of parts) {
-            const p = toCanvas(vals.x, vals.y);
-            if (part === "seat") {
-                const hw = seatHalfX * p.s;
-                const hh = seatHalfY * p.s;
-                if (Math.abs(cx - p.x) <= hw && Math.abs(cy - p.y) <= hh) {
-                    return part;
-                }
-            } else {
-                const r = Math.max(10, wheelRadius * p.s);
-                if (Math.hypot(cx - p.x, cy - p.y) <= r) {
-                    return part;
-                }
+            const rect = footprintRect(part, vals);
+            const hitPad = part === "seat" ? 0 : Math.max(8, 18 - Math.min(rect.width, rect.height) / 2);
+            if (
+                cx >= rect.left - hitPad &&
+                cx <= rect.right + hitPad &&
+                cy >= rect.top - hitPad &&
+                cy <= rect.bottom + hitPad
+            ) {
+                return part;
             }
         }
         return null;
@@ -517,8 +876,8 @@ endblock %}
     function pointerPos(event) {
         const rect = canvas.getBoundingClientRect();
         return {
-            x: (event.clientX - rect.left) * canvas.width / rect.width,
-            y: (event.clientY - rect.top) * canvas.height / rect.height
+            x: event.clientX - rect.left,
+            y: event.clientY - rect.top
         };
     }
 
@@ -538,6 +897,7 @@ endblock %}
             const world = fromCanvas(p.x, p.y);
             params[dragPart].x = world.x;
             params[dragPart].y = world.y;
+            markAssemblyEdited();
             renderTable();
             drawPreview();
             scheduleAutosave(140);
@@ -561,14 +921,26 @@ endblock %}
 
     canvas.addEventListener("pointerup", endDrag);
     canvas.addEventListener("pointercancel", endDrag);
+    window.addEventListener("resize", drawPreview);
 
-    function updateAddToMapButton(hasWarnings) {
+    function updateAddToMapButton() {
+        const loadedButUnchanged = loadedAssemblyMapId !== null && !hasUnsavedMapCloneChanges;
         if (addToMapInFlight) {
             btnAddToMap.disabled = true;
             return;
         }
-        btnAddToMap.disabled = hasWarnings;
-        btnAddToMap.title = hasWarnings ? "Resolve warnings before adding to the assembly map." : "";
+        if (hasCheckWarnings) {
+            btnAddToMap.disabled = true;
+            btnAddToMap.title = "Resolve warnings before adding to the assembly map.";
+            return;
+        }
+        if (loadedButUnchanged) {
+            btnAddToMap.disabled = true;
+            btnAddToMap.title = "Modify the loaded assembly before adding it as a new map entry.";
+            return;
+        }
+        btnAddToMap.disabled = false;
+        btnAddToMap.title = "";
     }
 
     async function loadChecks() {
@@ -577,7 +949,8 @@ endblock %}
             if (!r.ok) {
                 checksEl.textContent = "checks.txt is not available.";
                 checksEl.className = "";
-                updateAddToMapButton(true);
+                hasCheckWarnings = true;
+                updateAddToMapButton();
                 return;
             }
             const d = await r.json();
@@ -585,16 +958,19 @@ endblock %}
             if (!warnings.length) {
                 checksEl.textContent = "OK: No warnings.";
                 checksEl.className = "ok";
-                updateAddToMapButton(false);
+                hasCheckWarnings = false;
+                updateAddToMapButton();
                 return;
             }
             checksEl.textContent = warnings.join("\n");
             checksEl.className = "bad";
-            updateAddToMapButton(true);
+            hasCheckWarnings = true;
+            updateAddToMapButton();
         } catch (_err) {
             checksEl.textContent = "Failed to load checks.";
             checksEl.className = "bad";
-            updateAddToMapButton(true);
+            hasCheckWarnings = true;
+            updateAddToMapButton();
         }
     }
 
@@ -621,7 +997,11 @@ endblock %}
             if (d.params) {
                 params = d.params;
             }
-            renderTable();
+            const controlsEl = document.getElementById("controls");
+            const activeInControls = controlsEl && controlsEl.contains(document.activeElement);
+            if (!activeInControls) {
+                renderTable();
+            }
             drawPreview();
             loadAssemblyMesh();
             await loadChecks();
@@ -643,6 +1023,10 @@ endblock %}
                 throw new Error(r.status);
             }
             params = await r.json();
+            loadedAssemblyMapId = null;
+            hasUnsavedMapCloneChanges = false;
+            sourceStatusEl.textContent = "Editing current GUI assembly.";
+            updateAddToMapButton();
             renderTable();
             drawPreview();
             statusEl.textContent = "Ready. Autosave enabled.";
@@ -666,6 +1050,7 @@ endblock %}
                 return;
             }
             params = d.params || params;
+            markAssemblyEdited();
             renderTable();
             drawPreview();
             loadAssemblyMesh();
@@ -678,6 +1063,52 @@ endblock %}
 
     document.getElementById("btnAddWheel").addEventListener("click", () => wheelAction("add-wheel"));
     document.getElementById("btnRemoveWheel").addEventListener("click", () => wheelAction("remove-wheel"));
+
+    async function loadAssemblyFromMap() {
+        const raw = assemblyIdInputEl.value.trim();
+        const assemblyId = Number.parseInt(raw, 10);
+        if (!Number.isFinite(assemblyId) || assemblyId < 0) {
+            statusEl.textContent = "Enter a valid non-negative assembly ID.";
+            return;
+        }
+        if (maxAssemblyMapId !== null && assemblyId > maxAssemblyMapId) {
+            statusEl.textContent = `Assembly ID must be <= ${maxAssemblyMapId}.`;
+            return;
+        }
+
+        statusEl.textContent = `Loading assembly ID ${assemblyId}...`;
+        mapStatusEl.textContent = "";
+        mapIdEl.textContent = "";
+
+        try {
+            const r = await fetch(`${API}/assembly-selection/map-entry?pipeline=${pipeline}&assembly_id=${assemblyId}&t=${Date.now()}`, {
+                cache: "no-store"
+            });
+            const d = await r.json();
+            if (!r.ok) {
+                statusEl.textContent = d?.detail?.message || `Assembly ID ${assemblyId} could not be loaded.`;
+                return;
+            }
+
+            params = d.params || {};
+            setLoadedAssemblySource(assemblyId);
+            renderTable();
+            drawPreview();
+            loadAssemblyMesh();
+            statusEl.textContent = d.message || `Loaded assembly ID ${assemblyId}.`;
+            await loadChecks();
+        } catch (err) {
+            statusEl.textContent = `Failed to load assembly ID ${assemblyId}: ${err.message}`;
+        }
+    }
+
+    btnLoadAssemblyId.addEventListener("click", loadAssemblyFromMap);
+    assemblyIdInputEl.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            loadAssemblyFromMap();
+        }
+    });
 
     const PENDING_ID_KEY = "aiscoPendingAssemblyIdV3";
     const OVERRIDE_FOLDER_KEY = "aiscoOverrideFolderV3";
@@ -697,7 +1128,65 @@ endblock %}
         }
     }
 
+    function getSelectedAssemblyIdForNext() {
+        const raw = assemblyIdInputEl.value.trim();
+        if (raw !== "") {
+            const parsed = Number.parseInt(raw, 10);
+            const withinMax = maxAssemblyMapId === null || parsed <= maxAssemblyMapId;
+            if (Number.isFinite(parsed) && parsed >= 0 && withinMax) {
+                return parsed;
+            }
+        }
+        if (loadedAssemblyMapId !== null) {
+            return loadedAssemblyMapId;
+        }
+        return null;
+    }
+
+    async function loadAssemblyMapMeta() {
+        try {
+            const r = await fetch(`${API}/assembly-selection/map-meta?pipeline=${pipeline}&t=${Date.now()}`, { cache: "no-store" });
+            if (!r.ok) {
+                return;
+            }
+            const d = await r.json();
+            const maxId = d?.max_assembly_id;
+            if (Number.isInteger(maxId) && maxId >= 0) {
+                maxAssemblyMapId = maxId;
+                assemblyIdInputEl.max = String(maxId);
+                assemblyIdInputEl.placeholder = `Assembly map ID (0-${maxId})`;
+            }
+        } catch (_err) {
+            // Keep input usable even if metadata endpoint is unavailable.
+        }
+    }
+
+    btnNextToOverrides.addEventListener("click", async (event) => {
+        event.preventDefault();
+        const targetHref = btnNextToOverrides.href;
+        const selectedId = getSelectedAssemblyIdForNext();
+
+        if (selectedId !== null) {
+            localStorage.setItem(PENDING_ID_KEY, String(selectedId));
+            const activeFolder = localStorage.getItem(OVERRIDE_FOLDER_KEY) || "";
+            if (activeFolder) {
+                try {
+                    await writeAssemblyIdToSession(activeFolder, selectedId);
+                } catch (_err) {
+                    // Keep pending ID so the override page can apply it later.
+                }
+            }
+        }
+
+        window.location.href = targetHref;
+    });
+
     btnAddToMap.addEventListener("click", async () => {
+        if (loadedAssemblyMapId !== null && !hasUnsavedMapCloneChanges) {
+            mapStatusEl.textContent = "Loaded assembly was not modified. Move or edit it before adding as a new map entry.";
+            mapStatusEl.style.color = "var(--sel-red)";
+            return;
+        }
         if (btnAddToMap.disabled) {
             return;
         }
@@ -720,6 +1209,7 @@ endblock %}
             } else {
                 const mapId = d.assembly_map_id;
                 mapIdEl.textContent = `Map ID: ${mapId}`;
+                setLoadedAssemblySource(mapId);
 
                 localStorage.setItem(PENDING_ID_KEY, String(mapId));
 
@@ -745,6 +1235,8 @@ endblock %}
         }
     });
 
+    loadAssemblyPlyColorConfig();
+    loadAssemblyMapMeta();
     loadParams();
 </script>
 {% endblock %}

@@ -10,7 +10,7 @@
   </div>
 
   <div id="grid" style="display:grid; grid-template-columns: repeat(2, 1fr); gap:14px; min-height:0; overflow:auto;">
-    <div style="color:#496456; font-style:italic; padding:30px; grid-column:1/-1; text-align:center;">Loading…</div>
+    <div style="color:var(--theme-muted); font-style:italic; padding:30px; grid-column:1/-1; text-align:center;">Loading…</div>
   </div>
 
 </div>
@@ -20,13 +20,13 @@
   const info = document.getElementById("info");
 
   async function load() {
-    grid.innerHTML = '<div style="color:#496456; font-style:italic; padding:30px; grid-column:1/-1; text-align:center;">Loading…</div>';
+    grid.innerHTML = '<div style="color:var(--theme-muted); font-style:italic; padding:30px; grid-column:1/-1; text-align:center;">Loading…</div>';
     try {
       const d = await (await fetch("/viewer/api/pretraining/gifs")).json();
       const gifs = d.gifs || [];
       info.textContent = `${gifs.length} GIF(s)`;
       if (!gifs.length) {
-        grid.innerHTML = '<div style="color:#496456; font-style:italic; padding:30px; grid-column:1/-1; text-align:center;">No pretraining GIFs found.</div>';
+        grid.innerHTML = '<div style="color:var(--theme-muted); font-style:italic; padding:30px; grid-column:1/-1; text-align:center;">No pretraining GIFs found.</div>';
         return;
       }
       grid.innerHTML = "";
