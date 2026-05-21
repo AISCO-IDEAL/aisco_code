@@ -17,7 +17,9 @@ Usage:
 
 from __future__ import annotations
 
+import contextlib
 import datetime
+import glob
 import importlib.util
 import json
 import math
@@ -127,7 +129,7 @@ def _ensure_wp4_model_imports() -> None:
         mb_stub = types.ModuleType(mb_key)
 
         class _BaseModel(nn.Module):
-            def __init__(self, *args: Any, **kwargs: Any) -> None:
+            def __init__(self, *_args: Any, **_kwargs: Any) -> None:
                 super().__init__()
 
         mb_stub.BaseModel = _BaseModel  # type: ignore[attr-defined]
@@ -178,14 +180,12 @@ def _build_model(info: dict[str, Any], device: torch.device) -> Any:
 def _find_model_info(ckpt_path: Path) -> Path:
     """Walk up the directory tree from the checkpoint to find model_info_dict.json
     or any Architecture_*.json file (same schema, different name convention)."""
-    import glob as _glob
-
     search = ckpt_path.parent
     for _ in range(6):  # at most 6 levels up
         candidate = search / "model_info_dict.json"
         if candidate.exists():
             return candidate
-        arch_matches = _glob.glob(str(search / "Architecture_*.json"))
+        arch_matches = glob.glob(str(search / "Architecture_*.json"))
         if arch_matches:
             return Path(arch_matches[0])
         search = search.parent
@@ -200,7 +200,7 @@ def load_checkpoint(ckpt_path: Path, device: torch.device) -> tuple[Any, int, fl
     with open(info_path) as f:
         info = json.load(f)
 
-    print(f"[load] {info['name']}  z_dim={info['z_dim']}  hidden={info['hidden_features']}×{info['hidden_layers']}")
+    print(f"[load] {info['name']}  z_dim={info['z_dim']}  hidden={info['hidden_features']}x{info['hidden_layers']}")
 
     model = _build_model(info, device)
     raw = torch.load(ckpt_path, map_location=device, weights_only=True)
@@ -237,34 +237,42 @@ def _parse_epoch_from_stem(stem: str) -> int | None:
 
 
 def load_inner_assembly(ckpt_path: Path, epoch_num: int) -> trimesh.Trimesh | None:
-    """Extract the inner assembly component from mesh_assembly_v4 next to the checkpoint.
+    """Load the inner_assembly mesh from the slot_00_mesh.glb next to the checkpoint.
 
-    The mesh_assembly_v4 PLY contains three layers:
-      - Large component (aeroshell, ~28 k verts)          <- skipped
-      - Small components (inner assembly, ~235 verts total) <- returned
-      - Tiny 12-vert bbox corner markers                    <- skipped
+    The GLB stores named geometry nodes:
+      - sdf_mesh       : aeroshell zero level set  (skipped)
+      - inner_assembly : fixed inner structure     <- returned
+      - outer_bbox     : bounding box wireframe    (skipped)
 
-    The inner assembly is the fixed inner structure shared across all training slots.
-    It is extracted from slot_00_mesh.ply at the matching epoch directory.
+    If the exact epoch directory has no GLB, the closest earlier epoch that does
+    is used as a fallback (the inner assembly is fixed across epochs).
     """
     run_dir = ckpt_path.parent.parent  # .../models/foo.pth -> .../run_dir
-    slot_path = run_dir / "mesh_assembly_v4" / f"epoch_{epoch_num:05d}" / "slot_00_mesh.ply"
-    if not slot_path.exists():
-        print(f"[assembly] not found: {slot_path}")
+    assembly_dir = run_dir / "mesh_assembly_v4"
+    if not assembly_dir.exists():
+        print(f"[assembly] not found: {assembly_dir}")
         return None
 
-    full_mesh = trimesh.load(str(slot_path))
-    components = full_mesh.split(only_watertight=False)
-    # Sort descending by vertex count: index 0 = aeroshell (largest), skip it.
-    # Also skip the 12-vert bbox corner markers.
-    components_sorted = sorted(components, key=lambda c: -len(c.vertices))
-    inner_parts = [c for c in components_sorted[1:] if len(c.vertices) > 12]
-    if not inner_parts:
-        print("[assembly] WARN: no inner components found in mesh_assembly_v4, skipping")
+    # Prefer the exact epoch; fall back to closest earlier epoch.
+    target_epoch_dir = assembly_dir / f"epoch_{epoch_num:05d}"
+    glb_path = target_epoch_dir / "slot_00_mesh.glb"
+    if not glb_path.exists():
+        available = sorted(assembly_dir.glob("epoch_*/slot_00_mesh.glb"))
+        if not available:
+            print(f"[assembly] no GLB files found under {assembly_dir}")
+            return None
+        # Use the closest epoch that is <= epoch_num, else the earliest available.
+        candidates = [p for p in available if int(p.parent.name.split("_")[1]) <= epoch_num]
+        glb_path = candidates[-1] if candidates else available[0]
+        print(f"[assembly] exact epoch not found, using fallback: {glb_path.parent.name}")
+
+    scene = trimesh.load(str(glb_path))
+    if not hasattr(scene, "geometry") or "inner_assembly" not in scene.geometry:
+        print(f"[assembly] WARN: 'inner_assembly' node not found in {glb_path}")
         return None
 
-    inner = trimesh.util.concatenate(inner_parts)
-    print(f"[assembly] loaded {len(inner.vertices)} verts, {len(inner.faces)} faces  ({slot_path})")
+    inner = scene.geometry["inner_assembly"]
+    print(f"[assembly] loaded {len(inner.vertices)} verts, {len(inner.faces)} faces  ({glb_path})")
     return inner
 
 
@@ -433,7 +441,7 @@ def _get_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
-def draw_latent_panel(
+def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statement count reflects supported traversal modes
     w: int,
     h: int,
     z_radius: float,
@@ -443,6 +451,9 @@ def draw_latent_panel(
     frame_idx: int,
     n_frames: int,
     colors: dict | None = None,
+    trajectory_coords: list[tuple[float, float]] | None = None,
+    mode: str = "circle",
+    panel_scale_radius: float | None = None,
 ) -> np.ndarray:
     """Return (H, W, 3) uint8 side panel showing the 2D latent map."""
     _C = colors or {}
@@ -463,8 +474,9 @@ def draw_latent_panel(
     draw = ImageDraw.Draw(img)
 
     cx, cy = w // 2, h // 2
-    # Map z_radius × 1.5 to 42% of the panel's half-width
-    scale = (min(w, h) * 0.40) / max(z_radius * 1.5, 1e-6)
+    # Map the reference radius x 1.5 to 40% of the panel's half-width
+    _scale_ref = panel_scale_radius if panel_scale_radius is not None else z_radius
+    scale = (min(w, h) * 0.40) / max(_scale_ref * 1.5, 1e-6)
 
     def z2px(z0v: float, z1v: float) -> tuple[int, int]:
         return cx + int(z0v * scale), cy - int(z1v * scale)
@@ -473,13 +485,14 @@ def draw_latent_panel(
     draw.line([(12, cy), (w - 12, cy)], fill=axis_col, width=1)
     draw.line([(cx, 12), (cx, h - 12)], fill=axis_col, width=1)
 
-    # Training manifold circle
+    # Training manifold circle (shown as reference boundary in circle/spiral modes)
     r_px = int(z_radius * scale)
-    draw.ellipse(
-        [(cx - r_px, cy - r_px), (cx + r_px, cy + r_px)],
-        outline=circle_col,
-        width=1,
-    )
+    if mode in ("circle", "spiral"):
+        draw.ellipse(
+            [(cx - r_px, cy - r_px), (cx + r_px, cy + r_px)],
+            outline=circle_col,
+            width=1,
+        )
 
     # Pretrained anchor dots
     if Z_pretrained is not None:
@@ -490,19 +503,43 @@ def draw_latent_panel(
             draw.ellipse([(px - r, py - r), (px + r, py + r)], fill=anchor_col)
             draw.text((px + 7, py - 7), str(i), fill=anchor_lbl_col, font=font_sm)
 
-    # Progress arc: highlight the portion of the circle already traversed
-    if n_frames > 1 and r_px > 5:
-        arc_end_deg = -90 + (360.0 * frame_idx / n_frames)  # PIL 0° = 3 o'clock, start at 12
-        try:
-            draw.arc(
-                [(cx - r_px, cy - r_px), (cx + r_px, cy + r_px)],
-                start=-90,
-                end=arc_end_deg,
-                fill=progress_col,
-                width=2,
-            )
-        except Exception:
-            pass  # older Pillow versions may not support width on arc
+    # Trajectory / progress visualization
+    if mode == "circle":
+        # Progress arc for circle traversal
+        if n_frames > 1 and r_px > 5:
+            arc_end_deg = -90 + (360.0 * frame_idx / n_frames)  # PIL 0° = 3 o'clock, start at 12
+            with contextlib.suppress(Exception):  # older Pillow versions may not support width on arc
+                draw.arc(
+                    [(cx - r_px, cy - r_px), (cx + r_px, cy + r_px)],
+                    start=-90,
+                    end=arc_end_deg,
+                    fill=progress_col,
+                    width=2,
+                )
+    elif trajectory_coords is not None and len(trajectory_coords) > 1:
+        full_pts = [z2px(zc0, zc1) for zc0, zc1 in trajectory_coords]
+        # Full path in dim color
+        draw.line(full_pts, fill=circle_col, width=1)
+        # Traversed portion in highlight color
+        traversed = full_pts[: frame_idx + 1]
+        if len(traversed) >= 2:
+            draw.line(traversed, fill=progress_col, width=2)
+        # Endpoint markers for line mode
+        if mode == "line":
+            ep_r = 5
+            for ep_z0, ep_z1 in (trajectory_coords[0], trajectory_coords[-1]):
+                ex, ey = z2px(ep_z0, ep_z1)
+                draw.ellipse([(ex - ep_r, ey - ep_r), (ex + ep_r, ey + ep_r)], outline=circle_col, width=2)
+        # Corner markers for cross mode
+        if mode == "cross":
+            ep_r = 5
+            # Draw dots at the 4 unique corners only (skip center and duplicate start/end)
+            seen: set[tuple[int, int]] = set()
+            for ep_z0, ep_z1 in trajectory_coords:
+                ep = z2px(ep_z0, ep_z1)
+                if ep not in seen and abs(ep_z0) > 1e-6 and abs(ep_z1) > 1e-6:
+                    draw.ellipse([(ep[0] - ep_r, ep[1] - ep_r), (ep[0] + ep_r, ep[1] + ep_r)], outline=circle_col, width=2)
+                    seen.add(ep)
 
     # Current cursor (bright dot)
     px, py = z2px(z0, z1)
@@ -521,9 +558,116 @@ def draw_latent_panel(
 
     # Panel title
     font_title = _get_font(12)
-    draw.text((8, 8), "Latent Space  (z-dim = 2)", fill=title_col, font=font_title)
+    _mode_label = {"circle": "Circle", "spiral": "Spiral", "line": "Line", "cross": "Cross"}.get(mode, mode.capitalize())
+    draw.text((8, 8), f"Latent Space · {_mode_label}", fill=title_col, font=font_title)
 
     return np.asarray(img)
+
+
+# ---------------------------------------------------------------------------
+# Trajectory builders
+# ---------------------------------------------------------------------------
+
+
+def _build_trajectory(  # noqa: PLR0912  # supports 4 traversal modes; branches are mode dispatches, not complexity
+    mode: str,
+    n_frames: int,
+    z_radius: float,
+    spiral_turns: float = 3.0,
+    spiral_radius_start: float = 0.0,
+    spiral_radius_end: float | None = None,
+    line_start: tuple[float, float] = (0.0, -2.0),
+    line_end: tuple[float, float] = (0.0, 2.0),
+    line_bounces: int = 1,
+    cross_radius: float | None = None,
+) -> tuple[list[tuple[float, float]], float]:
+    """Build the (z0, z1) trajectory and return the panel scale radius.
+
+    Args:
+        mode: Traversal mode — "circle", "spiral", "line", or "cross".
+        n_frames: Total number of animation frames.
+        z_radius: Reference radius inferred from the checkpoint.
+        spiral_turns: Full rotations for spiral mode.
+        spiral_radius_start: Inner radius for spiral (0.0 = start at origin).
+        spiral_radius_end: Outer radius for spiral (None → use z_radius).
+        line_start: (z0, z1) start point for line mode.
+        line_end: (z0, z1) end point for line mode.
+        line_bounces: Complete back-and-forth oscillations for line mode.
+        cross_radius: Half-width of the X pattern (None → use z_radius).
+
+    Returns:
+        z_coords: List of (z0, z1) tuples, one per frame.
+        panel_scale_radius: Reference radius used to scale the latent panel.
+    """
+    if mode == "circle":
+        angles = [2.0 * math.pi * i / max(n_frames, 1) for i in range(n_frames)]
+        coords: list[tuple[float, float]] = [(z_radius * math.cos(a), z_radius * math.sin(a)) for a in angles]
+        return coords, z_radius
+
+    if mode == "spiral":
+        r_end = spiral_radius_end if spiral_radius_end is not None else z_radius
+        coords = []
+        for i in range(n_frames):
+            t = i / max(n_frames - 1, 1)
+            r = spiral_radius_start + (r_end - spiral_radius_start) * t
+            angle = 2.0 * math.pi * spiral_turns * t
+            coords.append((r * math.cos(angle), r * math.sin(angle)))
+        return coords, max(r_end, 1e-6)
+
+    if mode == "line":
+        x0, y0 = line_start
+        x1, y1 = line_end
+        total_segs = 2 * max(line_bounces, 1)
+        coords = []
+        for i in range(n_frames):
+            t = i / max(n_frames - 1, 1) if n_frames > 1 else 0.0
+            scaled = t * total_segs
+            seg = int(scaled)
+            if seg >= total_segs:
+                # t == 1.0 exactly: clamp to end of last segment
+                seg = total_segs - 1
+                frac = 1.0
+            else:
+                frac = scaled - seg  # in [0, 1)
+            if seg % 2 == 0:
+                coords.append((x0 + (x1 - x0) * frac, y0 + (y1 - y0) * frac))
+            else:
+                coords.append((x1 + (x0 - x1) * frac, y1 + (y0 - y1) * frac))
+        scale_r = max(abs(x0), abs(y0), abs(x1), abs(y1), z_radius, 1e-6)
+        return coords, scale_r
+
+    if mode == "cross":
+        r = cross_radius if cross_radius is not None else z_radius
+        # Visit all 4 diagonal corners (±r, ±r) through the origin, forming an X.
+        # All 8 segments have equal length r√2, so frames are distributed evenly.
+        waypoints: list[tuple[float, float]] = [
+            (r, r),
+            (0.0, 0.0),
+            (-r, -r),
+            (0.0, 0.0),
+            (r, -r),
+            (0.0, 0.0),
+            (-r, r),
+            (0.0, 0.0),
+            (r, r),
+        ]
+        n_segs = len(waypoints) - 1
+        cross_coords: list[tuple[float, float]] = []
+        for i in range(n_frames):
+            t = i / max(n_frames - 1, 1) if n_frames > 1 else 0.0
+            scaled = t * n_segs
+            seg = int(scaled)
+            if seg >= n_segs:
+                seg = n_segs - 1
+                frac = 1.0
+            else:
+                frac = scaled - seg
+            x0a, y0a = waypoints[seg]
+            x1a, y1a = waypoints[seg + 1]
+            cross_coords.append((x0a + (x1a - x0a) * frac, y0a + (y1a - y0a) * frac))
+        return cross_coords, max(r, z_radius, 1e-6)
+
+    raise ValueError(f"Unknown traversal mode '{mode}'. Expected: circle | spiral | line | cross")
 
 
 # ---------------------------------------------------------------------------
@@ -531,7 +675,7 @@ def draw_latent_panel(
 # ---------------------------------------------------------------------------
 
 
-def main() -> None:
+def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement count from argument parsing and frame loop
     # ------------------------------------------------------------------
     # Step 1: pre-parse --config so YAML can supply defaults for everything
     # ------------------------------------------------------------------
@@ -599,6 +743,57 @@ def main() -> None:
         help="Render inner assembly inside the aeroshell",
     )
     parser.add_argument("--assembly_color", default=_c("assembly_color", "#F39C12"), help="Inner assembly color (hex)")
+    # Traversal mode
+    parser.add_argument(
+        "--mode",
+        default=_c("mode", "circle"),
+        choices=["circle", "spiral", "line", "cross"],
+        help="Latent-space traversal mode: circle | spiral | line | cross",
+    )
+    # Spiral-mode params
+    parser.add_argument("--spiral_turns", type=float, default=_c("spiral_turns", 3.0), help="Full rotations in spiral mode")
+    parser.add_argument(
+        "--spiral_radius_start",
+        type=float,
+        default=_c("spiral_radius_start", 0.0),
+        help="Inner radius for spiral (0 = start at origin)",
+    )
+    parser.add_argument(
+        "--spiral_radius_end",
+        type=float,
+        default=_c("spiral_radius_end"),
+        help="Outer radius for spiral (default: use z_radius from checkpoint)",
+    )
+    # Line-mode params
+    parser.add_argument(
+        "--line_start",
+        type=float,
+        nargs=2,
+        default=_c("line_start", [0.0, -2.0]),
+        metavar=("Z0", "Z1"),
+        help="Start latent coordinates [z0 z1] for line mode",
+    )
+    parser.add_argument(
+        "--line_end",
+        type=float,
+        nargs=2,
+        default=_c("line_end", [0.0, 2.0]),
+        metavar=("Z0", "Z1"),
+        help="End latent coordinates [z0 z1] for line mode",
+    )
+    parser.add_argument(
+        "--line_bounces",
+        type=int,
+        default=_c("line_bounces", 1),
+        help="Complete back-and-forth oscillations for line mode (1 = A→B→A)",
+    )
+    # Cross-mode params
+    parser.add_argument(
+        "--cross_radius",
+        type=float,
+        default=_c("cross_radius"),
+        help="Half-width of the X pattern in cross mode (default: use z_radius from checkpoint)",
+    )
     args = parser.parse_args()
 
     if args.checkpoint is None:
@@ -641,7 +836,7 @@ def main() -> None:
     # --- Load model ---
     model, z_dim, z_radius_ckpt, Z_pretrained = load_checkpoint(args.checkpoint, device)
     z_radius = args.radius if args.radius is not None else z_radius_ckpt
-    print(f"Traversal radius: {z_radius:.3f}  |  frames: {args.n_frames}  |  resolution: {args.resolution}")
+    print(f"Traversal radius: {z_radius:.3f}  |  mode: {args.mode}  |  frames: {args.n_frames}  |  resolution: {args.resolution}")
 
     Z_np = Z_pretrained.cpu().numpy() if Z_pretrained is not None else None
 
@@ -657,13 +852,25 @@ def main() -> None:
     # --- Build extractor once ---
     extractor = build_extractor(device, args.resolution, bbox_padding=args.bbox_padding)
 
-    # --- Build z-vector sequence: equally-spaced circle ---
-    angles = [2.0 * math.pi * i / args.n_frames for i in range(args.n_frames)]
-    z_coords = [(z_radius * math.cos(a), z_radius * math.sin(a)) for a in angles]
+    # --- Build z-vector sequence for selected traversal mode ---
+    line_start_pt = (float(args.line_start[0]), float(args.line_start[1]))
+    line_end_pt = (float(args.line_end[0]), float(args.line_end[1]))
+    z_coords, panel_scale_radius = _build_trajectory(
+        mode=args.mode,
+        n_frames=args.n_frames,
+        z_radius=z_radius,
+        spiral_turns=args.spiral_turns,
+        spiral_radius_start=args.spiral_radius_start,
+        spiral_radius_end=args.spiral_radius_end,
+        line_start=line_start_pt,
+        line_end=line_end_pt,
+        line_bounces=args.line_bounces,
+        cross_radius=args.cross_radius,
+    )
 
     renderer = pyrender.OffscreenRenderer(args.width, args.height)
     cam_pose: np.ndarray | None = None
-    frames: list[np.ndarray] = []
+    frames: list[Any] = []
     last_valid: np.ndarray | None = None
 
     print("\nGenerating frames...")
@@ -702,6 +909,9 @@ def main() -> None:
             i,
             args.n_frames,
             colors=panel_colors,
+            trajectory_coords=z_coords,
+            mode=args.mode,
+            panel_scale_radius=panel_scale_radius,
         )
         composite = np.concatenate([rgb, panel], axis=1)  # (H, W+panel, 3)
         frames.append(composite)
@@ -713,9 +923,10 @@ def main() -> None:
     if not frames:
         sys.exit("ERROR: no valid frames were rendered — check model and checkpoint")
 
-    print(f"\nWriting {len(frames)} frames → {args.out}  (fps={args.fps})")
-    imageio.mimsave(str(args.out), frames, fps=args.fps, loop=0)
-    print(f"Done.  GIF saved to: {args.out}")
+    out_path = Path(args.out)
+    print(f"\nWriting {len(frames)} frames \u2192 {out_path}  (fps={args.fps})")
+    imageio.mimsave(str(out_path), frames, fps=args.fps, loop=0)
+    print(f"Done.  GIF saved to: {out_path}")
 
 
 if __name__ == "__main__":

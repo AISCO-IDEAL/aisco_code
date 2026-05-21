@@ -27,7 +27,6 @@ import numpy as np
 import plotly.graph_objects as go
 import trimesh
 import yaml
-from scipy.ndimage import binary_closing, binary_fill_holes
 
 _DEFAULT_CONFIG = Path(__file__).parent / "sdf_slice_viz.yaml"
 
@@ -35,6 +34,7 @@ _DEFAULT_CONFIG = Path(__file__).parent / "sdf_slice_viz.yaml"
 # ---------------------------------------------------------------------------
 # Config helpers
 # ---------------------------------------------------------------------------
+
 
 def _load_config(path: Path) -> dict[str, Any]:
     with open(path) as fh:
@@ -56,6 +56,7 @@ def _get(cfg: dict[str, Any], *keys: str, default: Any = None) -> Any:
 # Mesh loading
 # ---------------------------------------------------------------------------
 
+
 def load_mesh(mesh_path: str | Path) -> trimesh.Trimesh:
     """Load a mesh from *mesh_path* (PLY / OBJ / STL).
 
@@ -71,21 +72,17 @@ def load_mesh(mesh_path: str | Path) -> trimesh.Trimesh:
     """
     mesh_path = Path(mesh_path)
     if not mesh_path.exists():
-        raise FileNotFoundError(
-            f"Mesh file not found: {mesh_path}\n"
-            "Update 'mesh_path' in your sdf_slice_viz.yaml config."
-        )
+        raise FileNotFoundError(f"Mesh file not found: {mesh_path}\nUpdate 'mesh_path' in your sdf_slice_viz.yaml config.")
     geom = trimesh.load(str(mesh_path), force="mesh")
     if not isinstance(geom, trimesh.Trimesh):
-        raise ValueError(
-            f"Loaded geometry is not a triangle mesh (got {type(geom).__name__})."
-        )
+        raise TypeError(f"Loaded geometry is not a triangle mesh (got {type(geom).__name__}).")
     return geom
 
 
 # ---------------------------------------------------------------------------
 # SDF computation
 # ---------------------------------------------------------------------------
+
 
 def _sphere_sdf(points: np.ndarray, centre: np.ndarray, radius: float) -> np.ndarray:
     """Analytical SDF of a sphere.
@@ -136,10 +133,7 @@ def compute_sdf_on_grid(
     axis_idx = {"x": 0, "y": 1, "z": 2}[axis]
     plane_axes = [i for i in range(3) if i != axis_idx]
 
-    plane_coord = (
-        bounds_min[axis_idx]
-        + position_fraction * (bounds_max[axis_idx] - bounds_min[axis_idx])
-    )
+    plane_coord = bounds_min[axis_idx] + position_fraction * (bounds_max[axis_idx] - bounds_min[axis_idx])
 
     u_c = (bounds_min[plane_axes[0]] + bounds_max[plane_axes[0]]) / 2.0
     v_c = (bounds_min[plane_axes[1]] + bounds_max[plane_axes[1]]) / 2.0
@@ -158,7 +152,7 @@ def compute_sdf_on_grid(
 
     if source == "sphere":
         centre = mesh.centroid
-        radius = np.linalg.norm(bounds_max - bounds_min) / 2.0 * sphere_radius_factor
+        radius = float(np.linalg.norm(bounds_max - bounds_min) / 2.0 * sphere_radius_factor)
         sdf_values = _sphere_sdf(pts, centre, radius)
     else:
         # Dense surface sampling eliminates Voronoi banding from vertex-only KDTree.
@@ -170,9 +164,7 @@ def compute_sdf_on_grid(
         tree = cKDTree(surface_pts)
         raw_dist, nearest_idx = tree.query(pts, k=1, workers=-1)
         to_query = pts - surface_pts[nearest_idx]
-        sign = np.where(
-            np.sum(to_query * face_normals[nearest_idx], axis=-1) >= 0.0, 1.0, -1.0
-        )
+        sign = np.where(np.sum(to_query * face_normals[nearest_idx], axis=-1) >= 0.0, 1.0, -1.0)
         sdf_values = sign * raw_dist
 
     sdf_grid = sdf_values.reshape(resolution, resolution)
@@ -185,10 +177,17 @@ def compute_sdf_on_grid(
 # ---------------------------------------------------------------------------
 
 _CMAP_MAP: dict[str, str] = {
-    "jet": "Jet", "viridis": "Viridis", "plasma": "Plasma",
-    "magma": "Magma", "inferno": "Inferno", "hot": "Hot",
-    "rainbow": "Rainbow", "turbo": "Turbo", "rdbu": "RdBu",
-    "blues": "Blues", "reds": "Reds",
+    "jet": "Jet",
+    "viridis": "Viridis",
+    "plasma": "Plasma",
+    "magma": "Magma",
+    "inferno": "Inferno",
+    "hot": "Hot",
+    "rainbow": "Rainbow",
+    "turbo": "Turbo",
+    "rdbu": "RdBu",
+    "blues": "Blues",
+    "reds": "Reds",
 }
 
 
@@ -210,6 +209,7 @@ def _rgba_str(rgba: list[float]) -> str:
 # ---------------------------------------------------------------------------
 # Mesh plane clipping (no shapely dependency)
 # ---------------------------------------------------------------------------
+
 
 def _clip_mesh_at_plane(
     mesh: trimesh.Trimesh,
@@ -262,23 +262,25 @@ def _clip_mesh_at_plane(
                 # 1 front vertex (tri_r[0]), 2 back — one output triangle
                 p01 = _lerp(new_verts[tri_r[0]], new_verts[tri_r[1]], ds_r[0], ds_r[1])
                 p02 = _lerp(new_verts[tri_r[0]], new_verts[tri_r[2]], ds_r[0], ds_r[2])
-                i01 = len(new_verts); new_verts.append(p01)
-                i02 = len(new_verts); new_verts.append(p02)
+                i01 = len(new_verts)
+                new_verts.append(p01)
+                i02 = len(new_verts)
+                new_verts.append(p02)
                 new_faces.append([tri_r[0], i01, i02])
             else:
                 # 2 front vertices (tri_r[0], tri_r[1]), 1 back — two output triangles
                 p02 = _lerp(new_verts[tri_r[0]], new_verts[tri_r[2]], ds_r[0], ds_r[2])
                 p12 = _lerp(new_verts[tri_r[1]], new_verts[tri_r[2]], ds_r[1], ds_r[2])
-                i02 = len(new_verts); new_verts.append(p02)
-                i12 = len(new_verts); new_verts.append(p12)
+                i02 = len(new_verts)
+                new_verts.append(p02)
+                i12 = len(new_verts)
+                new_verts.append(p12)
                 new_faces.append([tri_r[0], tri_r[1], i02])
                 new_faces.append([tri_r[1], i12, i02])
 
     if not new_faces:
         # Nothing left after clipping — return empty mesh as fallback
-        return trimesh.Trimesh(
-            vertices=verts[:1], faces=np.empty((0, 3), dtype=int), process=False
-        )
+        return trimesh.Trimesh(vertices=verts[:1], faces=np.empty((0, 3), dtype=int), process=False)
 
     return trimesh.Trimesh(
         vertices=np.array(new_verts),
@@ -329,12 +331,11 @@ def _mesh_shadow_mask(
         a, b, c = proj[f[0]], proj[f[1]], proj[f[2]]
 
         # Fast AABB rejection
-        u_lo = min(a[0], b[0], c[0]); u_hi = max(a[0], b[0], c[0])
-        v_lo = min(a[1], b[1], c[1]); v_hi = max(a[1], b[1], c[1])
-        idx = np.where(
-            (pts_u >= u_lo) & (pts_u <= u_hi) &
-            (pts_v >= v_lo) & (pts_v <= v_hi)
-        )[0]
+        u_lo = min(a[0], b[0], c[0])
+        u_hi = max(a[0], b[0], c[0])
+        v_lo = min(a[1], b[1], c[1])
+        v_hi = max(a[1], b[1], c[1])
+        idx = np.where((pts_u >= u_lo) & (pts_u <= u_hi) & (pts_v >= v_lo) & (pts_v <= v_hi))[0]
         if len(idx) == 0:
             continue
 
@@ -347,7 +348,6 @@ def _mesh_shadow_mask(
         covered[idx] |= inside
 
     return covered.reshape(uu.shape)
-
 
 
 def _build_lighting(cfg: dict[str, Any]) -> dict[str, float]:
@@ -396,11 +396,13 @@ def _build_wireframe_trace(
     faces = mesh.faces
     v0, v1, v2 = faces[:, 0], faces[:, 1], faces[:, 2]
     all_edges = np.sort(
-        np.concatenate([
-            np.stack([v0, v1], axis=1),
-            np.stack([v1, v2], axis=1),
-            np.stack([v2, v0], axis=1),
-        ]),
+        np.concatenate(
+            [
+                np.stack([v0, v1], axis=1),
+                np.stack([v1, v2], axis=1),
+                np.stack([v2, v0], axis=1),
+            ]
+        ),
         axis=1,
     )
     edges = np.unique(all_edges, axis=0)
@@ -410,23 +412,121 @@ def _build_wireframe_trace(
     sx = np.empty(n * 3)
     sy = np.empty(n * 3)
     sz = np.empty(n * 3)
-    sx[0::3] = verts[edges[:, 0], 0]; sx[1::3] = verts[edges[:, 1], 0]; sx[2::3] = np.nan
-    sy[0::3] = verts[edges[:, 0], 1]; sy[1::3] = verts[edges[:, 1], 1]; sy[2::3] = np.nan
-    sz[0::3] = verts[edges[:, 0], 2]; sz[1::3] = verts[edges[:, 1], 2]; sz[2::3] = np.nan
+    sx[0::3] = verts[edges[:, 0], 0]
+    sx[1::3] = verts[edges[:, 1], 0]
+    sx[2::3] = np.nan
+    sy[0::3] = verts[edges[:, 0], 1]
+    sy[1::3] = verts[edges[:, 1], 1]
+    sy[2::3] = np.nan
+    sz[0::3] = verts[edges[:, 0], 2]
+    sz[1::3] = verts[edges[:, 1], 2]
+    sz[2::3] = np.nan
 
     return go.Scatter3d(
-        x=sx, y=sy, z=sz,
+        x=sx,
+        y=sy,
+        z=sz,
         mode="lines",
-        line=dict(color=_rgba_str(edge_color), width=1),
+        line={"color": _rgba_str(edge_color), "width": 1},
         hoverinfo="skip",
     )
+
+
+# ---------------------------------------------------------------------------
+# SDF isoline traces
+# ---------------------------------------------------------------------------
+
+
+def _build_isoline_traces(
+    u_coords: np.ndarray,
+    v_coords: np.ndarray,
+    sdf_grid: np.ndarray,
+    axis_idx: int,
+    plane_coord: float,
+    plane_axes: list[int],
+    cfg: dict[str, Any],
+) -> list[go.Scatter3d]:
+    """Build Scatter3d line traces for SDF isolines on the slice plane.
+
+    Extracts contour paths in UV space using matplotlib (Agg backend, no
+    display required), then lifts them back to 3-D on the slice plane.
+
+    Args:
+        u_coords: 1-D u-axis sample positions (length = Nu).
+        v_coords: 1-D v-axis sample positions (length = Nv).
+        sdf_grid: (Nu, Nv) SDF values.
+        axis_idx: Index of the axis perpendicular to the slice (0/1/2).
+        plane_coord: Fixed coordinate on that axis.
+        plane_axes: Indices of the two axes spanning the slice plane.
+        cfg: Full config dict.
+
+    Returns:
+        List of go.Scatter3d traces — one segment per contour path.
+    """
+    if not _get(cfg, "isolines", "show", default=True):
+        return []
+
+    exterior = sdf_grid >= 0
+    if not exterior.any():
+        return []
+
+    n_levels = int(_get(cfg, "isolines", "count", default=8))
+    iso_color = list(_get(cfg, "isolines", "color") or [0.0, 0.0, 0.0, 0.6])
+    iso_width = float(_get(cfg, "isolines", "width", default=1.5))
+    levels_cfg = _get(cfg, "isolines", "levels")
+
+    if levels_cfg is not None:
+        levels: list[float] = [float(v) for v in levels_cfg]
+    else:
+        sdf_ext = sdf_grid[exterior]
+        lo, hi = float(sdf_ext.min()), float(sdf_ext.max())
+        if lo >= hi:
+            return []
+        levels = list(np.linspace(lo, hi, n_levels + 2)[1:-1])
+
+    import matplotlib  # noqa: PLC0415  (lazy import — matplotlib not in core deps)
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt  # noqa: PLC0415
+
+    # contour expects Z of shape (Ny, Nx), i.e. (Nv, Nu) since grid is (Nu, Nv) with ij
+    fig_mpl, ax = plt.subplots()
+    cs = ax.contour(u_coords, v_coords, sdf_grid.T, levels=levels)
+    plt.close(fig_mpl)
+
+    iso_color_str = _rgba_str(iso_color)
+    traces: list[go.Scatter3d] = []
+
+    # allsegs: list[list[ndarray(N,2)]] — one outer list entry per level
+    for level_segs in cs.allsegs:
+        for seg in level_segs:
+            if len(seg) < 2:
+                continue
+            xyz = np.zeros((len(seg), 3))
+            xyz[:, axis_idx] = plane_coord
+            xyz[:, plane_axes[0]] = seg[:, 0]
+            xyz[:, plane_axes[1]] = seg[:, 1]
+            traces.append(
+                go.Scatter3d(
+                    x=xyz[:, 0],
+                    y=xyz[:, 1],
+                    z=xyz[:, 2],
+                    mode="lines",
+                    line={"color": iso_color_str, "width": iso_width},
+                    hoverinfo="skip",
+                    showlegend=False,
+                )
+            )
+
+    return traces
 
 
 # ---------------------------------------------------------------------------
 # Main figure builder
 # ---------------------------------------------------------------------------
 
-def build_figure(mesh: trimesh.Trimesh, cfg: dict[str, Any]) -> go.Figure:
+
+def build_figure(mesh: trimesh.Trimesh, cfg: dict[str, Any]) -> go.Figure:  # noqa: PLR0915  # figure builder; statement count reflects multiple trace types and layout options
     """Build the Plotly figure: SDF surface + mesh solid + wireframe edges.
 
     Args:
@@ -450,8 +550,6 @@ def build_figure(mesh: trimesh.Trimesh, cfg: dict[str, Any]) -> go.Figure:
 
     face_color = list(_get(cfg, "mesh", "face_color") or [0.55, 0.75, 0.95, 1.0])
     edge_color = list(_get(cfg, "mesh", "edge_color") or [0.2, 0.2, 0.2, 0.25])
-    occlude_back = bool(_get(cfg, "slice", "occlude_back", default=True))
-
     bg_color = list(_get(cfg, "background_color") or [1.0, 1.0, 1.0, 0.0])
 
     w_px = int(_get(cfg, "image_width", default=1600))
@@ -478,9 +576,7 @@ def build_figure(mesh: trimesh.Trimesh, cfg: dict[str, Any]) -> go.Figure:
     )
 
     exterior = sdf_grid >= 0
-    vmin = float(vmin_cfg) if vmin_cfg is not None else (
-        float(sdf_grid[exterior].min()) if exterior.any() else 0.0
-    )
+    vmin = float(vmin_cfg) if vmin_cfg is not None else (float(sdf_grid[exterior].min()) if exterior.any() else 0.0)
     vmax = float(vmax_cfg) if vmax_cfg is not None else float(sdf_grid.max())
 
     axis_idx = {"x": 0, "y": 1, "z": 2}[axis]
@@ -524,12 +620,12 @@ def build_figure(mesh: trimesh.Trimesh, cfg: dict[str, Any]) -> go.Figure:
         opacity=alpha,
         showscale=False,
         hoverinfo="skip",
-        lighting=dict(ambient=1.0, diffuse=0.0, specular=0.0),
-        contours=dict(
-            x=dict(highlight=False),
-            y=dict(highlight=False),
-            z=dict(highlight=False),
-        ),
+        lighting={"ambient": 1.0, "diffuse": 0.0, "specular": 0.0},
+        contours={
+            "x": {"highlight": False},
+            "y": {"highlight": False},
+            "z": {"highlight": False},
+        },
     )
 
     mesh_solid = go.Mesh3d(
@@ -549,9 +645,20 @@ def build_figure(mesh: trimesh.Trimesh, cfg: dict[str, Any]) -> go.Figure:
 
     wire_trace = _build_wireframe_trace(vis_mesh, edge_color)
 
+    isoline_traces = _build_isoline_traces(
+        u_coords=u_coords,
+        v_coords=v_coords,
+        sdf_grid=sdf_grid,
+        axis_idx=axis_idx,
+        plane_coord=plane_coord,
+        plane_axes=plane_axes,
+        cfg=cfg,
+    )
+
     traces: list[go.BaseTraceType] = [sdf_trace, mesh_solid]
     if wire_trace is not None:
         traces.append(wire_trace)
+    traces.extend(isoline_traces)
 
     bg_str = _rgba_str(bg_color)
 
@@ -560,18 +667,18 @@ def build_figure(mesh: trimesh.Trimesh, cfg: dict[str, Any]) -> go.Figure:
         width=w_px,
         height=h_px,
         paper_bgcolor=bg_str,
-        margin=dict(l=0, r=0, t=0, b=0),
-        scene=dict(
-            camera=dict(
-                eye=dict(x=eye_x, y=eye_y, z=eye_z),
-                up=dict(x=0, y=0, z=1),
-            ),
-            xaxis=dict(visible=False, showgrid=False, showline=False, zeroline=False),
-            yaxis=dict(visible=False, showgrid=False, showline=False, zeroline=False),
-            zaxis=dict(visible=False, showgrid=False, showline=False, zeroline=False),
-            bgcolor="rgba(0,0,0,0)",
-            aspectmode="data",
-        ),
+        margin={"l": 0, "r": 0, "t": 0, "b": 0},
+        scene={
+            "camera": {
+                "eye": {"x": eye_x, "y": eye_y, "z": eye_z},
+                "up": {"x": 0, "y": 0, "z": 1},
+            },
+            "xaxis": {"visible": False, "showgrid": False, "showline": False, "zeroline": False},
+            "yaxis": {"visible": False, "showgrid": False, "showline": False, "zeroline": False},
+            "zaxis": {"visible": False, "showgrid": False, "showline": False, "zeroline": False},
+            "bgcolor": "rgba(0,0,0,0)",
+            "aspectmode": "data",
+        },
         showlegend=False,
     )
 
@@ -581,6 +688,7 @@ def build_figure(mesh: trimesh.Trimesh, cfg: dict[str, Any]) -> go.Figure:
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -620,11 +728,7 @@ def main() -> None:
 
     print(f"Loading mesh: {mesh_path}")
     mesh = load_mesh(mesh_path)
-    print(
-        f"  Vertices: {len(mesh.vertices):,}   "
-        f"Faces: {len(mesh.faces):,}   "
-        f"Bounds: {mesh.bounds[0]} → {mesh.bounds[1]}"
-    )
+    print(f"  Vertices: {len(mesh.vertices):,}   Faces: {len(mesh.faces):,}   Bounds: {mesh.bounds[0]} → {mesh.bounds[1]}")
 
     print("Building figure …")
     fig = build_figure(mesh, cfg)

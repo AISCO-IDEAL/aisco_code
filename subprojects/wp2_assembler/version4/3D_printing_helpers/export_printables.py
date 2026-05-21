@@ -27,18 +27,15 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
-
-
 def _status(message: str) -> None:
     print(f"[3d-print] {message}", flush=True)
+
 
 def _require(module_name: str) -> Any:
     try:
         return __import__(module_name)
     except ImportError as exc:
-        raise SystemExit(
-            f"Missing dependency '{module_name}'. Run this helper inside the AISCO project environment."
-        ) from exc
+        raise SystemExit(f"Missing dependency '{module_name}'. Run this helper inside the AISCO project environment.") from exc
 
 
 @dataclass
@@ -244,7 +241,9 @@ def resolve_settings(args: argparse.Namespace) -> dict[str, Any]:  # noqa: PLR09
     print(f"  config: {settings['config_path']}")
     print(f"  run_dir: {settings['run_dir']}")
     print(f"  out_dir: {settings['out_dir']}")
-    print(f"  assembly_mesh_dir: {settings['assembly_mesh_dir'] if settings['assembly_mesh_dir'] is not None else 'run_dir/mesh_assembly_v4'}")
+    print(
+        f"  assembly_mesh_dir: {settings['assembly_mesh_dir'] if settings['assembly_mesh_dir'] is not None else 'run_dir/mesh_assembly_v4'}"
+    )
     print(f"  assembly_slot: {settings['assembly_slot'] if settings['assembly_slot'] is not None else 'first available'}")
     print(f"  epoch: {settings['epoch'] if settings['epoch'] is not None else 'latest'}")
     print(f"  shell_clearance_mm: {settings['shell_clearance_mm']}")
@@ -397,23 +396,16 @@ def find_assembly_mesh(
             if epoch_dir.exists():
                 search_roots = [epoch_dir]
         for search_root in search_roots:
-            candidates.extend(
-                p
-                for p in search_root.glob("slot_*_mesh.ply")
-                if p.is_file() and "printables_3d" not in str(p)
-            )
+            candidates.extend(p for p in search_root.glob("slot_*_mesh.ply") if p.is_file() and "printables_3d" not in str(p))
             if not candidates:
-                candidates.extend(
-                    p
-                    for p in search_root.glob("slot_*_mesh.glb")
-                    if p.is_file() and "printables_3d" not in str(p)
-                )
+                candidates.extend(p for p in search_root.glob("slot_*_mesh.glb") if p.is_file() and "printables_3d" not in str(p))
     if epoch is not None:
         candidates = [p for p in candidates if _path_epoch(p) == epoch]
     if slot is not None:
         candidates = [p for p in candidates if _path_slot(p) == slot]
     if not candidates:
         return None
+
     def score(path: Path) -> tuple[int, int, int, str]:
         name = str(path).lower()
         ext_score = 2 if path.suffix.lower() == ".ply" else 1
@@ -423,6 +415,7 @@ def find_assembly_mesh(
         epoch_score = path_epoch if path_epoch is not None else -1
         slot_score = -(path_slot if path_slot is not None else 9999)
         return ext_score + vision_score, epoch_score, slot_score, str(path)
+
     return sorted(candidates, key=score)[-1]
 
 
@@ -439,8 +432,6 @@ def _component_bounds(mesh: Any) -> list[tuple[Any, Any, Any]]:
         components.append((mesh, mesh.bounds, mesh.bounds[1] - mesh.bounds[0]))
     components.sort(key=lambda item: float(item[0].area), reverse=True)
     return components
-
-
 
 
 def _inner_assembly_components_only(assembly: Any) -> Any:
@@ -474,6 +465,7 @@ def _cleanup_multicolor_dir(multicolor_dir: Path) -> None:
         if stale_path.exists():
             stale_path.unlink()
 
+
 def _is_cut_wheel_component(bounds: Any, extents: Any) -> bool:
     x_extent, y_extent, z_extent = (float(v) for v in extents)
     wheel_diameter_like = 350.0 <= x_extent <= 650.0 and 250.0 <= z_extent <= 650.0
@@ -499,7 +491,9 @@ def _infer_wheel_centers_from_mesh(assembly: Any) -> list[Any]:
                 break
         else:
             groups.append([candidate])
-    return [np.array([float(np.mean(group, axis=0)[0]), float(np.mean(group, axis=0)[1]), radius], dtype=float) for group in groups]
+    return [
+        np.array([float(np.mean(group, axis=0)[0]), float(np.mean(group, axis=0)[1]), radius], dtype=float) for group in groups
+    ]
 
 
 def _is_component_in_wheel_footprint(bounds: Any, wheel_centers: list[Any]) -> bool:
@@ -557,23 +551,29 @@ def _mesh_based_supports(assembly: Any) -> tuple[Any, Any, Any]:
     margin_xy = np.array([140.0, 140.0])
     plate_thickness = 8.0
     plate_z_center = float(bounds[0][2]) - plate_thickness / 2.0 - 4.0
-    plate_extents = np.array([
-        max(float(bounds[1][0] - bounds[0][0]) + 2.0 * margin_xy[0], 220.0),
-        max(float(bounds[1][1] - bounds[0][1]) + 2.0 * margin_xy[1], 220.0),
-        plate_thickness,
-    ])
-    plate_center = np.array([
-        float((bounds[0][0] + bounds[1][0]) / 2.0),
-        float((bounds[0][1] + bounds[1][1]) / 2.0),
-        plate_z_center,
-    ])
+    plate_extents = np.array(
+        [
+            max(float(bounds[1][0] - bounds[0][0]) + 2.0 * margin_xy[0], 220.0),
+            max(float(bounds[1][1] - bounds[0][1]) + 2.0 * margin_xy[1], 220.0),
+            plate_thickness,
+        ]
+    )
+    plate_center = np.array(
+        [
+            float((bounds[0][0] + bounds[1][0]) / 2.0),
+            float((bounds[0][1] + bounds[1][1]) / 2.0),
+            plate_z_center,
+        ]
+    )
     plate = _make_box_mesh(plate_center, plate_extents)
 
     components = _component_bounds(assembly)
     seat_like = None
     for part, comp_bounds, extents in components:
         ordered = sorted(float(v) for v in extents)
-        wheel_like = 40.0 <= ordered[0] <= 180.0 and ordered[1] >= 250.0 and ordered[2] >= 350.0 and float(comp_bounds[0][2]) <= 80.0
+        wheel_like = (
+            40.0 <= ordered[0] <= 180.0 and ordered[1] >= 250.0 and ordered[2] >= 350.0 and float(comp_bounds[0][2]) <= 80.0
+        )
         if not wheel_like and (seat_like is None or float(comp_bounds[1][2]) > float(seat_like[1][1][2])):
             seat_like = (part, comp_bounds, extents)
     if seat_like is None:
@@ -583,11 +583,13 @@ def _mesh_based_supports(assembly: Any) -> tuple[Any, Any, Any]:
     support_top = float(seat_bounds[0][2])
     support_bottom = float(bounds[0][2])
     support_height = max(support_top - support_bottom, 20.0)
-    support_center = np.array([
-        float((seat_bounds[0][0] + seat_bounds[1][0]) / 2.0),
-        float((seat_bounds[0][1] + seat_bounds[1][1]) / 2.0),
-        support_bottom + support_height / 2.0,
-    ])
+    support_center = np.array(
+        [
+            float((seat_bounds[0][0] + seat_bounds[1][0]) / 2.0),
+            float((seat_bounds[0][1] + seat_bounds[1][1]) / 2.0),
+            support_bottom + support_height / 2.0,
+        ]
+    )
     support_extents = np.array([180.0, 180.0, support_height])
     support = _make_box_mesh(support_center, support_extents)
     plate_with_support = trimesh.util.concatenate([plate, support])
@@ -610,13 +612,13 @@ def _mesh_socket_cutters(assembly: Any, wheel_centers: list[Any], clearance_mm: 
     cutters.append(central)
     return trimesh.util.concatenate(cutters)
 
+
 def _load_mesh(path: Path) -> Any:
     trimesh = _require("trimesh")
     obj = trimesh.load(str(path), force="mesh", process=False)
     if getattr(obj, "is_empty", False):
         raise ValueError(f"Mesh is empty: {path}")
     return obj
-
 
 
 def _scaled_mesh(mesh: Any, scale_factor: float) -> Any:
@@ -629,6 +631,7 @@ def _export_mesh(mesh: Any, path: Path, scale_factor: float) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     scaled = _scaled_mesh(mesh, scale_factor)
     scaled.export(str(path))
+
 
 def _colored(mesh: Any, color: tuple[int, int, int, int]) -> Any:
     copy = mesh.copy()
@@ -761,7 +764,9 @@ def export_printables(  # noqa: PLR0912, PLR0915
     else:
         _status(f"No real solar/{solar_source} mesh found for selected epoch/slot")
 
-    vision_mesh_path = find_solar_mesh(run_dir, "vision_cone_mask", selected_epoch, search_parent_for_solar, solar_dir, selected_slot)
+    vision_mesh_path = find_solar_mesh(
+        run_dir, "vision_cone_mask", selected_epoch, search_parent_for_solar, solar_dir, selected_slot
+    )
     if vision_mesh_path is not None:
         _status(f"Including real solar/vision_cone_mask mesh: {vision_mesh_path}")
         vision_part = _load_mesh(vision_mesh_path)
@@ -830,11 +835,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-dir", type=Path, default=None, help="Override config run_dir.")
     parser.add_argument("--out-dir", type=Path, default=None, help="Override config out_dir.")
     parser.add_argument("--assembly-mesh-dir", type=Path, default=None, help="Folder containing mesh_assembly_v4 exports.")
-    parser.add_argument("--assembly-slot", type=int, default=None, help="Assembly slot number to use, e.g. 0 for slot_00_mesh.ply.")
+    parser.add_argument(
+        "--assembly-slot", type=int, default=None, help="Assembly slot number to use, e.g. 0 for slot_00_mesh.ply."
+    )
     parser.add_argument("--epoch", type=int, default=None, help="Override config epoch. Omit for latest.")
     parser.add_argument("--shell-clearance-mm", type=float, default=None, help="Override config shell_clearance_mm.")
     parser.add_argument("--scale-factor", type=float, default=None, help="Override config scale_factor.")
-    parser.add_argument("--solar-source", type=str, default=None, help="Solar subfolder to include, e.g. selection, quality, penalty.")
+    parser.add_argument(
+        "--solar-source", type=str, default=None, help="Solar subfolder to include, e.g. selection, quality, penalty."
+    )
     parser.add_argument("--solar-dir", type=Path, default=None, help="Exact solar folder to search, e.g. .../run/solar.")
     parser.add_argument(
         "--keep-original-wheels",

@@ -9,7 +9,7 @@
 # ---------------------------------------------------------------------------
 
 # --- Input / Output ---------------------------------------------------------
-mesh_path: /cluster/work/fuge/AISCO/wp1_cfd_ai/FLUENT/GEOMETRY/RUN_156.ply
+mesh_path: /cluster/work/fuge/AISCO/wp1_cfd_ai/FLUENT/GEOMETRY/RUN_004.ply
 
 output_dir: /cluster/work/fuge/AISCO/wp9/rollout_viz/mesh_viz
 image_width:  1600
@@ -76,8 +76,8 @@ lighting:
 #               3.5 = zoomed out / showing more context
 
 camera:
-  azimuth:   90
-  elevation:  0
+  azimuth:   70
+  elevation:  10
   zoom:       3.5
 
 # --- Optional wireframe edges -----------------------------------------------
