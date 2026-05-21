@@ -24,11 +24,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import trimesh
+import wandb
 from torch import Tensor
 from torch.optim.optimizer import Optimizer
 from torch.profiler import record_function
 
-import wandb
 from subprojects.wp2_assembler.version4.utils.reg_imp import get_outer_prism_bounds_mm, scale_outer_prism
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.diversity_loss_manager import DiversityLossManager
@@ -1206,7 +1206,7 @@ class DiversityTrainer:
                 raw_norm = torch.nn.utils.clip_grad_norm_(self._model.parameters(), clip_threshold)
                 self._autoclip.update(float(raw_norm))
                 per_loss_gradient_log_data["grad/total_norm_pre_clip"] = float(raw_norm)
-                per_loss_gradient_log_data["grad/total_norm_post_clip"] = float(min(raw_norm, clip_threshold))
+                per_loss_gradient_log_data["grad/total_norm_post_clip"] = min(float(raw_norm), float(clip_threshold))
                 per_loss_gradient_log_data["grad/clip_threshold"] = float(clip_threshold)
 
             self._model_optimizer.step()
