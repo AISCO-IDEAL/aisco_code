@@ -55,6 +55,8 @@ general_info:
   cse_params:  # physical constants for CSE; also picks which category is drag/solar
     drag_category: "aero"
     solar_category: "solar"
+    optimize_drag: true   # if false, drag still feeds CSE as detached value (no CSE gradient to drag branch)
+    optimize_solar: true  # if false, solar still feeds CSE as detached value (no CSE gradient to solar branch)
     mass: 210
     c_losses: 20
     rolling_friction_coefficient: 0.006

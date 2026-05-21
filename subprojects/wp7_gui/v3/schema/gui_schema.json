@@ -38,6 +38,16 @@
       "label": "Losses",
       "params": [
         {
+          "path": "general_info.cse_params.optimize_drag",
+          "label": "Minimise Aerodynamic Drag",
+          "type": "bool"
+        },
+        {
+          "path": "general_info.cse_params.optimize_solar",
+          "label": "Maximise Solar Power",
+          "type": "bool"
+        },
+        {
           "path": "bb_config.assembly_id",
           "label": "Assembly ID (bb_config)",
           "type": "int",
