@@ -144,8 +144,8 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     _role: constraint
     _disabled_epochs: []
     null_loss_eikonal: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
-    eikonal_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v0.py"]
-    eikonal_v1: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v1.py"]
+    eikonal_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v0.py"]
+    eikonal_v1: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v1.py"]
 
   smoothness:
     _role: aux
@@ -220,7 +220,7 @@ domain_pts_sampling: # used in eikonal and smoothness loss  #  parent_loss.py: c
   # 0.0 = legacy behaviour (fixed uniform prism points, never refreshed).
   # 0.5 = half near-surface (found via cheap no-grad coarse pass) + half fresh uniform.
   # Recommended starting value: 0.5 — ensures ~50% of gradient signal comes from surface region.
-  eikonal_near_surface_fraction: 0.0
+  eikonal_near_surface_fraction: 0.4
 
 
 # Constraint-aware diversity variants. Cutoffs are in SDF coordinates (mm).
