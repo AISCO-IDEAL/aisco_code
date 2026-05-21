@@ -1,4 +1,7 @@
-import subprojects.fixed_renderer.cuda.rasterize as rasterize_cuda
+try:
+    import subprojects.fixed_renderer.cuda.rasterize as rasterize_cuda
+except ModuleNotFoundError:
+    import subprojects.fixed_renderer.rasterize as rasterize_cuda
 import torch
 import torch.nn.functional as F
 from torch import nn
