@@ -736,7 +736,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         save_population_meshes(
             model=model,
             population_z=final_Z,
-            storage_path=_local_storage_root if run_locally else general_config["storage_paths"].get(
+            storage_path=_local_storage_root
+            if run_locally
+            else general_config["storage_paths"].get(
                 "storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
             ),
             wandb_run=wandb_name,
@@ -752,7 +754,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
     allround_save_data(
         model=model,
-        storage_path=_local_storage_root if run_locally else general_config["storage_paths"].get("storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"),
+        storage_path=_local_storage_root
+        if run_locally
+        else general_config["storage_paths"].get("storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"),
         save_model=True,
         save_mesh=True,
         verbose=verbose,

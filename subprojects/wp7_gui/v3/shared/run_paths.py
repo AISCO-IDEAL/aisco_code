@@ -12,9 +12,9 @@ from pathlib import Path
 
 import yaml
 
-from subprojects.wp7_gui.v3.core.settings import SETTINGS
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import Environment as RuntimeEnv
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import detect_environment
+from subprojects.wp7_gui.v3.core.settings import SETTINGS
 
 LOGGER = logging.getLogger(__name__)
 
