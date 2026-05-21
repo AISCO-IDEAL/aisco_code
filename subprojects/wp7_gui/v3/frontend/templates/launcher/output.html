@@ -283,7 +283,7 @@
     const isLive = pipeline === "live";
     const LAUNCHER_API = "/launcher/api";
     const VIEWER_API = "/viewer/api";
-    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260521_1";
+    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260521_2";
     const PANEL_VISIBILITY_DEFAULTS = {{ panel_visibility_defaults_json | safe }};
     const PANEL_DEFAULTS = PANEL_VISIBILITY_DEFAULTS.launcher;
     const modeKey = isLive ? "live" : "completed";
@@ -383,7 +383,7 @@
 
         import(MESH_VIEWER_MODULE).then(function (mod) {
             if (!primaryGlbViewer) {
-                primaryGlbViewer = mod.initMeshViewer(primaryGlbMeshBox);
+                primaryGlbViewer = mod.initMeshViewer(primaryGlbMeshBox, { controlMode: "turntable" });
                 primaryGlbViewer.setGlbControlsHost(primaryGlbControls);
                 primaryGlbViewer.setOnControlsChange(function (vs) {
                     primaryUserView = vs;
@@ -576,7 +576,7 @@
 
         import(MESH_VIEWER_MODULE).then(function (mod) {
             if (!rightPanelViewer) {
-                rightPanelViewer = mod.initMeshViewer(rightPanelMeshBox);
+                rightPanelViewer = mod.initMeshViewer(rightPanelMeshBox, { controlMode: "turntable" });
                 rightPanelViewer.setGlbControlsHost(rightPanelGlbControls);
                 rightPanelViewer.setOnControlsChange(function (vs) {
                     rightPanelUserView = vs;

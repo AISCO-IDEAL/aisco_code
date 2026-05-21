@@ -488,10 +488,10 @@ endblock %}
     function loadAssemblyMesh() {
         const url = `${API}/assembly-selection/mesh?pipeline=${pipeline}&t=${Date.now()}`;
         meshMeta.textContent = "Loading assembly.ply...";
-        import("/static/js/mesh_viewer.js").then(({ initMeshViewer }) => {
+        import("/static/js/mesh_viewer.js?v=20260521_turntable").then(({ initMeshViewer }) => {
             const isFirstLoad = !meshViewer;
             if (!meshViewer) {
-                meshViewer = initMeshViewer(meshContainer);
+                meshViewer = initMeshViewer(meshContainer, { controlMode: "turntable" });
             }
             if (assemblyPlyColorRgb && typeof meshViewer.setPlyFallbackColorRgb === "function") {
                 meshViewer.setPlyFallbackColorRgb(assemblyPlyColorRgb);
