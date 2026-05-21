@@ -14,7 +14,10 @@ export LD_LIBRARY_PATH=/usr/lib/wsl/lib:$LD_LIBRARY_PATH
 umask 0002 # ensure group write permissions for logs and models
 
 
-PROJECT_ROOT="$HOME/AISCO_code"
+# Resolve repository root from this script location (v2/slurm_scripts -> repo root)
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+DEFAULT_PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/../../../.." && pwd -P)"
+PROJECT_ROOT="${AISCO_PROJECT_ROOT:-$DEFAULT_PROJECT_ROOT}"
 VENV_DIR="$PROJECT_ROOT/aisco_env"
 
 #------------------------------------------------------------------------------
