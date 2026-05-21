@@ -42,6 +42,61 @@ _PRISM_Y = (-1150.0, 1150.0)
 _PRISM_Z = (0.0, 1650.0)
 
 # ---------------------------------------------------------------------------
+# Pretrained checkpoint registry
+# ---------------------------------------------------------------------------
+
+# Set this path once the 8 pretrained subfolders are ready.
+# Each subfolder must contain a .pth checkpoint file (anywhere in its tree) and
+# optionally .glb assembly files and a model_info_dict.json.
+# Set to None to leave the GUI selector active but not yet backed by real files.
+PRETRAINED_ROOT: Path | None = None
+
+# Maps (wheels, solar, drag) → subfolder name within PRETRAINED_ROOT.
+# wheels: 3 or 4 · solar: True = on · drag: True = on
+_PRETRAINED_SUBFOLDER_MAP: dict[tuple[int, bool, bool], str] = {
+    (3, True, True): "wheels3_solar_drag",
+    (3, True, False): "wheels3_solar_nodrag",
+    (3, False, True): "wheels3_nosolar_drag",
+    (3, False, False): "wheels3_nosolar_nodrag",
+    (4, True, True): "wheels4_solar_drag",
+    (4, True, False): "wheels4_solar_nodrag",
+    (4, False, True): "wheels4_nosolar_drag",
+    (4, False, False): "wheels4_nosolar_nodrag",
+}
+
+
+def resolve_pretrained_path(wheels: int, solar: bool, drag: bool) -> Path:
+    """Return the subfolder path for a pretrained (wheels, solar, drag) combination.
+
+    Args:
+        wheels: Number of wheels (3 or 4).
+        solar: Whether the solar objective is active.
+        drag: Whether the drag objective is active.
+
+    Returns:
+        Path to the pretrained subfolder inside PRETRAINED_ROOT.
+
+    Raises:
+        ValueError: When PRETRAINED_ROOT is not configured or the key is unknown.
+        FileNotFoundError: When the resolved subfolder does not exist on disk.
+    """
+    if PRETRAINED_ROOT is None:
+        raise ValueError("PRETRAINED_ROOT is not configured. Set it in subprojects/wp7_gui/v3/shared/latent_explorer.py.")
+    key = (wheels, solar, drag)
+    if key not in _PRETRAINED_SUBFOLDER_MAP:
+        raise ValueError(
+            f"Unknown pretrained key: wheels={wheels}, solar={solar}, drag={drag}. "
+            "Expected wheels ∈ {3, 4}, solar/drag ∈ {True, False}."
+        )
+    folder = PRETRAINED_ROOT / _PRETRAINED_SUBFOLDER_MAP[key]
+    if not folder.exists():
+        raise FileNotFoundError(
+            f"Pretrained subfolder not found: {folder}. Ensure the folder exists and contains a .pth checkpoint."
+        )
+    return folder
+
+
+# ---------------------------------------------------------------------------
 # Security: allowed path roots
 # ---------------------------------------------------------------------------
 
@@ -54,6 +109,8 @@ _ALLOWED_ROOTS: list[Path] = [
 def is_checkpoint_path_allowed(ckpt_path: Path) -> bool:
     """Return True iff *ckpt_path* resolves to a location inside an allowed root.
 
+    Also accepts paths under PRETRAINED_ROOT when it is configured.
+
     Args:
         ckpt_path: Candidate checkpoint path (may be relative or unresolved).
 
@@ -62,7 +119,10 @@ def is_checkpoint_path_allowed(ckpt_path: Path) -> bool:
     """
     try:
         resolved = ckpt_path.resolve()
-        return any(resolved.is_relative_to(root) for root in _ALLOWED_ROOTS)
+        roots = _ALLOWED_ROOTS[:]
+        if PRETRAINED_ROOT is not None:
+            roots.append(PRETRAINED_ROOT)
+        return any(resolved.is_relative_to(root) for root in roots)
     except (OSError, ValueError):
         return False
 
@@ -95,6 +155,14 @@ def _find_assembly_glb(ckpt_path: Path) -> Path | None:
             break
         search = search.parent
     else:
+        # mesh_assembly_v4 not found; fall back to any direct .glb in the hierarchy
+        # (e.g. pretrained subfolders that ship a pre-baked assembly.glb).
+        fallback = ckpt_path.parent
+        for _ in range(3):
+            direct = sorted(fallback.glob("*.glb"))
+            if direct:
+                return direct[-1]
+            fallback = fallback.parent
         return None
 
     available = sorted(assembly_dir.glob("epoch_*/slot_00_mesh.glb"))
@@ -453,7 +521,7 @@ def extract_mesh_glb(
             scene = trimesh.load(str(assembly_glb), force="scene")
             if hasattr(scene, "geometry") and "sdf_mesh" in scene.geometry:
                 scene.geometry["sdf_mesh"] = sdf_mesh
-                return scene.export(file_type="glb")  # type: ignore[return-value]
+                return scene.export(file_obj=None, file_type="glb")  # type: ignore[return-value]
         except Exception:
             pass  # fall through to single-mesh export
 

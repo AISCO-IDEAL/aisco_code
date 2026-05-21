@@ -13,8 +13,50 @@
     <!-- ====== LEFT PANEL: controls + canvas ====== -->
     <div style="display:flex; flex-direction:column; gap:10px; min-height:0; overflow:auto;">
 
+        <!-- Pretrained selector -->
+        <div class="dark-card" style="display:flex; flex-direction:column; gap:10px;">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <span style="font-size:0.82rem; color:var(--theme-warning-text); font-weight:700;">Pretrained
+                    Checkpoints</span>
+                {% if not pretrained_configured %}
+                <span style="font-size:0.72rem; color:var(--muted); padding:2px 8px; border-radius:10px;
+                             background:color-mix(in srgb, var(--theme-warning-text) 10%, transparent);">
+                    root not configured
+                </span>
+                {% endif %}
+            </div>
+
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:0.78rem; color:var(--muted); width:54px; flex-shrink:0;">Wheels</span>
+                <div style="display:flex; gap:4px;" id="wheelsToggle">
+                    <button class="btn" data-value="3">3</button>
+                    <button class="btn secondary" data-value="4">4</button>
+                </div>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:0.78rem; color:var(--muted); width:54px; flex-shrink:0;">Solar</span>
+                <div style="display:flex; gap:4px;" id="solarToggle">
+                    <button class="btn" data-value="true">On</button>
+                    <button class="btn secondary" data-value="false">Off</button>
+                </div>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:0.78rem; color:var(--muted); width:54px; flex-shrink:0;">Drag</span>
+                <div style="display:flex; gap:4px;" id="dragToggle">
+                    <button class="btn" data-value="true">On</button>
+                    <button class="btn secondary" data-value="false">Off</button>
+                </div>
+            </div>
+
+            <button class="btn" id="btnAutoLoad" style="align-self:flex-start;">Load Pretrained</button>
+        </div>
+
+        <!-- Manual / custom checkpoint -->
         <div class="dark-card" style="display:flex; flex-direction:column; gap:8px;">
-            <label style="font-size:0.78rem; color:var(--theme-muted);">Checkpoint path or run directory</label>
+            <span style="font-size:0.78rem; color:var(--muted); font-weight:600;">Custom Checkpoint</span>
+            <label style="font-size:0.78rem; color:var(--theme-muted);">Path or run directory</label>
             <input id="ckptInput" type="text" placeholder="/cluster/work/fuge/AISCO/…" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:0.80rem;
                background:var(--theme-bg-input, #1e1e2e); color:var(--theme-fg, #cdd6f4);
                border:1px solid var(--theme-border, #45475a); border-radius:4px; outline:none;" />
@@ -57,7 +99,8 @@
 </div>
 
 <script>
-    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260521_1";
+    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260521_2";
+    const PRETRAINED_CONFIGURED = {{ 'true' if pretrained_configured else 'false' }};
 
     // ---------------------------------------------------------------------------
     // State
@@ -67,6 +110,43 @@
     let zPretrained = [];   // [[z0, z1], ...]
     let clickedZ = null;    // [z0, z1] of last click
     let viewer = null;
+
+    // Pretrained selector state
+    let selectedWheels = 3;
+    let selectedSolar = true;
+    let selectedDrag = true;
+
+    // ---------------------------------------------------------------------------
+    // Pretrained toggle groups
+    // ---------------------------------------------------------------------------
+    function bindToggleGroup(groupId, onChange) {
+        const group = document.getElementById(groupId);
+        group.querySelectorAll("button").forEach((btn) => {
+            btn.addEventListener("click", () => {
+                group.querySelectorAll("button").forEach((b) => b.className = "btn secondary");
+                btn.className = "btn";
+                onChange(btn.dataset.value);
+            });
+        });
+    }
+
+    bindToggleGroup("wheelsToggle", (v) => { selectedWheels = parseInt(v, 10); });
+    bindToggleGroup("solarToggle", (v) => { selectedSolar = v === "true"; });
+    bindToggleGroup("dragToggle", (v) => { selectedDrag = v === "true"; });
+
+    // ---------------------------------------------------------------------------
+    // Shared helper: apply a load-checkpoint API response
+    // ---------------------------------------------------------------------------
+    function applyCheckpointResponse(data) {
+        resolvedPath = data.resolved_path;
+        zRadius = data.z_radius || 2.0;
+        zPretrained = data.z_pretrained || [];
+        clickedZ = null;
+        statusMsg.textContent =
+            `Loaded · z_dim=${data.z_dim} · z_radius=${zRadius.toFixed(3)} ` +
+            `· ${zPretrained.length} anchors · ${data.resolved_path.split("/").pop()}`;
+        drawCanvas(null);
+    }
 
     // ---------------------------------------------------------------------------
     // Canvas setup
@@ -165,6 +245,32 @@
     drawCanvas(null);
 
     // ---------------------------------------------------------------------------
+    // Pretrained auto-load
+    // ---------------------------------------------------------------------------
+    document.getElementById("btnAutoLoad").addEventListener("click", async () => {
+        statusMsg.textContent = "Loading pretrained checkpoint…";
+        try {
+            const resp = await fetch("/viewer/api/latent/load-pretrained", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    wheels: selectedWheels,
+                    solar: selectedSolar,
+                    drag: selectedDrag,
+                }),
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                statusMsg.textContent = "Error: " + (data.detail?.message || resp.statusText);
+                return;
+            }
+            applyCheckpointResponse(data);
+        } catch (err) {
+            statusMsg.textContent = "Network error: " + err.message;
+        }
+    });
+
+    // ---------------------------------------------------------------------------
     // Checkpoint loading
     // ---------------------------------------------------------------------------
     document.getElementById("btnLoad").addEventListener("click", async () => {
@@ -182,14 +288,7 @@
                 statusMsg.textContent = "Error: " + (data.detail?.message || resp.statusText);
                 return;
             }
-            resolvedPath = data.resolved_path;
-            zRadius = data.z_radius || 2.0;
-            zPretrained = data.z_pretrained || [];
-            clickedZ = null;
-            statusMsg.textContent =
-                `Loaded · z_dim=${data.z_dim} · z_radius=${zRadius.toFixed(3)} ` +
-                `· ${zPretrained.length} anchors · ${data.resolved_path.split("/").pop()}`;
-            drawCanvas(null);
+            applyCheckpointResponse(data);
         } catch (err) {
             statusMsg.textContent = "Network error: " + err.message;
         }
@@ -227,7 +326,7 @@
             const container = document.getElementById("meshContainer");
             if (!viewer) {
                 const { initMeshViewer } = await import(MESH_VIEWER_MODULE);
-                viewer = initMeshViewer(container, { turntable: true });
+                viewer = initMeshViewer(container, { controlMode: "turntable" });
                 const glbControls = document.getElementById("glbControls");
                 viewer.setGlbControlsHost(glbControls);
             }

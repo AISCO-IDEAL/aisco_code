@@ -17,10 +17,12 @@ from pydantic import BaseModel
 from subprojects.wp7_gui.v3.core.settings import SETTINGS
 from subprojects.wp7_gui.v3.shared.artifact_index import list_artifacts
 from subprojects.wp7_gui.v3.shared.latent_explorer import (
+    PRETRAINED_ROOT,
     extract_mesh_glb,
     find_last_epoch_checkpoint,
     is_checkpoint_path_allowed,
     load_checkpoint_info,
+    resolve_pretrained_path,
 )
 from subprojects.wp7_gui.v3.shared.panel_visibility import load_panel_visibility_defaults
 from subprojects.wp7_gui.v3.shared.pretraining import PretrainingService
@@ -150,6 +152,12 @@ class _LoadCheckpointBody(BaseModel):
     checkpoint_path: str
 
 
+class _LoadPretrainedBody(BaseModel):
+    wheels: int
+    solar: bool
+    drag: bool
+
+
 class _QueryMeshBody(BaseModel):
     checkpoint_path: str
     z0: float
@@ -168,6 +176,7 @@ def viewer_latent_explorer(request: Request) -> Any:
             "pipeline": "completed",
             "active_page": "latent-explorer",
             "page_title": "Latent Explorer",
+            "pretrained_configured": PRETRAINED_ROOT is not None,
             **theme_ctx,
         },
     )
@@ -187,6 +196,35 @@ def api_latent_load_checkpoint(body: _LoadCheckpointBody) -> JSONResponse:
         )
     try:
         ckpt_path = find_last_epoch_checkpoint(ckpt_path)
+        device = torch.device(_DEFAULT_DEVICE)
+        info = load_checkpoint_info(ckpt_path, device)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
+    return JSONResponse(
+        content={
+            "resolved_path": str(ckpt_path),
+            "z_dim": info["z_dim"],
+            "z_radius": info["z_radius"],
+            "z_pretrained": info["z_pretrained"],
+        }
+    )
+
+
+@router.post("/api/latent/load-pretrained")
+def api_latent_load_pretrained(body: _LoadPretrainedBody) -> JSONResponse:
+    """Resolve and load a pretrained checkpoint by (wheels, solar, drag) key.
+
+    Maps the three binary keys to a subfolder inside PRETRAINED_ROOT, then finds
+    and loads the highest-epoch checkpoint within that subfolder.
+    """
+    if body.wheels not in (3, 4):
+        raise HTTPException(status_code=400, detail={"message": "wheels must be 3 or 4"})
+    try:
+        subfolder = resolve_pretrained_path(body.wheels, body.solar, body.drag)
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
+    try:
+        ckpt_path = find_last_epoch_checkpoint(subfolder)
         device = torch.device(_DEFAULT_DEVICE)
         info = load_checkpoint_info(ckpt_path, device)
     except (FileNotFoundError, ValueError) as exc:

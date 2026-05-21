@@ -51,16 +51,10 @@
               class="{% if active_page == 'output' %}active{% endif %}">Output</a>
           </nav>
           {% elif active_mode == 'launcher' and _pl == 'completed' %}
-          <a href="/launcher/assembly-selection?pipeline=completed" class="mode-btn mode-btn--active">Completed</a>
+          <a href="/viewer/latent-explorer" class="mode-btn mode-btn--active">Completed</a>
           <nav class="sub-nav" aria-label="Completed sub-navigation">
-            <a href="/launcher/assembly-selection?pipeline=completed"
-              class="{% if active_page == 'assembly-selection' %}active{% endif %}">Assembly Selection</a>
-            <a href="/launcher/config-overrides?pipeline=completed"
-              class="{% if active_page == 'config-overrides' %}active{% endif %}">Config Overrides</a>
-            <a href="/launcher/output?pipeline=completed"
-              class="{% if active_page == 'output' %}active{% endif %}">Output</a>
-            <a href="/viewer/latent-explorer?pipeline=completed"
-              class="{% if active_page == 'latent-explorer' %}active{% endif %}">Latent Explorer</a>
+            <a href="/viewer/latent-explorer" class="{% if active_page == 'latent-explorer' %}active{% endif %}">Latent
+              Explorer</a>
           </nav>
           {% elif active_mode == 'viewer' %}
           <a href="/viewer" class="mode-btn mode-btn--active">Archive</a>
