@@ -9,10 +9,10 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 import torch
+import wandb
 import yaml
 from torch_geometric.data import Batch, Data
 
-import wandb
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.sdf_influence import compute_sdf_parameter_influence
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.shear_force import ShearForce
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.metadata import DATASET_METADATA
