@@ -36,6 +36,7 @@ wandb_general:
   use_neural_renderer: True  # total_loss.py, main_v1_1_one_model.py: general_config["wandb_general"].get("use_neural_renderer", False)
   rendering_frequency: 1  # total_loss.py: general_config["wandb_general"].get("rendering_frequency")
   wandb_mode: online # online: syncs immediately, offline: saves locally when you run `wandb sync` in the command line
+  wandb_dir: "/tmp" # local directory for wandb run files; /tmp cleans up automatically after runs
 
 vis_manager: "v2"
 

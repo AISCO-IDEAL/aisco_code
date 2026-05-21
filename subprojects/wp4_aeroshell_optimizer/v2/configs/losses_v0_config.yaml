@@ -98,13 +98,14 @@ general_info:
       #wheel_loss_enforce_v2:
       #  fixed_grad_scale: 0.1
       #  fixed_loss_scale: 0.000001
+      # IMPORTANT: SCALE FACTORS ARE MULTIPLIED WITH THE LOSS/GRAD!
       bb_inner_v1:                    # ← ADD THIS
         fixed_grad_scale: 0.05
       bb_outer_v0:
         fixed_grad_scale: 0.008
         fixed_loss_scale: 0.00035
       bb_outer_v1:
-        fixed_grad_scale: 0.05
+        fixed_grad_scale: 0.005
         fixed_loss_scale: 0.00035
 
 losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically loads all losses with compute=1
@@ -305,11 +306,11 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
   # v4.3 analytic specific:
   analytic_options:
     penalty: "softplus"  # "relu" (default) or "softplus"
-    softplus_beta: 10.0  # only used when penalty="softplus"
-    inner_margin: 20.0  # tighten upper bound: sdf_model <= sdf_inner - inner_margin
-    outer_margin: 20.0  # tighten lower bound: sdf_outer + outer_margin <= sdf_model
+    softplus_beta: 2.0  # only used when penalty="softplus"
+    inner_margin: 0.0  # tighten upper bound: sdf_model <= sdf_inner - inner_margin
+    outer_margin: 0.0  # tighten lower bound: sdf_outer + outer_margin <= sdf_model
     inner_tolerance: 0.0  # GINN-style "satisfied" deadband on aggregated bb_inner L2 loss: clamp(loss - tol, 0). Stops λ from drifting once practically satisfied. 0 = disabled.
-    outer_tolerance: 0.0  # same for bb_outer
+    outer_tolerance: 50.0  # same for bb_outer
     topk_fraction: 0.6  # (BbV5/BbV6) fraction of worst-violating points to include in loss reduction; 0.1 = top 10%
   # v4.sel nbz selection:
   nbz_selection: "both"  # "outer", or "both"
@@ -369,7 +370,7 @@ developability_config:
   mesh_isovalue: 0.0
   mesh_batch_size: 8192
   # Post-optimization: runs C++ L-BFGS after the final training epoch
-  post_opt_enabled: True   # Enable post-epoch optimization with subdivisions
+  post_opt_enabled: False   # Enable post-epoch optimization with subdivisions
   post_opt_energy_type: 4   # same as energy_type by default
   post_opt_linesearch: 1    # 0=NONE, 1=OVERTON, 2=BACKTRACK
   post_opt_step_type: 1     # 0=GRADDESC, 1=LBFGS
@@ -388,5 +389,5 @@ wheel_loss_config:
   threshold_relu: -0.0 # z-gradient threshold for wheel loss v3; gradients above this value are penalized linearly, while gradients below are not penalized (should be negative, e.g. -0.3 means z gradients above -0.3 are penalized, while z gradients of -0.3 or smaller are not penalized)
   manual_z_shift: 0.0 # manual shift applied to z-coordinate of wheel loss sample points, to give more room for the SDF to find a solution
   enforce_alignment_weight: 0.4 # wheel_loss_enforce_v2 only: weight on the ∇sdf ∥ ẑ ground-tangency aux relative to the primary projection-as-target loss
-  interface_tolerance: 0.0  # GINN-style "satisfied" deadband on aggregated wheel_interface L2 loss: clamp(loss - tol, 0). Stops λ from drifting once practically satisfied. 0 = disabled.
-  alignment_tolerance: 0.0  # same for wheel_alignment
+  interface_tolerance: 10.0  # GINN-style "satisfied" deadband on aggregated wheel_interface L2 loss: clamp(loss - tol, 0). Stops λ from drifting once practically satisfied. 0 = disabled.
+  alignment_tolerance: 0.3 # same for wheel_alignment

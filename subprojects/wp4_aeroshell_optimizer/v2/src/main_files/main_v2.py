@@ -130,6 +130,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 project=general_config["wandb_general"]["project_name"],
                 name=wandb_run_name,
                 config=general_config,
+                dir=general_config["wandb_general"].get("wandb_dir", "/tmp"),
             )
             # On Euler, append job ID to wandb's auto-generated name for uniqueness
             if not run_locally:
