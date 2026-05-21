@@ -59,6 +59,8 @@
               class="{% if active_page == 'config-overrides' %}active{% endif %}">Config Overrides</a>
             <a href="/launcher/output?pipeline=completed"
               class="{% if active_page == 'output' %}active{% endif %}">Output</a>
+            <a href="/viewer/latent-explorer?pipeline=completed"
+              class="{% if active_page == 'latent-explorer' %}active{% endif %}">Latent Explorer</a>
           </nav>
           {% elif active_mode == 'viewer' %}
           <a href="/viewer" class="mode-btn mode-btn--active">Archive</a>
@@ -66,8 +68,6 @@
             <a href="/viewer" class="{% if active_page == 'runs' %}active{% endif %}">Finished Runs</a>
             <a href="/viewer/pretraining" class="{% if active_page == 'pretraining' %}active{% endif %}">Pretraining
               GIFs</a>
-            <a href="/viewer/latent-explorer" class="{% if active_page == 'latent-explorer' %}active{% endif %}">Latent
-              Explorer</a>
           </nav>
           {% endif %}
         </div>

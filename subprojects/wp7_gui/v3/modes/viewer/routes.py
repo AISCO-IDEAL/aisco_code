@@ -164,9 +164,10 @@ def viewer_latent_explorer(request: Request) -> Any:
         request,
         "viewer/latent_explorer.html",
         {
-            "active_mode": "viewer",
+            "active_mode": "launcher",
+            "pipeline": "completed",
             "active_page": "latent-explorer",
-            "page_title": "Viewer — Latent Explorer",
+            "page_title": "Latent Explorer",
             **theme_ctx,
         },
     )
