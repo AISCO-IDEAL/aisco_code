@@ -232,9 +232,15 @@
                 viewer.setGlbControlsHost(glbControls);
             }
 
+            // Preserve camera position across latent-point switches.
+            const savedView = viewer ? viewer.getViewState() : null;
+
             viewer.loadMesh(
                 meshUrl,
                 () => {
+                    if (savedView) {
+                        viewer.setViewState(savedView);
+                    }
                     statusMsg.textContent =
                         `Mesh loaded · z=(${z0.toFixed(3)}, ${z1.toFixed(3)})`;
                     const glbControls = document.getElementById("glbControls");
