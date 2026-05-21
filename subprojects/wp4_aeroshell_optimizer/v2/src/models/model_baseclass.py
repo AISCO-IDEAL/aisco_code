@@ -15,6 +15,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss import TotalLo
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import build_optimizer, get_optimizer_telemetry
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import detect_environment, Environment
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
     DebugManager,
     collect_alm_state,
@@ -335,8 +336,9 @@ class BaseModel(nn.Module):
                 allround_save_data(
                     model=self,
                     storage_path=(
-                        general_config["storage_paths"].get("beast_storage_dir")
-                        or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
+                        general_config["storage_paths"].get("beast_storage_dir", "./local_storage_dir")
+                        if detect_environment() == Environment.AISCO_BEAST
+                        else general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
                     )
                     if _run_locally
                     else general_config["storage_paths"].get(
@@ -376,8 +378,10 @@ class BaseModel(nn.Module):
                 _storage_paths = general_config.get("storage_paths", {})
                 _run_locally = general_config.get("general_info", {}).get("run_locally", "False") == "True"
                 if _run_locally:
-                    storage_dir = _storage_paths.get("beast_storage_dir") or _storage_paths.get(
-                        "local_storage_dir", "./local_storage_dir"
+                    storage_dir = (
+                        _storage_paths.get("beast_storage_dir", "./local_storage_dir")
+                        if detect_environment() == Environment.AISCO_BEAST
+                        else _storage_paths.get("local_storage_dir", "./local_storage_dir")
                     )
                 else:
                     storage_dir = _storage_paths.get(

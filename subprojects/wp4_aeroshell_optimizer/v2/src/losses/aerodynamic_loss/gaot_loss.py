@@ -9,7 +9,7 @@ from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.model_loader import ModelLoader as 
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.model_loader import ModelLoader as ModelLoader3
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.model_loader import ModelLoader as ModelLoader1
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.parent_loss import ParentLoss
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import Environment, detect_environment
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import is_local_machine
 
 if TYPE_CHECKING:
     from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
@@ -33,7 +33,7 @@ class GaotLoss(ParentLoss):
             warnings.warn("You are using an old Version of the GAOT", stacklevel=2)
             self.gaot = ModelLoader2(cfd_config=self.losses_config["cfd"], device=self.device)
         elif version == 3:
-            if detect_environment() == Environment.AISCO_BEAST:
+            if is_local_machine():
                 self.gaot = ModelLoader3(cfd_config=self.losses_config["cfd_local"], device=self.device)
             else:
                 self.gaot = ModelLoader3(cfd_config=self.losses_config["cfd"], device=self.device)

@@ -49,7 +49,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config as _load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import DebugManager
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import is_cluster
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import is_cluster, detect_environment, Environment
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import smart_model_init
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
@@ -190,7 +190,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     # Root is /home/aisco on local Beast/WSL and /cluster/work/fuge on Euler/SLURM.
     early_stop_cfg = general_config.get("early_stopping", {})
     sentinel_rel = str(early_stop_cfg.get("sentinel_relative_path", "AISCO/00_early_stopping/STOP_RUN"))
-    sentinel_root = Path("/cluster/work/fuge") if is_cluster() else Path("/home/aisco")
+    sentinel_root = Path("/cluster/work/fuge") if is_cluster() else Path.home()
     sentinel_path = sentinel_root / Path(sentinel_rel)
     if verbose:
         print(f"Early stopping sentinel enabled: {sentinel_path}")
@@ -216,20 +216,20 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             "Check models.json and the model implementation."
         )
 
+    # Resolve local storage root once for the entire run (env-aware).
+    _env = detect_environment()
+    if _env == Environment.AISCO_BEAST:
+        _local_storage_root = general_config["storage_paths"].get("beast_storage_dir", "./local_storage_dir")
+    else:
+        _local_storage_root = general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
+
     # Shared rendering-dir logic (used by both legacy and diversity paths)
     model_hash = dict_hashing(model.get_model_info_dict())
     wandb_name = wandb.run.name if wandb.run is not None else None
     rendering_dir: Path | None = None
     if wandb_name is not None:
         if run_locally:
-            rendering_dir = (
-                Path(
-                    general_config["storage_paths"].get("beast_storage_dir")
-                    or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
-                )
-                / model_hash
-                / reformat_wandb_name(wandb_name)
-            )
+            rendering_dir = Path(_local_storage_root) / model_hash / reformat_wandb_name(wandb_name)
         else:
             rendering_dir = Path(general_config["storage_paths"]["storage_dir"]) / model_hash / reformat_wandb_name(wandb_name)
         os.makedirs(rendering_dir, exist_ok=True)
@@ -367,10 +367,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
         # Canonical base dir for solitary pretraining (environment-aware)
         if run_locally:
-            _local_root = general_config["storage_paths"].get("beast_storage_dir") or general_config["storage_paths"].get(
-                "local_storage_dir", "./local_storage_dir"
-            )
-            solitary_base_dir = Path(_local_root) / "pretraining" / "solitary_pretraining"
+            solitary_base_dir = Path(_local_storage_root) / "pretraining" / "solitary_pretraining"
         else:
             solitary_base_dir = Path("/cluster/work/fuge/AISCO/pretraining/solitary_pretraining")
 
@@ -437,10 +434,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             conflict_output_dir = Path(conflict_output_dir_str)
         elif wandb_name is not None:
             if run_locally:
-                base_dir = Path(
-                    general_config["storage_paths"].get("beast_storage_dir")
-                    or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
-                )
+                base_dir = Path(_local_storage_root)
             else:
                 base_dir = Path(general_config["storage_paths"]["storage_dir"])
             conflict_output_dir = base_dir / model_hash / reformat_wandb_name(wandb_name) / "gradient_conflict"
@@ -677,12 +671,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 if (epoch + 1) % mesh_save_interval == 0:
                     allround_save_data(
                         model=model,
-                        storage_path=(
-                            general_config["storage_paths"].get("beast_storage_dir")
-                            or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
-                        )
-                        if run_locally
-                        else general_config["storage_paths"]["storage_dir"],
+                        storage_path=_local_storage_root if run_locally else general_config["storage_paths"]["storage_dir"],
                         save_model=True,
                         save_mesh=True,
                         epoch=epoch + 1,
@@ -745,12 +734,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         save_population_meshes(
             model=model,
             population_z=final_Z,
-            storage_path=(
-                general_config["storage_paths"].get("beast_storage_dir")
-                or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
-            )
-            if run_locally
-            else general_config["storage_paths"].get(
+            storage_path=_local_storage_root if run_locally else general_config["storage_paths"].get(
                 "storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
             ),
             wandb_run=wandb_name,
@@ -766,12 +750,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
     allround_save_data(
         model=model,
-        storage_path=(
-            general_config["storage_paths"].get("beast_storage_dir")
-            or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
-        )
-        if run_locally
-        else general_config["storage_paths"].get("storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"),
+        storage_path=_local_storage_root if run_locally else general_config["storage_paths"].get("storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"),
         save_model=True,
         save_mesh=True,
         verbose=verbose,

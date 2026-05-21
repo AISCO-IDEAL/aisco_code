@@ -68,8 +68,16 @@ def _detect_wp4_active_version(wp4_package_root: Path) -> str:
 
 def _detect_runtime_environment() -> RuntimeEnvironment:
     """Detect whether we run on Beast/WSL or cluster-like hosts."""
-    if "WSL_DISTRO_NAME" in os.environ:
+    # WSL check first — hostname can mirror the Windows host name.
+    if any(var in os.environ for var in ("WSL_DISTRO_NAME", "WSL_INTEROP", "WSLENV")):
         return RuntimeEnvironment.WSL
+    for probe in ("/proc/sys/kernel/osrelease", "/proc/version"):
+        try:
+            text = Path(probe).read_text(encoding="utf-8", errors="ignore").lower()
+            if "microsoft" in text or "wsl" in text:
+                return RuntimeEnvironment.WSL
+        except OSError:
+            continue
 
     hostname = socket.gethostname()
     if hostname == "AISCO-Beast":
@@ -90,7 +98,9 @@ def build_settings() -> Settings:
     wp4_configs_dir = wp4_active_root / "configs"
     runtime_environment = _detect_runtime_environment()
 
-    if runtime_environment in {RuntimeEnvironment.AISCO_BEAST, RuntimeEnvironment.WSL}:
+    if runtime_environment == RuntimeEnvironment.WSL:
+        run_local_script = wp4_active_root / "slurm_scripts" / "run_local_wsl.sh"
+    elif runtime_environment == RuntimeEnvironment.AISCO_BEAST:
         run_local_script = wp4_active_root / "slurm_scripts" / "run_local_beast.sh"
     else:
         run_local_script = wp4_active_root / "slurm_scripts" / "run_local_cluster.sh"

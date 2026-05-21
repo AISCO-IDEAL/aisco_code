@@ -306,6 +306,7 @@ cfd:
 
 cfd_local:
   model_id: 65531686      # Options: Any Euler-run-id that trained a Gaot-Model in Version 2/3 or a key for Version 1
+  metrics_csv_path: "/home/eschaerer/AISCO_code/subprojects/wp1_cfd_ai/data_wsl/metric.csv"
   version: 3              # Options: 1, 2, 3      Recomendation: 3
   visualisations: true    # Options: true, false  Recomendation: true
   v_inf: 25.0             # Default: 25.0         Recomendation: Has to Match the Value used during respective GAOT-Training

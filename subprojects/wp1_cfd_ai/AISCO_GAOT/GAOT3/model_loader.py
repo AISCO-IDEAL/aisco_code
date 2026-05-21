@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import copy
+import csv
 import os
 import warnings
 from dataclasses import replace as _replace
@@ -61,15 +62,20 @@ class ModelLoader:
         )
 
     def _get_checkpoint_path(self) -> str:
-        try:
-            df = pd.read_csv("/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv")
-        except FileNotFoundError:
-            df = pd.read_csv("/home/aisco/results/metrics.csv")
-        for _, row in df.iterrows():
-            setup_dict = ast.literal_eval(row["setup"])
-            if str(setup_dict.get("id")) == str(self.cfd_config["model_id"]):
-                path_dict = ast.literal_eval(row["path"])
-                return path_dict.get("ckpt_path")
+        csv_path = self.cfd_config.get("metrics_csv_path")
+        if csv_path:
+            df = pd.read_csv(csv_path, header=None)
+            for _, row in df.iterrows():
+                if str(ast.literal_eval(row[0]).get("id")) == str(self.cfd_config["model_id"]):
+                    return ast.literal_eval(row[4]).get("ckpt_path")
+        else:
+            try:
+                df = pd.read_csv("/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv")
+            except FileNotFoundError:
+                df = pd.read_csv("/home/aisco/results/metrics.csv")
+            for _, row in df.iterrows():
+                if str(ast.literal_eval(row["setup"]).get("id")) == str(self.cfd_config["model_id"]):
+                    return ast.literal_eval(row["path"]).get("ckpt_path")
         raise ValueError("Wrong ID for GAOT-Model")
 
     def _load_model(self) -> None:
