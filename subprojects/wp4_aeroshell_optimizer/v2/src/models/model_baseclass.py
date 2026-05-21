@@ -15,7 +15,6 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.losses.total_loss import TotalLo
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_protocol import SupportsModelContract
 from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import NullVisManager
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import build_optimizer, get_optimizer_telemetry
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import detect_environment, Environment
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
     DebugManager,
     collect_alm_state,
@@ -26,6 +25,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import (
     collect_optimizer_state,
     collect_param_stats,
 )
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import Environment, detect_environment
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import allround_save_data
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import Wrapper

@@ -49,7 +49,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import load_config as _load_config
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.debug_manager import DebugManager
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import is_cluster, detect_environment, Environment
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import Environment, detect_environment, is_cluster
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import smart_model_init
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.gradient_conflict_tracker import GradientConflictTracker
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.hashing import dict_hashing
