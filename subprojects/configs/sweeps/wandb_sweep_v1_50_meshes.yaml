@@ -1,0 +1,33 @@
+# ============================================================================
+# Wandb Sweep Config — Model Architecture + Training Hyperparams
+# ============================================================================
+# Parameter naming convention:
+#   <config_filename_without_yaml>.<nested.path.to.value>
+#
+# Examples:
+#   training_config.training_params.learning_rate  → targets training_config.yaml
+#   losses_v0_config.general_info.initial_lambda      → targets losses_v0_config.yaml
+#   basic_MLP_v1.hidden                               → targets basic_MLP_v1.yaml
+#   solar_loss_config.SolarLossConfigV3.method         → targets solar_loss_config.yaml
+#
+# Keys that don't match any config filename are applied to general_config.yaml
+# as a fallback (e.g. "force_pretraining").
+# ============================================================================
+program: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v1_1_one_model.py
+method: random
+metric:
+  goal: minimize
+  name: total_loss
+parameters:
+  force_pretraining:
+    value: True
+  pretraining_v0_config.pretraining_shape:
+    values: ["sphere", "cube"]
+  basic_MLP_v1.hidden:
+    values: [32, 64, 128]
+  basic_MLP_v1.layers:
+    values: [4, 6, 8]
+  training_config.training_params.learning_rate:
+    distribution: log_uniform_values
+    min: 0.00001
+    max: 0.01

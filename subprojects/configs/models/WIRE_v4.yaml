@@ -1,0 +1,25 @@
+# WIRE V4 Log-spaced Gabor filterbank + xyz skip connection
+#
+# After the Gabor layer at skip_layer_idx, the normalised input coordinates are
+# concatenated to the hidden activations before being passed to the next layer.
+# This re-anchors the network to the spatial position at mid-depth, preventing
+# the network from losing track of where it is — the same technique used in NeRF
+# at layer 4 of 8. The skip-receiving layer is automatically widened to accept
+# hidden_features + in_features inputs; all other layers are unchanged from V3.
+
+in_features: 3
+hidden_features: 256
+hidden_layers: 6
+out_features: 1
+skip_layer_idx: 2           # inject after the 3rd Gabor layer (0-indexed); valid range [0, hidden_layers-1]
+first_omega_min: 5.0
+first_omega_max: 30.0
+first_scale_min: 5.0
+first_scale_max: 10.0
+hidden_omega_min: 0.3
+hidden_omega_max: 5.0
+hidden_scale_min: 1.0
+hidden_scale_max: 10.0
+train_omega: False
+train_scale: False
+dtype: "float32" # Insert here something that works with torch.{dtype}, e.g. "float32", "float64", "float16"

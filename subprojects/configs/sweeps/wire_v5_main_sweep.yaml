@@ -1,0 +1,119 @@
+# ============================================================================
+# WIRE_v5 main_v2.py sweep — frequency/scale × capacity × stabilisation
+#
+# Goal: understand which WIRE_v5 configurations best satisfy real-world
+# constraints (bb, eikonal, wheel) when trained with ALM.
+#
+# Axes:
+#   - Frequency/scale init ranges (wide — spectral_norm makes high ω safe)
+#   - Model capacity (hidden_features, hidden_layers, skip_layer_idx)
+#   - Stabilisation flags (use_spectral_norm, use_smooth_output)
+#   - Trainable ω/σ (frozen vs. learned in the full optimisation loop)
+#   - ALM on/off (to contrast hard vs. soft constraint enforcement)
+#   - Learning rate
+#
+# Metric: raw_losses/total_loss (lower = better shape + constraint satisfaction)
+# ============================================================================
+
+program: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py
+entity: aisco
+project: WIRE-v5-main-sweep
+
+method: bayes
+metric:
+  goal: minimize
+  name: raw_losses/total_loss
+
+# Kill clearly-bad runs early (NaN / runaway constraint violations) so the
+# Bayesian optimiser spends its budget on viable configs.
+# With 1000 epochs: cull rounds at ~100 → 200 → 400 → 800 (keep best 50% each round).
+early_terminate:
+  type: hyperband
+  min_iter: 100
+  eta: 2
+
+parameters:
+  general_config.model_def.model_name:
+    value: "WIREV5"
+
+  # --- Model capacity ----------------------------------------------------------
+  models/WIRE_v5.hidden_features:
+    values: [256, 512]
+  models/WIRE_v5.hidden_layers:
+    values: [3, 4, 6, 8]
+  models/WIRE_v5.skip_layer_idx:
+    values: [1, 2]
+
+  # --- Stabilisation -----------------------------------------------------------
+  # use_spectral_norm: bounds wave_proj operator norm to 1 at all times, keeping
+  #   per-layer gradient amplification ≤ ω regardless of how weights evolve.
+  # use_smooth_output: SiLU projection before the output layer; adds a smooth
+  #   mixing stage that can soften high-frequency artefacts near the surface.
+  models/WIRE_v5.use_spectral_norm:
+    values: [true, false]
+  models/WIRE_v5.use_smooth_output:
+    values: [true, false]
+
+  # --- Trainable ω / σ ---------------------------------------------------------
+  # With spectral_norm stabilising gradients, trainable ω is safer here than in
+  # pretraining. Sweeping both axes isolates whether learned frequencies help
+  # under real constraint pressure.
+  models/WIRE_v5.train_omega:
+    values: [true, false]
+  models/WIRE_v5.train_scale:
+    values: [true, false]
+
+  # --- Frequency initialization ranges -----------------------------------------
+  # Wide ranges are intentional: spectral_norm makes high ω survivable.
+  # The Bayesian optimiser will converge toward the range that balances
+  # constraint satisfaction vs. shape fidelity for this geometry.
+  models/WIRE_v5.first_omega_min:
+    distribution: uniform
+    min: 1.0
+    max: 20.0
+  models/WIRE_v5.first_omega_max:
+    distribution: uniform
+    min: 20.0
+    max: 80.0
+
+  models/WIRE_v5.hidden_omega_min:
+    distribution: uniform
+    min: 1.0
+    max: 20.0
+  models/WIRE_v5.hidden_omega_max:
+    distribution: uniform
+    min: 20.0
+    max: 120.0
+
+  # --- Scale (Gaussian envelope) ranges ----------------------------------------
+  models/WIRE_v5.first_scale_min:
+    distribution: uniform
+    min: 1.0
+    max: 30.0
+  models/WIRE_v5.first_scale_max:
+    distribution: uniform
+    min: 30.0
+    max: 150.0
+
+  models/WIRE_v5.hidden_scale_min:
+    distribution: uniform
+    min: 1.0
+    max: 30.0
+  models/WIRE_v5.hidden_scale_max:
+    distribution: uniform
+    min: 30.0
+    max: 150.0
+
+  # --- Constraint enforcement --------------------------------------------------
+  # ALM=True enforces bb/eikonal/wheel as hard constraints via augmented
+  # Lagrangian; ALM=False falls back to fixed-weight soft penalties.
+  # Sweeping this reveals whether the model's frequency capacity affects how
+  # easily it satisfies constraints under hard vs. soft enforcement.
+  losses_v0_config.general_info.ALM:
+    values: ["True", "False"]
+
+  # --- Training ----------------------------------------------------------------
+  training_config.training_params.learning_rate:
+    distribution: log_uniform_values
+    min: 0.00005
+    max: 0.001

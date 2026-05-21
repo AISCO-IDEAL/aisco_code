@@ -1,0 +1,108 @@
+{
+  "models": {
+    "WIREV5_ENFORCE": {
+      "model_class": "WIREV5_ENFORCE",
+      "parent_class": "BaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/WIRE_v5_enforce.py",
+      "config_file": "models/WIRE_v5.yaml",
+      "uses_diversity": false,
+      "has_optimise": true
+    },
+    "ConcatWIREV5_ENFORCE": {
+      "model_class": "ConcatWIREV5_ENFORCE",
+      "parent_class": "ConcatBaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/concat_WIRE_v5_enforce.py",
+      "config_file": "models/concat_WIRE_v5.yaml",
+      "uses_diversity": true,
+      "has_optimise": false
+    },
+    "AISCOModel": {
+      "model_class": "AISCOModel",
+      "parent_class": "BaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/AISCOModel_v0.py",
+      "config_file": "models/AISCOModel_v0.yaml",
+      "uses_diversity": false,
+      "has_optimise": true
+    },
+    "WIREV2": {
+      "model_class": "WIREV2",
+      "parent_class": "BaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/WIRE_v2.py",
+      "config_file": "models/WIRE_v2.yaml",
+      "uses_diversity": false,
+      "has_optimise": true
+    },
+    "WIREV3": {
+      "model_class": "WIREV3",
+      "parent_class": "BaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/WIRE_v3.py",
+      "config_file": "models/WIRE_v3.yaml",
+      "uses_diversity": false,
+      "has_optimise": true
+    },
+    "WIREV4": {
+      "model_class": "WIREV4",
+      "parent_class": "BaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/WIRE_v4.py",
+      "config_file": "models/WIRE_v4.yaml",
+      "uses_diversity": false,
+      "has_optimise": true
+    },
+    "WIREV5": {
+      "model_class": "WIREV5",
+      "parent_class": "BaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/WIRE_v5.py",
+      "config_file": "models/WIRE_v5.yaml",
+      "uses_diversity": false,
+      "has_optimise": true
+    },
+    "WIREV6": {
+      "model_class": "WIREV6",
+      "parent_class": "BaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/WIRE_v6.py",
+      "config_file": "models/WIRE_v6.yaml",
+      "uses_diversity": false,
+      "has_optimise": true
+    },
+    "WIREOriginal": {
+      "model_class": "WIREOriginal",
+      "parent_class": "BaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/original_wire.py",
+      "config_file": "models/wire_original.yaml",
+      "uses_diversity": false,
+      "has_optimise": false
+    },
+    "ConcatWIREV2": {
+      "model_class": "ConcatWIREV2",
+      "parent_class": "ConcatBaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/concat_WIRE_v2.py",
+      "config_file": "models/concat_WIRE_v2.yaml",
+      "uses_diversity": true,
+      "has_optimise": false
+    },
+    "ConcatWIREV3": {
+      "model_class": "ConcatWIREV3",
+      "parent_class": "ConcatBaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/concat_WIRE_v3.py",
+      "config_file": "models/concat_WIRE_v3.yaml",
+      "uses_diversity": true,
+      "has_optimise": false
+    },
+    "ConcatWIREV5": {
+      "model_class": "ConcatWIREV5",
+      "parent_class": "ConcatBaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/concat_WIRE_v5.py",
+      "config_file": "models/concat_WIRE_v5.yaml",
+      "uses_diversity": true,
+      "has_optimise": false
+    },
+    "BasicMLP": {
+      "model_class": "BasicMLP",
+      "parent_class": "BaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/basic_MLP_v1.py",
+      "config_file": "models/basic_MLP_v1.yaml",
+      "uses_diversity": false,
+      "has_optimise": true
+    }
+  }
+}

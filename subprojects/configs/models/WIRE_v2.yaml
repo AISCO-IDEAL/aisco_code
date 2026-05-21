@@ -1,0 +1,11 @@
+in_features: 3
+hidden_features: 128
+hidden_layers: 4
+out_features: 1
+first_omega_0:  0.8
+first_scale:  10.0
+hidden_omega_0:  0.8
+hidden_scale:  10.0
+train_omega:  True
+train_scale:  False
+dtype:  "float32" #  "float32", "float64", "float16"

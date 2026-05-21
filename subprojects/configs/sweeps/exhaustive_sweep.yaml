@@ -1,0 +1,39 @@
+# ============================================================================
+# Wandb Sweep Config — Assembly ID sweep (grid over different assemblies)
+# ============================================================================
+# Parameter naming: <config_filename_without_yaml>.<nested.path.to.value>
+# See wandb_sweep_v1_50_meshes.yaml for full documentation.
+# ============================================================================
+program: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v1_1_one_model.py
+method: random
+metric:
+  goal: minimize
+  name: total_loss
+parameters:
+  ### assemblies ###
+  losses_v0_config.bb_config.assembly_id: # TODO: make sure that this is used correctly
+    distribution: int_uniform
+    min: 1
+    max: 50
+
+  ### ALM ###
+  losses_v0_config.general_info.initial_mu: # NOTE: https://arxiv.org/pdf/2508.15695 has even mu = 1'000 as maximum
+    distribution: log_uniform_values
+    min: 0.001
+    max: 100.0
+  losses_v0_config.general_info.initial_lambda:
+    distribution: log_uniform_values
+    min: 0.00001
+    max: 0.1
+
+  ### model ###
+  basic_MLP_v1.hidden:
+    values: [32, 64, 128]
+  training_config.training_params.learning_rate:
+    distribution: log_uniform_values
+    min: 0.00001
+    max: 0.01
+
+  ### pretraining ###
+  pretraining_v0_config.pretraining_shape:
+    values: ["sphere", "cube"]

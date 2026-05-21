@@ -1,0 +1,46 @@
+# ============================================================================
+# Sweep: Behaviour probe for latent population dynamics
+#
+# Purpose:
+#   Characterise how latent re-sampling policy alters optimisation dynamics,
+#   geometry diversity, and final objective quality.
+#
+# Focus axes:
+#   - z_resample_mode: on_circle vs in_circle
+#   - z_resample_cadence: fixed population vs periodic refresh
+#   - latent/diversity controls only (no overlap with general sweep knobs)
+# ============================================================================
+
+program: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py
+entity: aisco
+project: behavior-latent-resample
+
+method: bayes
+metric:
+  goal: minimize
+  name: raw_losses/total_loss
+
+early_terminate:
+  type: hyperband
+  min_iter: 120
+  eta: 2
+
+parameters:
+  # Core latent re-sampling behaviour.
+  training_config.z_resample_mode:
+    values: ["on_circle", "in_circle"]
+
+  training_config.z_resample_cadence:
+    values: [0, 10, 20]
+
+  # Epoch at which cadence-based resampling begins.
+  training_config.z_resample_start_epoch:
+    values: [0, 200]
+
+  # Supporting latent knob: whether to lock first slot at origin.
+  # training_config.force_z0_to_origin:
+  #   values: [false, true]
+
+  # Population size to test with different resample strategies.
+  training_config.population_size:
+    values: [7, 10, 20, 30]

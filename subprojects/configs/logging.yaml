@@ -1,0 +1,4 @@
+# loaded by total_loss.py: load_config(v="v1", cfg_name="logging.yaml")
+mesh_statistics: True  #  total_loss.py: _logging_config.get("mesh_statistics", False)
+memory_diagnostics: True  #  total_loss.py: _logging_config.get("memory_diagnostics", False)
+gradient_memory_diagnostics: True  #  total_loss.py: _logging_config.get("gradient_memory_diagnostics", False)

@@ -1,0 +1,22 @@
+#Here put the config for model pretraining
+pretraining_shape: "sphere" # "sphere", "cube", or "ply"  #  pretraining_v1_1.py: config.get("pretraining_shape", "sphere")
+pretraining_ply_path: "/cluster/work/fuge/AISCO/concentrate_curvature/DevelopabilityOfTriangleMeshes/assets/bunny.ply"  # used when pretraining_shape="ply"
+beast_pretraining_ply_path: "/home/aisco/Downloads/sphere.ply"  # used when pretraining_shape="ply" and beast_pretraining is True
+pretraining_ply_scale: 1000.0  # scale ply vertices to mm (bunny.ply is unit-scale → ×1000)
+
+pretraining:
+  use_pretrained: True # True or False possible  # NOT USED — never read by any code (main checks fetch_pretrained_model result instead)
+  force_pretraining: False  # USED — main_v1_1_one_model.py: pretraining_config.get("pretraining", {}).get("force_pretraining", False)
+  pretraining_model_path: ""  # USED — main_v1_1_one_model.py: pretraining_config.get("pretraining", {}).get("pretraining_model_path", "path/to/pretrained/model.pth")  # note: pretraining_v0_model.pth is the basic MLP sphere or ellipsoid
+  local_pretraining_model_path: "path=/home/aisco/temp_/pretraining/solitary_pretraining/001000_WIREV5_e8ddb10d97/pretrained_e8ddb10d97.pth"
+  username: ${USER} # for windows users: %USERNAME%  # NOT USED — never read by any code in the optimisation loop
+
+# #unused?
+# model: "WIREV2" #Class name of model  # pretraining_v1_1.py: config["model"] (only in dynamic_model_loading, not used when model is passed in)
+# model_filename: "WIRE_v2" #Name of file where model is defined  # pretraining_v1_1.py: config["model_filename"] (only in dynamic_model_loading, not used when model is passed in)
+
+training_loop:
+  epochs: 1000  # pretraining_v1_1.py: config["training_loop"]["epochs"]
+  learning_rate: 0.0005  # pretraining_v1_1.py: config["training_loop"]["learning_rate"]
+  random_batch_size: 2048  # pretraining_v1_1.py: config["training_loop"]["random_batch_size"]
+  print_interval: 25  # pretraining_v1_1.py: config["training_loop"]["print_interval"]
