@@ -383,7 +383,7 @@
 
         import(MESH_VIEWER_MODULE).then(function (mod) {
             if (!primaryGlbViewer) {
-                primaryGlbViewer = mod.initMeshViewer(primaryGlbMeshBox);
+                primaryGlbViewer = mod.initMeshViewer(primaryGlbMeshBox, { controlMode: "turntable" });
                 primaryGlbViewer.setGlbControlsHost(primaryGlbControls);
                 primaryGlbViewer.setOnControlsChange(function (vs) {
                     primaryUserView = vs;
@@ -576,7 +576,7 @@
 
         import(MESH_VIEWER_MODULE).then(function (mod) {
             if (!rightPanelViewer) {
-                rightPanelViewer = mod.initMeshViewer(rightPanelMeshBox);
+                rightPanelViewer = mod.initMeshViewer(rightPanelMeshBox, { controlMode: "turntable" });
                 rightPanelViewer.setGlbControlsHost(rightPanelGlbControls);
                 rightPanelViewer.setOnControlsChange(function (vs) {
                     rightPanelUserView = vs;
