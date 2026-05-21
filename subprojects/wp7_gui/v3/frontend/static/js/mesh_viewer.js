@@ -531,6 +531,24 @@ export function initMeshViewer(containerEl, options = {}) {
                             return;
                         }
 
+                        // Apply cone_lines_only style when configured for vision_cone.
+                        const isConeLines =
+                            node.name === "vision_cone" &&
+                            (_visConfig.cone_render_style || null) === "cone_lines_only";
+                        if (isConeLines) {
+                            const lc = _visConfig.cone_lines_color || [0.5, 0.1, 0.5];
+                            const edgesGeo = new EdgesGeometry(node.geometry, _visConfig.cone_lines_threshold ?? 15);
+                            const linesMat = new LineBasicMaterial({
+                                color: new Color(lc[0], lc[1], lc[2]),
+                            });
+                            const lines = new LineSegments(edgesGeo, linesMat);
+                            lines.name = node.name;
+                            node.visible = false;  // hide the solid fill
+                            node.parent.add(lines);
+                            glbComponents.push({ key: node.uuid, name: node.name || `mesh_${node.id}`, mesh: lines });
+                            return;
+                        }
+
                         if (hasVtxColors) {
                             hasVertexColors = true;
                             // Convert sRGB vertex colors to linear space (GLB colors are sRGB-encoded)
