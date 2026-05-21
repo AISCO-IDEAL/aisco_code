@@ -8,9 +8,22 @@ call to match v2 behavior).
 
 from __future__ import annotations
 
+import os
 import re
+import socket
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
+
+
+class RuntimeEnvironment(Enum):
+    """Supported execution environments for local launch script selection."""
+
+    AISCO_BEAST = "aisco_beast"
+    WSL = "wsl"
+    EULER = "euler"
+    SLURM = "slurm"
+    UNKNOWN = "unknown"
 
 
 @dataclass(frozen=True)
@@ -31,12 +44,15 @@ class Settings:
     templates_dir: Path
     static_dir: Path
     schema_path: Path
+    panel_visibility_defaults_path: Path
+    mesh_priority_path: Path
     logs_dir: Path
     cache_dir: Path
     config_overrides_root: Path
 
     host: str
     port: int
+    runtime_environment: str = RuntimeEnvironment.UNKNOWN.value
 
     assembly_id_env_var: str = "AISCO_ASSEMBLY_ID"
 
@@ -51,6 +67,21 @@ def _detect_wp4_active_version(wp4_package_root: Path) -> str:
     return match.group(1) if match else "v2"
 
 
+def _detect_runtime_environment() -> RuntimeEnvironment:
+    """Detect whether we run on Beast/WSL or cluster-like hosts."""
+    if "WSL_DISTRO_NAME" in os.environ:
+        return RuntimeEnvironment.WSL
+
+    hostname = socket.gethostname()
+    if hostname == "AISCO-Beast":
+        return RuntimeEnvironment.AISCO_BEAST
+    if hostname.startswith("eu-"):
+        return RuntimeEnvironment.EULER
+    if "SLURM_JOB_ID" in os.environ:
+        return RuntimeEnvironment.SLURM
+    return RuntimeEnvironment.UNKNOWN
+
+
 def build_settings() -> Settings:
     gui_root = Path(__file__).resolve().parents[1]
     repo_root = gui_root.parents[1]
@@ -58,6 +89,12 @@ def build_settings() -> Settings:
     wp4_active_version = _detect_wp4_active_version(wp4_package_root)
     wp4_active_root = wp4_package_root / wp4_active_version
     wp4_configs_dir = wp4_active_root / "configs"
+    runtime_environment = _detect_runtime_environment()
+
+    if runtime_environment in {RuntimeEnvironment.AISCO_BEAST, RuntimeEnvironment.WSL}:
+        run_local_script = wp4_active_root / "slurm_scripts" / "run_local_beast.sh"
+    else:
+        run_local_script = wp4_active_root / "slurm_scripts" / "run_local_cluster.sh"
 
     return Settings(
         repo_root=repo_root,
@@ -66,7 +103,7 @@ def build_settings() -> Settings:
         wp4_active_version=wp4_active_version,
         wp4_configs_dir=wp4_configs_dir,
         wp4_slurm_dir=wp4_active_root / "slurm_scripts",
-        run_local_script=wp4_active_root / "slurm_scripts" / "run_local.sh",
+        run_local_script=run_local_script,
         general_config_path=wp4_configs_dir / "general_config.yaml",
         default_local_storage_dir=repo_root.parent / "local_storage_dir",
         default_bulk_storage_dir=Path("/cluster/work/fuge/AISCO/bulk_storage"),
@@ -74,11 +111,14 @@ def build_settings() -> Settings:
         templates_dir=gui_root / "frontend" / "templates",
         static_dir=gui_root / "frontend" / "static",
         schema_path=gui_root / "schema" / "gui_schema.json",
+        panel_visibility_defaults_path=gui_root / "schema" / "panel_visibility_defaults.json",
+        mesh_priority_path=gui_root / "schema" / "mesh_priority.json",
         logs_dir=gui_root / "logs",
         cache_dir=gui_root / "cache",
         config_overrides_root=gui_root / "config_overrides",
         host="0.0.0.0",
         port=8001,
+        runtime_environment=runtime_environment.value,
     )
 
 

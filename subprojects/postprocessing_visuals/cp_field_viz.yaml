@@ -1,0 +1,96 @@
+# cp_field_viz.yaml
+# Configuration for cp_field_viz.py
+# ---------------------------------------------------------------------------
+# Run:
+#   python subprojects/postprocessing_visuals/cp_field_viz.py
+#   python subprojects/postprocessing_visuals/cp_field_viz.py --interactive       # writes HTML
+#   python subprojects/postprocessing_visuals/cp_field_viz.py --mesh /path/to.ply
+# ---------------------------------------------------------------------------
+
+# --- Input ---
+# mesh_path: /cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/OPENFOAM_022/ply_to_simulate_subdivided/RUN_050.ply
+mesh_path: /cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/OPENFOAM_027/ply_to_simulate_subdivided/RUN_026.ply
+
+
+# --- Output ---
+output_path: /cluster/work/fuge/AISCO/wp9/rollout_viz/cp_field/cp_field.png
+image_width: 1600
+image_height: 1600
+render_scale: 3      # write_image pixel density multiplier (2 → 3200×1600)
+
+# --- Camera ---
+flip_x_axis: true       # true → negate X coords before rendering (reverses forward direction)
+camera:
+  azimuth: 50         # degrees; 0 = pure front (YZ face), -45 = front-left corner
+  elevation: 20         # degrees above horizontal
+  distance_factor: 3.5   # Plotly camera eye distance (larger = more zoomed out)
+
+# --- GAOT model ---
+# These keys mirror the `cfd:` section in losses_v0_config.yaml.
+# Only model_id is required for inference; v_inf / rho are carried here for
+# reference and future Cd computation extensions.
+cfd:
+  model_id: 66982878    # run-id from metrics.csv; must match the trained model
+  version: 3            # informational only — this script always uses GAOT3
+  v_inf: 25.0           # [m/s] free-stream velocity (must match training value)
+  rho: 1.225            # [kg/m³] air density (must match training value)
+
+# --- Cp colourmap ---
+# matplotlib RdBu_r == Plotly RdBu (blue = low/suction, red = high/stagnation).
+cp_colormap: Jet
+
+# Colormap bounds.  Precedence:
+#   1. cp_vmin / cp_vmax (explicit)  → hard override
+#   2. cp_percentile_clip             → percentile of the predicted field (recommended)
+#   3. both null                      → absolute min/max of predicted field
+#
+# Ground-truth Cp for RUN_004: min≈-1.38, max≈0.99, p0.5=-0.87, p99.5=0.52
+# Leave cp_vmin/cp_vmax as null to use auto-scaling.
+cp_vmin: null           # null = auto-scale via percentile or absolute
+cp_vmax: null           # null = auto-scale via percentile or absolute
+cp_percentile_clip: [0.1, 99.9]   # null = use absolute min/max (sensitive to outliers)
+cp_alpha: 1.0           # mesh opacity [0..1]
+
+# --- Cp smoothing ---
+# Mirrors the `cp_smoothing` section of losses_v0_config.yaml exactly.
+# Applied after model inference, before rendering.
+# Training defaults: 50 iterations of full-strength uniform Laplacian.
+cp_smoothing:
+  enabled: true
+  iterations: 500
+  min_strength: 1.0       # [0,1] lower bound of per-vertex smoothing weight
+  max_strength: 1.0       # [0,1] upper bound
+  curvature_power: 0    # 0 = uniform (ignore curvature); >0 = sharper edges
+  curvature_quantile: 0.95  # quantile for normalising curvature (only if power>0)
+
+# --- Shading ---
+# shading: false → flat lighting, Cp colormap renders unaffected (default)
+# shading: true  → same diffuse/specular shading as mesh_viz, adds depth cues
+lighting:
+  shading: true
+  ambient:    0.4
+  diffuse:    0.8
+  specular:   0.3
+  roughness:  0.5
+  fresnel:    0.2
+  position_x: 1.0
+  position_y: 1.0
+  position_z: 2.0
+
+# --- Optional wireframe overlay ---
+mesh:
+  edge_color: [0.2, 0.2, 0.2, 0]   # RGBA; set alpha > 0 to show edges
+
+# --- Multi-view rendering ---
+# When true, renders 6 axis-aligned images (front/rear/left/right/top/bottom)
+# instead of the single view defined by `camera:` above.
+# Output files get a _{view} suffix, e.g. cp_field_front.png.
+cardinal_views: false
+
+# --- Mesh pre-processing ---
+# mesh_rotate_z_180: true → rotate 180° around Z axis before inference (negates X and Y).
+# Use when the PLY nose direction / lateral axis are inverted vs. the model's training convention.
+mesh_rotate_z_180: true
+
+# --- Compute device ---
+device: cuda   # "cuda" or "cpu"

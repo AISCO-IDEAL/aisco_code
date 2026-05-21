@@ -11,28 +11,28 @@
 #   load_config(v="v1", cfg_name="debug.yaml")
 # =============================================================================
 
-GLOBAL_DEBUG: False  # True | False | null (Custom)
+GLOBAL_DEBUG: null  # True | False | null (Custom)
 
 # ---------------------------------------------------------------------------
 # Granular feature toggles  (only effective when GLOBAL_DEBUG is null)
 # ---------------------------------------------------------------------------
-print_raw_values: true      # Print critical state variables, inputs, outputs per iteration
-show_stats: true            # Track & log performance metrics (time, memory, convergence, delta)
-generate_insights: true     # Provide analytical context (step-size analysis, local-min detection)
-emit_warnings: true         # Flag anomalous behaviour (boundary hits, zero grads, NaN, slow convergence)
+print_raw_values: true      # Needed for per-loss diagnostics and CUDA memory block
+show_stats: true            # Track & log runtime stats (iter time + Python memory)
+generate_insights: false    # Keep output concise
+emit_warnings: false        # Keep output concise
 
 # ---------------------------------------------------------------------------
 # Sub-toggles for print_raw_values  (fine-grained control over WHAT is printed)
 # These are independent of GLOBAL_DEBUG — they control which sections of the
 # values dump to include.  Set any to false to suppress that section.
 # ---------------------------------------------------------------------------
-log_loss_components: true       # Per-component weighted loss values + config weights
-log_per_component_grads: true   # Per-loss-component gradient norms (BasicMLP/WIRE)
-log_param_stats: true           # Min/max/mean/std of every trainable parameter
-log_optimizer_state: true       # Adam exp_avg/exp_avg_sq norms, step count, betas
+log_loss_components: false      # Disable verbose component dump
+log_per_component_grads: false  # Disable verbose gradient breakdown
+log_param_stats: false          # Disable parameter tensor statistics
+log_optimizer_state: false      # Disable optimizer internals
 log_cuda_memory: true           # CUDA allocated/reserved/peak/free memory
-log_alm_state: true             # ALM multipliers (lambda, mu, nu) when ALM is active
-log_run_info: true              # One-time dump of model architecture, device, config at start
+log_alm_state: false            # Disable ALM internals
+log_run_info: false             # Disable one-time large startup dump
 log_loss_diagnostics:
   # ── per-loss, per-field control ─────────────────────────────────────────
   # Each entry below can be:
@@ -44,14 +44,14 @@ log_loss_diagnostics:
   # "cruising_speed" is a synthetic key always present when CSE is active.
   # ─────────────────────────────────────────────────────────────────────────
   bb_v4_2:
-    n_points:                 true
-    violation_frac:           true
-    upper_violation_count:    true
-    upper_violation_max:      true
-    upper_violation_mean:     true
-    lower_violation_count:    true
-    lower_violation_max:      true
-    lower_violation_mean:     true
+    n_points:                 false
+    violation_frac:           false
+    upper_violation_count:    false
+    upper_violation_max:      false
+    upper_violation_mean:     false
+    lower_violation_count:    false
+    lower_violation_max:      false
+    lower_violation_mean:     false
     sdf_pred_min:             false
     sdf_pred_max:             false
     sdf_pred_mean:            false
@@ -61,13 +61,13 @@ log_loss_diagnostics:
     sdf_outer_max:            false
 
   eikonal_v0:
-    n_points:                   true
-    grad_norm_mean:             true
-    grad_norm_std:              true
-    deviation_from_1_mean:      true
-    deviation_from_1_max:       true
-    pct_grad_norm_below_0.5:    true
-    pct_grad_norm_above_1.5:    true
+    n_points:                   false
+    grad_norm_mean:             false
+    grad_norm_std:              false
+    deviation_from_1_mean:      false
+    deviation_from_1_max:       false
+    pct_grad_norm_below_0.5:    false
+    pct_grad_norm_above_1.5:    false
     grad_norm_min:              false
     grad_norm_max:              false
     sdf_min:                    false
@@ -75,10 +75,10 @@ log_loss_diagnostics:
     sdf_mean:                   false
 
   smoothness_v0:
-    n_points:             true
-    laplacian_mean:       true
-    laplacian_abs_max:    true
-    pct_high_curvature:   true
+    n_points:             false
+    laplacian_mean:       false
+    laplacian_abs_max:    false
+    pct_high_curvature:   false
     laplacian_min:        false
     laplacian_max:        false
     laplacian_std:        false
@@ -91,67 +91,67 @@ log_loss_diagnostics:
     drag_value:               true
     drag_is_nan:              true
     drag_is_inf:              true
-    pressure_field_nan_count: true
-    pressure_field_inf_count: true
-    normals_flipped_count:    true
-    n_input_vertices:         true
-    n_input_faces:            true
+    pressure_field_nan_count: false
+    pressure_field_inf_count: false
+    normals_flipped_count:    false
+    n_input_vertices:         false
+    n_input_faces:            false
     pressure_field_min:       false
     pressure_field_max:       false
     pressure_field_mean:      false
     pressure_field_std:       false
 
   cruising_speed:
-    "speed (m/s)":          true
-    "speed (km/h)":         true
-    "drag_force (N)":       true
-    "solar_power (W)":      true
+    "speed (m/s)":          false
+    "speed (km/h)":         false
+    "drag_force (N)":       false
+    "solar_power (W)":      false
     "rolling_friction (N)": false
-    speed_is_nan:           true
-    speed_is_inf:           true
-
-  # ── Solar losses (v3B–v7) ───────────────────────────────────────────────
-  # v3B and v7 include power_conversion_factor scaling fields.
-  # v4, v5, v6 have a simpler field set.
+    speed_is_nan:           false
+    speed_is_inf:           false
+    cruising_speed_ms:      true
 
   solar_v3B:
-    loss_value_raw:           true
-    loss_value_scaled:        true
+    loss_value_raw:           false
+    loss_value_scaled:        false
     power_conversion_factor:  false
-    method:                   true
-    counter:                  true
+    method:                   false
+    counter:                  false
     area_budget_mm2:          false
     resolution:               false
 
   solar_v4:
-    loss_value:               true
-    method:                   true
-    counter:                  true
+    loss_value:               false
+    method:                   false
+    counter:                  false
     area_budget_mm2:          false
     resolution:               false
 
   solar_v5:
-    loss_value:               true
-    method:                   true
-    counter:                  true
+    loss_value:               false
+    method:                   false
+    counter:                  false
     area_budget_mm2:          false
     resolution:               false
 
   solar_v6:
-    loss_value:               true
-    method:                   true
-    counter:                  true
+    loss_value:               false
+    method:                   false
+    counter:                  false
     area_budget_mm2:          false
     resolution:               false
 
   solar_v7:
-    loss_value_raw:           true
-    loss_value_scaled:        true
+    loss_value_raw:           false
+    loss_value_scaled:        false
     power_conversion_factor:  false
-    method:                   true
-    counter:                  true
+    method:                   false
+    counter:                  false
     area_budget_mm2:          false
     resolution:               false
+
+  solar_s_r_r_t:
+    loss_value_watts: true
 
   # Any loss not listed here defaults to: show ALL its fields
   # To add a new loss, just add a new entry following the same pattern.

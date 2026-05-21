@@ -21,9 +21,7 @@ def _require(module_name: str) -> Any:
     try:
         return __import__(module_name)
     except ImportError as exc:
-        raise SystemExit(
-            f"Missing dependency '{module_name}'. Run this helper inside the AISCO project environment."
-        ) from exc
+        raise SystemExit(f"Missing dependency '{module_name}'. Run this helper inside the AISCO project environment.") from exc
 
 
 def _load_mesh(path: Path) -> Any:
@@ -73,7 +71,9 @@ def infer_wheel_centers(mesh: Any) -> list[Any]:
                 break
         else:
             groups.append([candidate])
-    return [np.array([float(np.mean(group, axis=0)[0]), float(np.mean(group, axis=0)[1]), radius], dtype=float) for group in groups]
+    return [
+        np.array([float(np.mean(group, axis=0)[0]), float(np.mean(group, axis=0)[1]), radius], dtype=float) for group in groups
+    ]
 
 
 def _is_component_in_wheel_footprint(bounds: Any, wheel_centers: list[Any]) -> bool:
