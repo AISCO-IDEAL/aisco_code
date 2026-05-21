@@ -2,7 +2,7 @@
 # ==============================================================================
 # FAST-RESUME / SPECIFIC CHECKPOINT OVERRIDE
 # ==============================================================================
-use_specific_pretraining: true # if true, skip pretraining and load specific_pretraining_path directly
+use_specific_pretraining: false # if true, skip pretraining and load specific_pretraining_path directly
 specific_pretraining_path_euler: "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/000600_ConcatWIREV5_ENFORCE_8cf5cd14ad/pretrained_latent_8cf5cd14ad.pth"
 specific_pretraining_path_local: "/home/aisco/AISCO/pretraining/latent_pretraining/000600_ConcatWIREV5_ENFORCE_8cf5cd14ad/pretrained_latent_8cf5cd14ad.pth"
                           # absolute path to a pretrained_latent_*.pth; only used when use_specific_pretraining=true
