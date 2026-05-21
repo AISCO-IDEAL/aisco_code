@@ -20,7 +20,7 @@ from subprojects.wp7_gui.v3.shared.artifact_index import list_artifacts
 from subprojects.wp7_gui.v3.shared.assembly_selection import AssemblySelectionService
 from subprojects.wp7_gui.v3.shared.config_overrides import ConfigOverrideManager
 from subprojects.wp7_gui.v3.shared.panel_visibility import load_panel_visibility_defaults
-from subprojects.wp7_gui.v3.shared.run_paths import default_storage_root, detect_current_run_dir
+from subprojects.wp7_gui.v3.shared.run_paths import detect_current_run_dir, get_storage_root_for_session
 from subprojects.wp7_gui.v3.shared.theme import build_template_theme_context
 
 router = APIRouter(prefix="/launcher", tags=["launcher"])
@@ -258,8 +258,10 @@ def run_progress() -> dict[str, Any]:
 
 @router.get("/api/run/artifacts")
 def run_artifacts() -> dict[str, Any]:
-    storage_root = default_storage_root()
-    active_cfg_session = Path(_runtime_state["active_cfg_folder"]).name if _runtime_state["active_cfg_folder"] else None
+    active_cfg_folder = _runtime_state["active_cfg_folder"].strip() if _runtime_state["active_cfg_folder"] else ""
+    session_dir = Path(active_cfg_folder) if active_cfg_folder else None
+    storage_root = get_storage_root_for_session(session_dir)
+    active_cfg_session = Path(active_cfg_folder).name if active_cfg_folder else None
     run_dir = detect_current_run_dir(storage_root, preferred_cfg_session=active_cfg_session)
     if run_dir is None:
         return {
@@ -315,8 +317,10 @@ async def run_stream_artifacts() -> StreamingResponse:
         seen: dict[str, float] = {}
         while True:
             state = _process_manager.get_state()
-            storage_root = default_storage_root()
-            active_cfg_session = Path(_runtime_state["active_cfg_folder"]).name if _runtime_state["active_cfg_folder"] else None
+            active_cfg_folder = _runtime_state["active_cfg_folder"].strip() if _runtime_state["active_cfg_folder"] else ""
+            session_dir = Path(active_cfg_folder) if active_cfg_folder else None
+            storage_root = get_storage_root_for_session(session_dir)
+            active_cfg_session = Path(active_cfg_folder).name if active_cfg_folder else None
             run_dir = detect_current_run_dir(storage_root, preferred_cfg_session=active_cfg_session)
             if run_dir is not None:
                 new_events, seen = fs_poller.poll_once(run_dir, seen)

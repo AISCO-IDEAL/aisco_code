@@ -15,6 +15,9 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import Environment as Wp4Environment
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import detect_environment as detect_wp4_environment
+
 
 class RuntimeEnvironment(Enum):
     """Supported execution environments for local launch script selection."""
@@ -69,6 +72,18 @@ def _detect_wp4_active_version(wp4_package_root: Path) -> str:
 
 def _detect_runtime_environment() -> RuntimeEnvironment:
     """Detect whether we run on Beast/WSL or cluster-like hosts."""
+    # Keep GUI detection aligned with WP4 runtime logic when possible.
+    with_wp4 = {
+        Wp4Environment.AISCO_BEAST: RuntimeEnvironment.AISCO_BEAST,
+        Wp4Environment.WSL: RuntimeEnvironment.WSL,
+        Wp4Environment.EULER: RuntimeEnvironment.EULER,
+        Wp4Environment.SLURM: RuntimeEnvironment.SLURM,
+    }
+    detected = with_wp4.get(detect_wp4_environment())
+    if detected is not None:
+        return detected
+
+    # Defensive fallback in case WP4 detection returns UNKNOWN.
     # WSL check first — hostname can mirror the Windows host name.
     if any(var in os.environ for var in ("WSL_DISTRO_NAME", "WSL_INTEROP", "WSLENV")):
         return RuntimeEnvironment.WSL
@@ -80,8 +95,8 @@ def _detect_runtime_environment() -> RuntimeEnvironment:
         except OSError:
             continue
 
-    hostname = socket.gethostname()
-    if hostname == "AISCO-Beast":
+    hostname = socket.gethostname().strip().lower()
+    if hostname in {"aisco-beast", "aisco_beast"} or hostname.startswith("aisco-beast"):
         return RuntimeEnvironment.AISCO_BEAST
     if hostname.startswith("eu-"):
         return RuntimeEnvironment.EULER

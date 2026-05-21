@@ -13,6 +13,8 @@ from pathlib import Path
 import yaml
 
 from subprojects.wp7_gui.v3.core.settings import SETTINGS
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import Environment as RuntimeEnv
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import detect_environment
 
 LOGGER = logging.getLogger(__name__)
 
@@ -23,6 +25,18 @@ MESH_ASSEMBLY_CANDIDATES = (
     "mesh_assembly_mode_v2",
     "mesh_assembly_mode",
 )
+
+
+def _resolve_storage_path(raw_path: str | None, repo_parent: Path) -> Path | None:
+    if raw_path is None:
+        return None
+    p = Path(raw_path)
+    return (repo_parent / p).resolve() if not p.is_absolute() else p.resolve()
+
+
+def _is_local_runtime() -> bool:
+    env = detect_environment()
+    return env in {RuntimeEnv.AISCO_BEAST, RuntimeEnv.WSL}
 
 
 def get_storage_root(
@@ -52,16 +66,23 @@ def get_storage_root(
         else:
             run_locally = str(run_locally_raw).strip().lower() in {"1", "true", "yes", "on"}
         storage = cfg.get("storage_paths", {})
+        local_runtime = _is_local_runtime()
 
         key = "beast_storage_dir" if run_locally else "storage_dir"
         raw = storage.get(key)
         if raw is None and run_locally:
             raw = storage.get("local_storage_dir")
         if raw is None:
+            # If config is incomplete but host is local, prefer local storage for GUI discovery.
+            if local_runtime:
+                local_resolved = _resolve_storage_path(storage.get("local_storage_dir"), repo_parent)
+                if local_resolved is not None:
+                    return local_resolved
+                return default_local.resolve()
             return (default_local if run_locally else default_bulk).resolve()
 
-        root = Path(raw)
-        resolved = (repo_parent / root).resolve() if not root.is_absolute() else root.resolve()
+        resolved = _resolve_storage_path(raw, repo_parent)
+        assert resolved is not None, "Resolved storage path unexpectedly None."
 
         # On local Beast workflows, some configs keep run_locally=False while
         # storing outputs under beast_storage_dir. If the selected root is
@@ -71,15 +92,23 @@ def get_storage_root(
 
         beast_raw = storage.get("beast_storage_dir")
         if beast_raw is not None:
-            beast_root = Path(beast_raw)
-            beast_resolved = (repo_parent / beast_root).resolve() if not beast_root.is_absolute() else beast_root.resolve()
+            beast_resolved = _resolve_storage_path(beast_raw, repo_parent)
+            assert beast_resolved is not None, "Resolved beast storage path unexpectedly None."
             if beast_resolved.exists():
                 return beast_resolved
+
+        # Local Beast/WSL runs often keep run_locally=False while still writing to local paths.
+        if local_runtime:
+            local_resolved = _resolve_storage_path(storage.get("local_storage_dir"), repo_parent)
+            if local_resolved is not None and local_resolved.exists():
+                return local_resolved
+            return default_local.resolve()
+
+        # Cluster-style fallback when configured roots do not exist.
+        return default_bulk.resolve()
     except Exception as exc:
         LOGGER.warning("Config read error, using default storage root: %s", exc)
         return default_local.resolve()
-    else:
-        return resolved
 
 
 def default_storage_root() -> Path:
