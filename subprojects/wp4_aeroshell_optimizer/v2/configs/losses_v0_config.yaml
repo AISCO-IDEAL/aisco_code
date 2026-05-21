@@ -36,7 +36,7 @@ general_info:
   initial_lambda: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial lambda(s)
   initial_mu: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial mu(s)
   initial_nu: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial nu(s)
-  alpha: 0.9  # EMA decay factor for ν update
+  alpha: 0.7  # EMA decay factor for ν update
   gamma: 0.3  # parameter for ALM penalty update
   gamma_aggressive: 1.1  # multiplicative increase factor for μ in aggressive CAPU mode
 
@@ -230,7 +230,7 @@ field_diversity_masked_v0_config:
   bb_inner_cutoff_mm: 350.0    # keep diversity samples this far from inner-prism (seat + bb-inner components) surface (mm). Inner-bb is inequality — tighter is fine.
   wheel_sampling_density: 10  # matches wheel_loss_config.sampling_density
   bb_inner_target_point_count: 20000
-  max_div: null               # null = disabled. Set negative (e.g. -0.1) for GINN-style clamp.
+  max_div: -190              # null = disabled. Set negative (e.g. -0.1) for GINN-style clamp.
   max_resample_iters: 8       # safety cap on rejection-sampling top-up loop
 
 field_diversity_surface_v0_config:
@@ -240,9 +240,9 @@ field_diversity_surface_v0_config:
   bb_inner_target_point_count: 10000
   surface_resample_cadence: 1  # re-extract per-shape surface via marching cubes every N get_loss calls
   surface_subsample_n: 4096     # max retained vertices per shape after subsample
-  mc_resolution: 64             # marching-cubes grid resolution
+  mc_resolution: 50             # marching-cubes grid resolution
   mc_bbox_scale: 1.0            # outer-prism bbox multiplier for the extractor
-  max_div: null
+  max_div: -60
 
 field_diversity_hybrid_v0_config:
   w_vol: 0.1                 # weight on the masked-volumetric sub-loss
@@ -305,7 +305,7 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
   # v4.3 analytic specific:
   analytic_options:
     penalty: "softplus"  # "relu" (default) or "softplus"
-    softplus_beta: 0.0  # only used when penalty="softplus"
+    softplus_beta: 10.0  # only used when penalty="softplus"
     inner_margin: 20.0  # tighten upper bound: sdf_model <= sdf_inner - inner_margin
     outer_margin: 20.0  # tighten lower bound: sdf_outer + outer_margin <= sdf_model
     inner_tolerance: 0.0  # GINN-style "satisfied" deadband on aggregated bb_inner L2 loss: clamp(loss - tol, 0). Stops λ from drifting once practically satisfied. 0 = disabled.

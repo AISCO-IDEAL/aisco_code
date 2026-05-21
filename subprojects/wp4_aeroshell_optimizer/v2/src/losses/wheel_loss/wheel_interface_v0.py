@@ -39,8 +39,8 @@ class WheelInterfaceV0(ParentLoss):
 
         width = get_regulation("wheel.tire_width")
         radius = get_regulation("wheel.tire_diameter") / 2
-        gc = get_regulation("no_build_zones.outer_prism.ground_clearance")
-        C = radius - gc
+        wc = get_regulation("no_build_zones.outer_prism.wheel_clearance")
+        C = radius - wc
         L = math.sqrt(radius**2 - C**2)
 
         sampling_density = 4
