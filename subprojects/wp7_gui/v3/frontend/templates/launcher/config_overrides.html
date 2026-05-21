@@ -180,12 +180,13 @@
 
   function renderForm(schema, values) {
     formArea.innerHTML = "";
+    let sectionIndex = 1;
 
     // Run name field (top of form, always shown when a session is active)
     const nameSection = document.createElement("details");
     nameSection.className = "config-section"; nameSection.open = true;
     const nameSummary = document.createElement("summary");
-    nameSummary.textContent = "Session";
+    nameSummary.textContent = `${sectionIndex++} - Session`;
     nameSection.appendChild(nameSummary);
     const nameRow = document.createElement("div"); nameRow.className = "param-row";
     const nameLabelWrap = document.createElement("div");
@@ -202,30 +203,34 @@
     nameRow.appendChild(nameLabelWrap); nameRow.appendChild(nameInp);
     nameSection.appendChild(nameRow);
     formArea.appendChild(nameSection);
+
+    const mergedSection = document.createElement("details");
+    mergedSection.className = "config-section";
+    mergedSection.open = true;
+    const mergedSummary = document.createElement("summary");
+    mergedSummary.textContent = `${sectionIndex++} - Config Overrides`;
+    mergedSection.appendChild(mergedSummary);
+
     for (const [cfgName, cfgEntry] of Object.entries(schema.configs || {})) {
       const cfgVals = (values && values[cfgName]) || {};
-      const details = document.createElement("details");
-      details.className = "config-section"; details.open = true;
-      const summary = document.createElement("summary");
-      summary.textContent = `${cfgEntry.label || cfgName} — ${cfgName}`;
-      details.appendChild(summary);
       for (const param of (cfgEntry.params || [])) {
         const row = document.createElement("div"); row.className = "param-row";
         const labelWrap = document.createElement("div");
         const labelEl = document.createElement("div"); labelEl.className = "param-label";
         labelEl.textContent = param.label || param.path; labelWrap.appendChild(labelEl);
         const meta = document.createElement("span"); meta.className = "param-meta";
-        let mt = `${param.path} · ${param.type}`;
+        let mt = `${cfgEntry.label || cfgName} · ${cfgName} · ${param.path} · ${param.type}`;
         if ("min" in param || "max" in param) mt += ` · [${param.min ?? "-∞"}, ${param.max ?? "+∞"}]`;
         if (param.choices) mt += ` · ${JSON.stringify(param.choices)}`;
         if (param.path === ASSEMBLY_ID_PATH) mt += " · locked (set in assembly selection)";
         meta.textContent = mt; labelWrap.appendChild(meta);
         const inp = makeInput(param, cfgVals[param.path]);
         inp.dataset.cfg = cfgName; inp.dataset.path = param.path; inp.dataset.type = param.type;
-        row.appendChild(labelWrap); row.appendChild(inp); details.appendChild(row);
+        row.appendChild(labelWrap); row.appendChild(inp); mergedSection.appendChild(row);
       }
-      formArea.appendChild(details);
     }
+
+    formArea.appendChild(mergedSection);
     checkValidity();
   }
 
