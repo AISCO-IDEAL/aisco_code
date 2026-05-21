@@ -77,6 +77,8 @@
 <script>
   const API = "/launcher/api";
   let logEventSource = null;
+  let _runCompleted = false;   // true once "done" received — suppresses auto-reconnect
+  let _reconnectTimer = null;
 
   const btnRun = document.getElementById("btnRun");
   const btnStop = document.getElementById("btnStop");
@@ -86,8 +88,10 @@
 
   // ---------- SSE log stream ----------
   function startSSELog() {
-    if (logEventSource) { logEventSource.close(); }
+    if (logEventSource) { logEventSource.close(); logEventSource = null; }
+    if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
     logConsole.textContent = "";
+    _runCompleted = false;
     logEventSource = new EventSource(`${API}/run/stream/logs`);
     logEventSource.addEventListener("log", e => {
       const { line } = JSON.parse(e.data);
@@ -121,9 +125,64 @@
       progressFill.style.width = "100%";
       logEventSource.close(); logEventSource = null;
       btnRun.disabled = false; btnStop.disabled = true;
+      _runCompleted = true;
     });
-    logEventSource.onerror = () => { logEventSource.close(); logEventSource = null; btnRun.disabled = false; btnStop.disabled = true; };
+    // On error: don't close — the browser will auto-reconnect (SSE spec).
+    // After a grace period, verify the run is still live; if it finished
+    // while we were disconnected, update the UI accordingly.
+    logEventSource.onerror = () => {
+      if (_reconnectTimer) clearTimeout(_reconnectTimer);
+      _reconnectTimer = setTimeout(() => {
+        _reconnectTimer = null;
+        if (_runCompleted) return;
+        fetch(`${API}/run/state`).then(r => r.json()).then(state => {
+          if (!state.running && state.return_code !== null) {
+            // Run ended while we were away — close cleanly
+            if (logEventSource) { logEventSource.close(); logEventSource = null; }
+            progressLabel.textContent = state.return_code === 0 ? "Completed." : `Finished (code ${state.return_code})`;
+            progressFill.style.width = "100%";
+            btnRun.disabled = false; btnStop.disabled = true;
+            _runCompleted = true;
+          }
+        }).catch(() => {});
+      }, 5000);
+    };
   }
+
+  // ---------- Instant progress restore from log ----------
+  async function _restoreProgressBar() {
+    try {
+      const prog = await fetch(`${API}/run/progress`).then(r => r.json());
+      if (prog.completed) {
+        progressFill.style.width = "100%";
+        progressLabel.textContent = "Completed.";
+      } else if (prog.current_epoch >= 0) {
+        progressFill.style.width = prog.progress_percent + "%";
+        progressLabel.textContent = `Epoch ${prog.current_epoch + 1} / ${prog.num_epochs} (${prog.progress_percent.toFixed(1)}%) — reconnecting…`;
+      }
+    } catch (_) {}
+  }
+
+  // ---------- Auto-reconnect when tab/window regains focus ----------
+  function _reconnectIfNeeded() {
+    if (_runCompleted) return;
+    // Already connected and healthy
+    if (logEventSource && logEventSource.readyState !== EventSource.CLOSED) return;
+    fetch(`${API}/run/state`).then(r => r.json()).then(async state => {
+      if (state.running) {
+        btnRun.disabled = true; btnStop.disabled = false;
+        await _restoreProgressBar();
+        startSSELog();
+      } else if (state.log_path && !_runCompleted) {
+        // Run finished while we were away — replay log once to show final state
+        await _restoreProgressBar();
+        startSSELog();
+      }
+    }).catch(() => {});
+  }
+
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) _reconnectIfNeeded(); });
+  window.addEventListener("focus", _reconnectIfNeeded);
 
   btnRun.addEventListener("click", async () => {
     const cfgFolder = localStorage.getItem("aiscoOverrideFolderV3") || "";
@@ -152,10 +211,37 @@
     btnRun.disabled = false;
   });
 
-  // Reconnect SSE if a run is already live when the page opens
+  // On page load: reconnect SSE for an active run, or replay log for a recently completed one
   (async () => {
     const state = await (await fetch(`${API}/run/state`)).json();
-    if (state.running) { btnRun.disabled = true; btnStop.disabled = false; startSSELog(); }
+    const hasLog = !!state.log_path;
+    if (state.running || hasLog) {
+      if (state.running) { btnRun.disabled = true; btnStop.disabled = false; }
+      // Restore last-known metrics from CSV before first SSE epoch fires
+      try {
+        const [m, prog] = await Promise.all([
+          fetch(`${API}/run/metrics/latest`).then(r => r.json()),
+          fetch(`${API}/run/progress`).then(r => r.json()),
+        ]);
+        if (m.found) {
+          const dragEl = document.getElementById("dragValue");
+          const solarEl = document.getElementById("solarValue");
+          const speedEl = document.getElementById("speedValue");
+          if (m.drag_value !== null && m.drag_value !== undefined) dragEl.textContent = m.drag_value.toFixed(3);
+          if (m.solar_power_w !== null && m.solar_power_w !== undefined) solarEl.textContent = m.solar_power_w.toFixed(1);
+          if (m.cruising_speed_ms !== null && m.cruising_speed_ms !== undefined) speedEl.textContent = m.cruising_speed_ms.toFixed(2);
+        }
+        // Progress bar from log-based endpoint — no CSV dependency, always current
+        if (prog.completed) {
+          progressFill.style.width = "100%";
+          progressLabel.textContent = "Completed.";
+        } else if (prog.current_epoch >= 0) {
+          progressFill.style.width = prog.progress_percent + "%";
+          progressLabel.textContent = `Epoch ${prog.current_epoch + 1} / ${prog.num_epochs} (${prog.progress_percent.toFixed(1)}%) — reconnecting…`;
+        }
+      } catch (_) { /* non-fatal: SSE will fill values on next epoch */ }
+      startSSELog();
+    }
   })();
 
   // Show session info in toolbar

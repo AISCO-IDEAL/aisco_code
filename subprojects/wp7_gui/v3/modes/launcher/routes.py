@@ -19,6 +19,7 @@ from subprojects.wp7_gui.v3.core.settings import SETTINGS
 from subprojects.wp7_gui.v3.shared.artifact_index import list_artifacts
 from subprojects.wp7_gui.v3.shared.assembly_selection import AssemblySelectionService
 from subprojects.wp7_gui.v3.shared.config_overrides import ConfigOverrideManager
+from subprojects.wp7_gui.v3.shared.csv_metrics import CSVMetricsWriter
 from subprojects.wp7_gui.v3.shared.panel_visibility import load_panel_visibility_defaults
 from subprojects.wp7_gui.v3.shared.run_paths import detect_current_run_dir, get_storage_root_for_session
 from subprojects.wp7_gui.v3.shared.theme import build_template_theme_context
@@ -30,6 +31,7 @@ _templates = Jinja2Templates(directory=str(SETTINGS.templates_dir))
 # Singletons shared across requests
 # ---------------------------------------------------------------------------
 _process_manager = ProcessManager(SETTINGS.logs_dir)
+_csv_metrics = CSVMetricsWriter(SETTINGS.logs_dir / "gui_runs_summary.csv")
 _runtime_state: dict[str, str] = {"active_cfg_folder": ""}  # updated on each run/start so progress/SSE can resolve epochs
 _config_manager = ConfigOverrideManager(
     root=SETTINGS.config_overrides_root,
@@ -256,6 +258,98 @@ def run_progress() -> dict[str, Any]:
     return {**progress, "running": state["running"], "return_code": state["return_code"]}
 
 
+# ---------------------------------------------------------------------------
+# CSV metrics helpers
+# ---------------------------------------------------------------------------
+
+
+def _write_epoch_csv(
+    active_cfg_folder: str,
+    epoch: int,
+    drag_value: float | None,
+    solar_power_w: float | None,
+    cruising_speed_ms: float | None,
+) -> None:
+    """Write one epoch row to the per-run CSV and update the global summary.
+
+    Silently skips if the run directory cannot be resolved yet (early epochs).
+
+    Args:
+        active_cfg_folder: Current GUI config override folder path string.
+        epoch: Zero-based epoch index.
+        drag_value: Drag force in Newtons, or None.
+        solar_power_w: Solar output in Watts, or None.
+        cruising_speed_ms: Cruising speed in m/s, or None.
+    """
+    cfg_folder = active_cfg_folder.strip()
+    session_dir = Path(cfg_folder) if cfg_folder else None
+    storage_root = get_storage_root_for_session(session_dir)
+    cfg_session = Path(cfg_folder).name if cfg_folder else ""
+    run_dir = detect_current_run_dir(storage_root, preferred_cfg_session=cfg_session or None)
+    if run_dir is None:
+        return
+    _csv_metrics.write_epoch_row(
+        run_dir=run_dir,
+        epoch=epoch,
+        drag_value=drag_value,
+        solar_power_w=solar_power_w,
+        cruising_speed_ms=cruising_speed_ms,
+    )
+    _csv_metrics.write_summary_row(
+        run_id=run_dir.name,
+        cfg_session=cfg_session,
+        epoch=epoch,
+        drag_value=drag_value,
+        solar_power_w=solar_power_w,
+        cruising_speed_ms=cruising_speed_ms,
+    )
+
+
+@router.get("/api/run/metrics/latest")
+def run_metrics_latest() -> dict[str, Any]:
+    """Return the latest epoch metrics from the per-run CSV.
+
+    Used by the frontend to restore live metric values on page load / reconnect,
+    avoiding a blank sidebar until the next SSE epoch event arrives.
+
+    Returns dict with keys: ``epoch``, ``drag_value``, ``solar_power_w``,
+    ``cruising_speed_ms`` (all may be None if not yet written), plus
+    ``run_dir`` (str or null) and ``found`` (bool).
+    """
+    active_cfg_folder = _runtime_state["active_cfg_folder"].strip() if _runtime_state["active_cfg_folder"] else ""
+    session_dir = Path(active_cfg_folder) if active_cfg_folder else None
+    storage_root = get_storage_root_for_session(session_dir)
+    cfg_session = Path(active_cfg_folder).name if active_cfg_folder else None
+    run_dir = detect_current_run_dir(storage_root, preferred_cfg_session=cfg_session or None)
+    if run_dir is None:
+        return {
+            "found": False,
+            "run_dir": None,
+            "epoch": None,
+            "drag_value": None,
+            "solar_power_w": None,
+            "cruising_speed_ms": None,
+        }
+    metrics = _csv_metrics.read_latest_metrics(run_dir)
+    if not metrics:
+        return {
+            "found": False,
+            "run_dir": str(run_dir),
+            "epoch": None,
+            "drag_value": None,
+            "solar_power_w": None,
+            "cruising_speed_ms": None,
+        }
+    return {
+        "found": True,
+        "run_dir": str(run_dir),
+        "epoch": metrics.get("epoch"),
+        "drag_value": metrics.get("drag_value"),
+        "solar_power_w": metrics.get("solar_power_w"),
+        "cruising_speed_ms": metrics.get("cruising_speed_ms"),
+    }
+
+
 @router.get("/api/run/artifacts")
 def run_artifacts() -> dict[str, Any]:
     active_cfg_folder = _runtime_state["active_cfg_folder"].strip() if _runtime_state["active_cfg_folder"] else ""
@@ -278,35 +372,112 @@ def run_artifacts() -> dict[str, Any]:
 @router.get("/api/run/stream/logs")
 async def run_stream_logs() -> StreamingResponse:
     async def _gen():
-        last_size = 0
-        while True:
-            state = _process_manager.get_state()
-            log_path = state["log_path"]
+        # Use the actual OS file size for change detection so that the stream
+        # never stalls once the log exceeds the tail_log display cap.
+        raw_file_size: int = -1  # log_path.stat().st_size
+        sent_offset: int = 0  # char offset into the FULL log text sent so far
+        last_written_epoch: int = -1
+        log_path: Path | None = None  # exposed to the finally block
+        active_cfg_folder: str = (_runtime_state["active_cfg_folder"] or "").strip()
+
+        # Initialise from the per-run CSV so reconnects don't re-write old rows
+        try:
+            if active_cfg_folder:
+                _sd = Path(active_cfg_folder)
+                _sr = get_storage_root_for_session(_sd)
+                _rd = detect_current_run_dir(_sr, preferred_cfg_session=_sd.name)
+                if _rd is not None:
+                    _m = _csv_metrics.read_latest_metrics(_rd)
+                    if _m and _m.get("epoch") is not None:
+                        last_written_epoch = int(_m["epoch"])  # type: ignore[arg-type]
+        except Exception:
+            pass
+
+        try:
+            while True:
+                state = _process_manager.get_state()
+                log_path = state["log_path"]
+                active_cfg_folder = (_runtime_state["active_cfg_folder"] or "").strip()
+                if log_path and log_path.exists():
+                    try:
+                        cur_raw_size = log_path.stat().st_size
+                    except OSError:
+                        cur_raw_size = raw_file_size
+                    if cur_raw_size != raw_file_size:
+                        raw_file_size = cur_raw_size
+                        full_text = log_path.read_text(encoding="utf-8", errors="replace")
+
+                        # Send only new content; on the first connect cap history to
+                        # the last 60 k chars so the client isn't flooded.
+                        new_content = full_text[sent_offset:]
+                        if sent_offset == 0 and len(full_text) > 60_000:
+                            new_content = full_text[-60_000:]
+                        sent_offset = len(full_text)
+
+                        for line in new_content.splitlines():
+                            yield sse.event("log", {"line": line})
+
+                        epoch = log_parser.parse_epoch(full_text)
+                        if epoch >= 0:
+                            metrics = log_parser.parse_metrics(full_text)
+                            # Write CSV *before* yielding to the client so that
+                            # the rows are persisted even when the client disconnects
+                            # mid-yield.
+                            epoch_blocks = log_parser.parse_epoch_blocks(full_text)
+                            all_block_epochs = sorted(epoch_blocks.keys())
+                            for ep in all_block_epochs[:-1]:  # skip last (may be incomplete)
+                                if ep > last_written_epoch:
+                                    _write_epoch_csv(
+                                        active_cfg_folder=active_cfg_folder,
+                                        epoch=ep,
+                                        **epoch_blocks[ep],
+                                    )
+                                    last_written_epoch = ep
+
+                            yield sse.event(
+                                "epoch",
+                                {
+                                    "epoch": epoch,
+                                    "total": _get_total_epochs(active_cfg_folder),
+                                    "drag_value": metrics.get("drag_value"),
+                                    "solar_power_w": metrics.get("solar_power_w"),
+                                    "cruising_speed_ms": metrics.get("cruising_speed_ms"),
+                                },
+                            )
+
+                if not state["running"]:
+                    # Flush the final epoch block — it is now complete
+                    if log_path and log_path.exists():
+                        final_text = log_path.read_text(encoding="utf-8", errors="replace")
+                        final_blocks = log_parser.parse_epoch_blocks(final_text)
+                        for ep in sorted(final_blocks.keys()):
+                            if ep > last_written_epoch:
+                                _write_epoch_csv(
+                                    active_cfg_folder=active_cfg_folder,
+                                    epoch=ep,
+                                    **final_blocks[ep],
+                                )
+                                last_written_epoch = ep
+                    yield sse.event("done", {"return_code": state["return_code"]})
+                    break
+                await asyncio.sleep(1.0)
+        finally:
+            # Flush any remaining unwritten epochs when the generator closes,
+            # covering both normal completion and client-disconnect cancellation.
             if log_path and log_path.exists():
-                text, _ = log_parser.tail_log(log_path)
-                if len(text) != last_size:
-                    new_lines = text[last_size:]
-                    last_size = len(text)
-                    for line in new_lines.splitlines():
-                        yield sse.event("log", {"line": line})
-                    epoch = log_parser.parse_epoch(text)
-                    if epoch >= 0:
-                        active_cfg_folder = _runtime_state["active_cfg_folder"]
-                        metrics = log_parser.parse_metrics(text)
-                        yield sse.event(
-                            "epoch",
-                            {
-                                "epoch": epoch,
-                                "total": _get_total_epochs(active_cfg_folder),
-                                "drag_value": metrics.get("drag_value"),
-                                "solar_power_w": metrics.get("solar_power_w"),
-                                "cruising_speed_ms": metrics.get("cruising_speed_ms"),
-                            },
-                        )
-            if not state["running"]:
-                yield sse.event("done", {"return_code": state["return_code"]})
-                break
-            await asyncio.sleep(1.0)
+                try:
+                    final_text = log_path.read_text(encoding="utf-8", errors="replace")
+                    final_blocks = log_parser.parse_epoch_blocks(final_text)
+                    for ep in sorted(final_blocks.keys()):
+                        if ep > last_written_epoch:
+                            _write_epoch_csv(
+                                active_cfg_folder=active_cfg_folder,
+                                epoch=ep,
+                                **final_blocks[ep],
+                            )
+                            last_written_epoch = ep
+                except Exception:
+                    pass
 
     return sse.stream_response(_gen())
 
