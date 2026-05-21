@@ -3,6 +3,7 @@
  */
 
 import { PerspectiveCamera, Scene, Color, WebGLRenderer, HemisphereLight, DirectionalLight, AmbientLight, MeshStandardMaterial, MeshPhongMaterial, Mesh, Vector3, Box3, SRGBColorSpace, DoubleSide, EdgesGeometry, LineSegments, LineBasicMaterial } from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TrackballControls } from "three/addons/controls/TrackballControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PLYLoader } from "three/addons/loaders/PLYLoader.js";
@@ -12,9 +13,12 @@ import { PLYLoader } from "three/addons/loaders/PLYLoader.js";
  * function that replaces the displayed mesh on each call.
  *
  * @param {HTMLElement} containerEl - the element that will host the renderer
+ * @param {{ controlMode?: "trackball"|"turntable" }=} options - viewer interaction options
  * @returns {{ loadMesh: function(string): void }}
  */
-export function initMeshViewer(containerEl) {
+export function initMeshViewer(containerEl, options = {}) {
+    const controlMode = options.controlMode === "turntable" ? "turntable" : "trackball";
+    const usesTurntableControls = controlMode === "turntable";
     function cssVar(name, fallback) {
         const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
         return value || fallback;
@@ -49,7 +53,12 @@ export function initMeshViewer(containerEl) {
         .catch(() => { });
 
     const camera = new PerspectiveCamera(50, containerEl.clientWidth / containerEl.clientHeight, 0.1, 1000);
-    camera.position.set(0, 0, 3);
+    if (usesTurntableControls) {
+        camera.up.set(0, 0, 1);
+        camera.position.set(0, -3, 1.05);
+    } else {
+        camera.position.set(0, 0, 3);
+    }
 
     const renderer = new WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio);
@@ -57,7 +66,15 @@ export function initMeshViewer(containerEl) {
     renderer.outputColorSpace = SRGBColorSpace;
     containerEl.appendChild(renderer.domElement);
 
-    const controls = new TrackballControls(camera, renderer.domElement);
+    const controls = usesTurntableControls
+        ? new OrbitControls(camera, renderer.domElement)
+        : new TrackballControls(camera, renderer.domElement);
+    if (usesTurntableControls) {
+        controls.enableDamping = true;
+        controls.screenSpacePanning = false;
+        controls.target.set(0, 0, 0);
+        controls.update();
+    }
     let onControlsChange = null;
     let suppressControlsCallback = false;
     let glbControlsHost = null;
@@ -228,10 +245,12 @@ export function initMeshViewer(containerEl) {
         suppressControlsCallback = true;
         camera.position.set(viewState.camera.x, viewState.camera.y, viewState.camera.z);
         controls.target.set(viewState.target.x, viewState.target.y, viewState.target.z);
-        if (viewState.up) {
+        if (usesTurntableControls) {
+            camera.up.set(0, 0, 1);
+        } else if (viewState.up) {
             camera.up.set(viewState.up.x, viewState.up.y, viewState.up.z);
         }
-        if (viewState.quaternion) {
+        if (!usesTurntableControls && viewState.quaternion) {
             camera.quaternion.set(
                 viewState.quaternion.x,
                 viewState.quaternion.y,
@@ -394,18 +413,26 @@ export function initMeshViewer(containerEl) {
         const dFitH = (sizeVec.y / 2) / Math.tan(vFovHalf);
         const radius = Math.max(sizeVec.x, sizeVec.y, sizeVec.z) / 2;
         const dFitSphere = radius > 0 ? radius / Math.sin(vFovHalf) : 2.5;
-        camera.position.set(0, 0, Math.max(dFitW, dFitH, dFitSphere) * 1.2);
+        const distance = Math.max(dFitW, dFitH, dFitSphere) * 1.2;
+        if (usesTurntableControls) {
+            camera.up.set(0, 0, 1);
+            camera.position.set(0, -distance, distance * 0.35);
+        } else {
+            camera.position.set(0, 0, distance);
+        }
         camera.near = 0.01;
         camera.far = 5000;
         camera.updateProjectionMatrix();
         controls.target.set(0, 0, 0);
-        camera.quaternion.identity();
+        if (!usesTurntableControls) {
+            camera.quaternion.identity();
+        }
         // Suppress the callback so framing a newly-loaded mesh never broadcasts
         // the reset view to a synced viewer (would clobber the user's camera).
         suppressControlsCallback = true;
         controls.update();
         suppressControlsCallback = false;
-        // Force TrackballControls to sync its internal state with the camera.
+        // Force controls to sync their internal state with the camera.
         const currentState = getViewState();
         setViewState(currentState);
     }
@@ -422,7 +449,11 @@ export function initMeshViewer(containerEl) {
         root.scale.setScalar(scale);
         root.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
 
-        camera.quaternion.identity();
+        if (!usesTurntableControls) {
+            camera.quaternion.identity();
+        } else {
+            camera.up.set(0, 0, 1);
+        }
         frameScaledObject(size.clone().multiplyScalar(scale));
     }
 
