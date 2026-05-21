@@ -6,6 +6,7 @@ Returns solar power in watts. Gradients are preserved through the mesh_sdf surro
 
 from __future__ import annotations
 
+import os
 from dataclasses import replace as _replace
 
 import torch
@@ -34,6 +35,15 @@ class SolarSR(ParentLoss):
         self.epsilon = float(cfg.get("eps", 1e-12))
         self.smooth_gradient_iters = int(cfg.get("smooth_gradient_iters", 0))
 
+        self.exclude_vision_cone_faces = bool(cfg.get("exclude_vision_cone_faces", False))
+        if self.exclude_vision_cone_faces:
+            from subprojects.wp3_solar_estimator.utils.wp3_vision_cone import get_vision_cone_mesh  # noqa: PLC0415
+
+            env_id = os.getenv("AISCO_ASSEMBLY_ID", "").strip()
+            cone_id = int(env_id) if env_id else int(self.losses_config.get("bb_config", {}).get("assembly_id", 0))
+            print(f"[SolarSR] Vision cone exclusion enabled — assembly_id={cone_id}")
+            self._cone_verts, self._cone_faces = get_vision_cone_mesh(cone_id, device="cpu")
+
         mesh_cfg = load_mesh_extraction_config()
         mesh_cfg = _replace(
             mesh_cfg,
@@ -51,6 +61,12 @@ class SolarSR(ParentLoss):
         sun_dir = self.sun_dir.to(self.device)
 
         def loss_fn(vertices: torch.Tensor, faces: torch.Tensor) -> torch.Tensor:
+            cone_face_mask = None
+            if self.exclude_vision_cone_faces:
+                from subprojects.wp3_solar_estimator.utils.wp3_vision_cone import get_vision_cone_face_mask  # noqa: PLC0415
+
+                cone_face_mask = get_vision_cone_face_mask(self._cone_verts, self._cone_faces, vertices, faces)
+
             loss, diagnostics = solar_loss_sr(
                 vertices,
                 faces,
@@ -63,6 +79,7 @@ class SolarSR(ParentLoss):
                 epsilon=self.epsilon,
                 vis_manager=vis_manager if not skip_telemetry else NullVisManager(),
                 epoch_name=self.epoch_name,
+                cone_face_mask=cone_face_mask,
             )
             self._pending_diagnostics = diagnostics
             return loss

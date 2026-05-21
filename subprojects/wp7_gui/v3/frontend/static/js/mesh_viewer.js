@@ -62,6 +62,9 @@ export function initMeshViewer(containerEl) {
     let suppressControlsCallback = false;
     let glbControlsHost = null;
     let plyFallbackColorHex = fallbackMeshHex;
+    // Persists user-set visibility/opacity keyed by component name so they
+    // survive epoch switches (loadMesh is called with a new file each time).
+    const _partOverrides = {};
 
     function rgbTripletToHex(rgb) {
         if (!Array.isArray(rgb) || rgb.length !== 3) {
@@ -299,6 +302,12 @@ export function initMeshViewer(containerEl) {
                 m.needsUpdate = true;
             });
         }
+        // Persist the new state by component name so it survives epoch switches.
+        if (!_partOverrides[entry.name]) _partOverrides[entry.name] = {};
+        if (Object.prototype.hasOwnProperty.call(nextState, "visible"))
+            _partOverrides[entry.name].visible = !!nextState.visible;
+        if (Object.prototype.hasOwnProperty.call(nextState, "opacity"))
+            _partOverrides[entry.name].opacity = Math.min(1, Math.max(0, Number(nextState.opacity)));
     }
 
     function renderGlbControls() {
@@ -391,8 +400,12 @@ export function initMeshViewer(containerEl) {
         camera.updateProjectionMatrix();
         controls.target.set(0, 0, 0);
         camera.quaternion.identity();
+        // Suppress the callback so framing a newly-loaded mesh never broadcasts
+        // the reset view to a synced viewer (would clobber the user's camera).
+        suppressControlsCallback = true;
         controls.update();
-        // Force TrackballControls to sync its internal state with the camera
+        suppressControlsCallback = false;
+        // Force TrackballControls to sync its internal state with the camera.
         const currentState = getViewState();
         setViewState(currentState);
     }
@@ -538,6 +551,24 @@ export function initMeshViewer(containerEl) {
                     }
                     currentObj = root;
                     currentGlbComponents = glbComponents;
+                    // Re-apply any user overrides (visibility / opacity) from
+                    // previous frames so settings persist across epoch switches.
+                    currentGlbComponents.forEach((entry) => {
+                        const ov = _partOverrides[entry.name];
+                        if (!ov) return;
+                        if (Object.prototype.hasOwnProperty.call(ov, "visible"))
+                            entry.mesh.visible = ov.visible;
+                        if (Object.prototype.hasOwnProperty.call(ov, "opacity")) {
+                            const mats = Array.isArray(entry.mesh.material) ? entry.mesh.material : [entry.mesh.material];
+                            mats.forEach((m) => {
+                                if (!m) return;
+                                m.opacity = ov.opacity;
+                                m.transparent = true;
+                                m.depthWrite = ov.opacity >= 0.99;
+                                m.needsUpdate = true;
+                            });
+                        }
+                    });
                     scene.add(currentObj);
                     fitGlbCamera(currentObj);
                     renderGlbControls();

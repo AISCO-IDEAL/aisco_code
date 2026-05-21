@@ -25,6 +25,9 @@ class WheelInterfaceV0(ParentLoss):
         self.assembly_id = resolve_assembly_id(self.__bb_config)
         print(f"[WheelInterfaceV0] Using assembly_id={self.assembly_id}")
         self._manual_z_shift = self.__config.get("manual_z_shift", 0.0)
+        # GINN-style "satisfied" deadband on the aggregated L2 loss; ALM sees 0 below this
+        # so λ has a fixed point at practical satisfaction.
+        self._tolerance = float(self.__config.get("interface_tolerance", 0.0))
 
         assembly_map_path = Path(__file__).parents[6] / "subprojects/wp2_assembler/version4/config/assembly_map.yaml"
         with assembly_map_path.open("r") as f:
@@ -58,4 +61,5 @@ class WheelInterfaceV0(ParentLoss):
 
     def _loss(self, model) -> torch.Tensor:
         sdf_raw = model(self.points.to(next(model.parameters()).device)).squeeze(-1)
-        return torch.sqrt(sdf_raw.pow(2).sum() + 1e-12)
+        loss = torch.sqrt(sdf_raw.pow(2).sum() + 1e-12)
+        return torch.clamp(loss - self._tolerance, min=0.0)

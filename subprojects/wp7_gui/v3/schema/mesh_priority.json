@@ -1,0 +1,100 @@
+{
+    "_comment": [
+        "Priority-ordered list of all visualizations that can appear in the right panel of the output page.",
+        "max_shown: how many items from the top of this list are selectable in the GUI.",
+        "  The selector shows the first max_shown items that were actually generated for this run,",
+        "  skipping entries in the list that were not generated (e.g. if entry #3 was not produced,",
+        "  entries #1, #2 and #4 fill the first three slots).",
+        "Each entry: type (glb_cone | ply | extra_group), label (display name), match (regex string for extra_group — case-insensitive).",
+        "All possible visual types from a main_v2 run are listed below, in descending importance order.",
+        "Regex patterns are matched against the humanized folder-path label produced by artifact_index._humanize_path."
+    ],
+    "max_shown": 3,
+    "priority": [
+        {
+            "type": "glb_cone",
+            "label": "Aeroshell Mesh (GLB, Vision Cone)",
+            "match": null
+        },
+        {
+            "type": "ply",
+            "label": "Aeroshell Mesh (PLY)",
+            "match": null
+        },
+        {
+            "type": "extra_group",
+            "label": "Cp Field",
+            "match": "aero.*cp|\\bcp\\b|pressure"
+        },
+        {
+            "type": "extra_group",
+            "label": "Solar – Quality",
+            "match": "solar.*quality"
+        },
+        {
+            "type": "extra_group",
+            "label": "Solar – Selection",
+            "match": "solar.*selection"
+        },
+        {
+            "type": "extra_group",
+            "label": "Solar – Shading",
+            "match": "solar.*shading"
+        },
+        {
+            "type": "extra_group",
+            "label": "Solar – Penalty",
+            "match": "solar.*penalty"
+        },
+        {
+            "type": "extra_group",
+            "label": "Solar – Numerical Factor",
+            "match": "solar.*numerical"
+        },
+        {
+            "type": "extra_group",
+            "label": "Solar – Receiver Mask",
+            "match": "solar.*receiver"
+        },
+        {
+            "type": "extra_group",
+            "label": "Solar – Vision Cone Mask",
+            "match": "solar.*vision"
+        },
+        {
+            "type": "extra_group",
+            "label": "Solar – Binary Mask",
+            "match": "solar.*binary"
+        },
+        {
+            "type": "extra_group",
+            "label": "Solar (Other)",
+            "match": "solar"
+        },
+        {
+            "type": "extra_group",
+            "label": "Aero – Cp Field",
+            "match": "aero.*cp"
+        },
+        {
+            "type": "extra_group",
+            "label": "Aero – SDF Influence",
+            "match": "aero.*sdf|sdf.*influence"
+        },
+        {
+            "type": "extra_group",
+            "label": "Bounding Box Constraint",
+            "match": "bb.constraint|bounding"
+        },
+        {
+            "type": "extra_group",
+            "label": "Mesh Gradients",
+            "match": "mesh.gradient|gradient"
+        },
+        {
+            "type": "extra_group",
+            "label": "Other",
+            "match": ".*"
+        }
+    ]
+}

@@ -82,6 +82,7 @@ def list_artifacts(run_dir: Path, storage_root: Path) -> dict[str, object]:  # n
 
     meshes: list[dict[str, object]] = []
     meshes_glb: list[dict[str, object]] = []
+    meshes_glb_cone: list[dict[str, object]] = []
     seen_mesh_rel_paths: set[str] = set()
 
     def _append_mesh_file(p: Path, target: list[dict[str, object]]) -> None:
@@ -98,11 +99,17 @@ def list_artifacts(run_dir: Path, storage_root: Path) -> dict[str, object]:  # n
             }
         )
 
+    def _append_glb(p: Path) -> None:
+        if "_with_vision_cone" in p.stem:
+            _append_mesh_file(p, meshes_glb_cone)
+        else:
+            _append_mesh_file(p, meshes_glb)
+
     if mesh_dir.exists():
         for p in sorted(list(mesh_dir.glob("*.ply")) + list(mesh_dir.glob("*.poly"))):
             _append_mesh_file(p, meshes)
         for p in sorted(mesh_dir.glob("*.glb")):
-            _append_mesh_file(p, meshes_glb)
+            _append_glb(p)
 
     # Some runs write renderable PLYs under mesh_assembly_v4 (or sibling candidates)
     # instead of meshes/. Include them so launcher/output and viewer/archive can render.
@@ -110,10 +117,11 @@ def list_artifacts(run_dir: Path, storage_root: Path) -> dict[str, object]:  # n
         for p in sorted(mesh_assembly_dir.rglob("*.ply")):
             _append_mesh_file(p, meshes)
         for p in sorted(mesh_assembly_dir.rglob("*.glb")):
-            _append_mesh_file(p, meshes_glb)
+            _append_glb(p)
 
     meshes.sort(key=lambda m: cast(int, m["epoch"]) if isinstance(m.get("epoch"), int) else -1)
     meshes_glb.sort(key=lambda m: cast(int, m["epoch"]) if isinstance(m.get("epoch"), int) else -1)
+    meshes_glb_cone.sort(key=lambda m: cast(int, m["epoch"]) if isinstance(m.get("epoch"), int) else -1)
 
     # --- Extra GIFs: scan all subdirs (up to 2 levels) not already handled ---
     extra_gifs: list[dict[str, object]] = []
@@ -221,6 +229,7 @@ def list_artifacts(run_dir: Path, storage_root: Path) -> dict[str, object]:  # n
         "solar_loss_gifs": solar_gifs,
         "meshes": meshes,
         "meshes_glb": meshes_glb,
+        "meshes_glb_cone": meshes_glb_cone,
         "extra_gifs": extra_gifs,
         "extra_ply_groups": extra_ply_groups,
     }

@@ -85,7 +85,7 @@ def get_kinematic_viscosity(alt_kft: float) -> float:
         T = 216.65
         p = 22632.06 * math.exp(-0.03416319 * (h - 11000.0))
     rho = p / (287.05 * T)
-    mu = 1.458e-6 * (T ** 1.5) / (T + 110.4)
+    mu = 1.458e-6 * (T**1.5) / (T + 110.4)
     return mu / rho
 
 
