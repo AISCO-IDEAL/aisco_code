@@ -169,7 +169,7 @@ visual_types:
       colormap: "jet"     # CFD AI colormap
       interval: 1
       alpha_enabled: null
-      coordinate_system: true
+      coordinate_system: null
       vmin: -2.0            # fixed range for cross-epoch comparability
       vmax: 1.0
       solid_color_rgb: [1.0, 0.3137, 0.3020]     # #FF504D highlight red
@@ -189,7 +189,7 @@ visual_types:
       colormap: "inferno"  # SDF colormap
       interval: 1
       alpha_enabled: null
-      coordinate_system: true
+      coordinate_system: null
       vmin: null
       vmax: null
 
