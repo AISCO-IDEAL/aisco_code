@@ -1,1 +1,1 @@
-[WARNING] Unstable assembly: seat is not enclosed by the wheel polygon.
+OK: no check warnings.

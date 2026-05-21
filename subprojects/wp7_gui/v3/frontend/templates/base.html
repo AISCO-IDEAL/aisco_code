@@ -10,11 +10,11 @@
   <link rel="stylesheet" href="/static/css/arcade.css">
   <style>
     :root {
-{{ theme_css_vars | default("") | safe }}
+      {{ theme_css_vars | default("") | safe }}
     }
   </style>
   <script>
-    window.AISCO_GUI_THEME = {{ gui_theme_json | default('{}') | safe }};
+    window.AISCO_GUI_THEME = {{ gui_theme_json | default ('{}') | safe }};
   </script>
   <script src="/static/js/utils.js"></script>
   {% block head %}{% endblock %}
@@ -66,6 +66,8 @@
             <a href="/viewer" class="{% if active_page == 'runs' %}active{% endif %}">Finished Runs</a>
             <a href="/viewer/pretraining" class="{% if active_page == 'pretraining' %}active{% endif %}">Pretraining
               GIFs</a>
+            <a href="/viewer/latent-explorer" class="{% if active_page == 'latent-explorer' %}active{% endif %}">Latent
+              Explorer</a>
           </nav>
           {% endif %}
         </div>

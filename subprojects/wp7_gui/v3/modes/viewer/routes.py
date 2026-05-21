@@ -3,16 +3,25 @@
 from __future__ import annotations
 
 import json
+import uuid as uuid_module
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
+import torch
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from subprojects.wp7_gui.v3.core.settings import SETTINGS
 from subprojects.wp7_gui.v3.shared.artifact_index import list_artifacts
+from subprojects.wp7_gui.v3.shared.latent_explorer import (
+    extract_mesh_glb,
+    find_last_epoch_checkpoint,
+    is_checkpoint_path_allowed,
+    load_checkpoint_info,
+)
 from subprojects.wp7_gui.v3.shared.panel_visibility import load_panel_visibility_defaults
 from subprojects.wp7_gui.v3.shared.pretraining import PretrainingService
 from subprojects.wp7_gui.v3.shared.run_paths import default_storage_root, get_storage_root_for_session, list_all_runs
@@ -127,3 +136,117 @@ def api_pretraining_gifs() -> dict[str, Any]:
 @router.get("/api/pretraining/gif-file")
 def api_pretraining_gif_file(path: str = "") -> FileResponse:
     return _pretraining.get_gif_response(path)
+
+
+# ---------------------------------------------------------------------------
+# Latent Explorer page + API
+# ---------------------------------------------------------------------------
+
+_LATENT_MESH_DIR = SETTINGS.cache_dir / "latent_meshes"
+_DEFAULT_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+
+class _LoadCheckpointBody(BaseModel):
+    checkpoint_path: str
+
+
+class _QueryMeshBody(BaseModel):
+    checkpoint_path: str
+    z0: float
+    z1: float
+    resolution: int = 35
+
+
+@router.get("/latent-explorer")
+def viewer_latent_explorer(request: Request) -> Any:
+    theme_ctx = build_template_theme_context()
+    return _templates.TemplateResponse(
+        request,
+        "viewer/latent_explorer.html",
+        {
+            "active_mode": "viewer",
+            "active_page": "latent-explorer",
+            "page_title": "Viewer — Latent Explorer",
+            **theme_ctx,
+        },
+    )
+
+
+@router.post("/api/latent/load-checkpoint")
+def api_latent_load_checkpoint(body: _LoadCheckpointBody) -> JSONResponse:
+    """Load a checkpoint and return latent-space metadata.
+
+    The model is cached for subsequent mesh queries.
+    """
+    ckpt_path = Path(body.checkpoint_path)
+    if not is_checkpoint_path_allowed(ckpt_path):
+        raise HTTPException(
+            status_code=400,
+            detail={"message": f"Checkpoint path is not in an allowed directory: {ckpt_path}"},
+        )
+    try:
+        ckpt_path = find_last_epoch_checkpoint(ckpt_path)
+        device = torch.device(_DEFAULT_DEVICE)
+        info = load_checkpoint_info(ckpt_path, device)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
+    return JSONResponse(
+        content={
+            "resolved_path": str(ckpt_path),
+            "z_dim": info["z_dim"],
+            "z_radius": info["z_radius"],
+            "z_pretrained": info["z_pretrained"],
+        }
+    )
+
+
+@router.post("/api/latent/query-mesh")
+def api_latent_query_mesh(body: _QueryMeshBody) -> JSONResponse:
+    """Extract the aeroshell mesh at the given latent point and return a URL."""
+    ckpt_path = Path(body.checkpoint_path)
+    if not is_checkpoint_path_allowed(ckpt_path):
+        raise HTTPException(
+            status_code=400,
+            detail={"message": f"Checkpoint path is not in an allowed directory: {ckpt_path}"},
+        )
+
+    if not (1 <= body.resolution <= 100):
+        raise HTTPException(status_code=400, detail={"message": "resolution must be between 1 and 100"})
+
+    _LATENT_MESH_DIR.mkdir(parents=True, exist_ok=True)
+    mesh_id = str(uuid_module.uuid4())
+    glb_path = _LATENT_MESH_DIR / f"{mesh_id}.glb"
+
+    try:
+        device = torch.device(_DEFAULT_DEVICE)
+        glb_bytes = extract_mesh_glb(
+            ckpt_path=ckpt_path,
+            z0=body.z0,
+            z1=body.z1,
+            resolution=body.resolution,
+            device=device,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail={"message": str(exc)}) from exc
+
+    glb_path.write_bytes(glb_bytes)
+    # The ?path=mesh.glb suffix triggers GLTFLoader in mesh_viewer.js
+    mesh_url = f"/viewer/api/latent/mesh-file?id={mesh_id}&path=mesh.glb"
+    return JSONResponse(content={"mesh_url": mesh_url})
+
+
+@router.get("/api/latent/mesh-file")
+def api_latent_mesh_file(id: str = "", path: str = "") -> FileResponse:  # noqa: ARG001  # path param consumed by mesh_viewer.js extension detection, not by this handler
+    """Serve a previously generated GLB mesh file by its UUID."""
+    if not id or "/" in id or "\\" in id or ".." in id:
+        raise HTTPException(status_code=400, detail={"message": "Invalid mesh id"})
+    glb_path = (_LATENT_MESH_DIR / f"{id}.glb").resolve()
+    try:
+        glb_path.relative_to(_LATENT_MESH_DIR.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail={"message": "Invalid mesh id"}) from None
+    if not glb_path.exists():
+        raise HTTPException(status_code=404, detail={"message": "Mesh file not found"})
+    return FileResponse(str(glb_path), media_type="model/gltf-binary")
