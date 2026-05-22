@@ -12,7 +12,7 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
 
 class DriveSync:
-    SCOPES = ["https://www.googleapis.com/auth/drive"]
+    SCOPES = ["https://www.googleapis.com/auth/drive"]  # Noqa: RUF012
     MAX_WORKERS = 4
     SMALL_UPLOAD_LIMIT = 5 * 1024 * 1024
     GOOGLE_APPS_MIME = "application/vnd.google-apps."
@@ -153,7 +153,8 @@ class DriveSync:
                 downloads.append((item, local_folder / name))
 
     def sync(self):
-        uploads, downloads = [], []
+        uploads: list[tuple[Path, str]] = []
+        downloads: list[tuple[dict[str, str], Path]] = []
         self.collect_transfers(self.local_folder, self.folder_id, uploads, downloads)
         with ThreadPoolExecutor(max_workers=self.MAX_WORKERS) as pool:
             tasks = [pool.submit(self.download, *job) for job in downloads]
