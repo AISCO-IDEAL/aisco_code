@@ -9,11 +9,33 @@
 ######set -e  # Exit on any error
 
 ENV_NAME="aisco_env"
+GPU_PROFILE="${GPU_PROFILE:-blackwell}"
+
+case "${GPU_PROFILE,,}" in
+    blackwell)
+        CUDA_MODULE="cuda/12.8.0"
+        TORCH_VERSION="2.8.0"
+        TORCHVISION_VERSION="0.23.0"
+        TORCH_CUDA_TAG="cu128"
+        TORCH_CUDA_ARCH_LIST_VALUE="12.0"
+        ;;
+    ada4090|ada)
+        CUDA_MODULE="cuda/12.1.1"
+        TORCH_VERSION="2.4.1"
+        TORCHVISION_VERSION="0.19.1"
+        TORCH_CUDA_TAG="cu121"
+        TORCH_CUDA_ARCH_LIST_VALUE="8.9"
+        ;;
+    *)
+        echo "❌ Unsupported GPU_PROFILE '$GPU_PROFILE'. Use 'ada4090' or 'blackwell'."
+        exit 1
+        ;;
+esac
 
 echo "🔍 Loading Python module..."
 module purge
 module load fast_python_workshop_cpu/2025.0.0
-module load stack/2024-06 gcc/12.2.0 cuda/12.8.0 python_cuda/3.11.6 eth_proxy
+module load stack/2024-06 gcc/12.2.0 "$CUDA_MODULE" python_cuda/3.11.6 eth_proxy
 
 PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
 if [[ "$PYTHON_VERSION" != "3.11.6" ]]; then
@@ -24,8 +46,11 @@ fi
 
 export SETUPTOOLS_ENABLE_FEATURES="legacy-editable"
 
-# RTX 5090 / Blackwell
-export TORCH_CUDA_ARCH_LIST="12.0"
+export TORCH_CUDA_ARCH_LIST="$TORCH_CUDA_ARCH_LIST_VALUE"
+
+echo "Using GPU profile: $GPU_PROFILE"
+echo "Torch stack: torch==$TORCH_VERSION torchvision==$TORCHVISION_VERSION ($TORCH_CUDA_TAG)"
+echo "TORCH_CUDA_ARCH_LIST=$TORCH_CUDA_ARCH_LIST"
 
 echo "CUDA_HOME=$CUDA_HOME"
 which nvcc || true
@@ -69,6 +94,10 @@ fi
 
 echo "📦 Upgrading pip and installing standard dependencies from pyproject.toml..."
 python3 -m pip install --upgrade pip setuptools wheel build ninja
+python3 -m pip install \
+    "torch==$TORCH_VERSION" \
+    "torchvision==$TORCHVISION_VERSION" \
+    --index-url "https://download.pytorch.org/whl/$TORCH_CUDA_TAG"
 python3 -m pip install -e .
 
 echo "🪝 Setting up Pre-commit Hooks..."
@@ -90,7 +119,7 @@ echo "🔍 Checking if Kaolin should be installed..."
 read -p "Do you want to install Kaolin (GPU/CUDA-dependent)? [y/n]: " install_kaolin
 if [[ "$install_kaolin" == "y" ]]; then
     echo "🐍 Installing Kaolin from NVIDIA link..."
-    python3 -m pip install -f https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-2.8.0_cu128.html kaolin==0.18.0
+    python3 -m pip install -f "https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-${TORCH_VERSION}_${TORCH_CUDA_TAG}.html" kaolin==0.18.0
     echo "✅ Kaolin installation complete."
 else
     echo "⏭️ Skipping Kaolin installation."
@@ -100,7 +129,7 @@ read -p "Do you want to BUILD Neural Renderer (DON'T DO THIS UNLESS SOMEONE SCRE
 if [[ "$install_renderer" == "y" ]]; then
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     cd "$SCRIPT_DIR/subprojects/fixed_renderer"
-    export TORCH_CUDA_ARCH_LIST="12.0"
+    export TORCH_CUDA_ARCH_LIST="$TORCH_CUDA_ARCH_LIST_VALUE"
     python setup.py build_ext --inplace
     cd "$SCRIPT_DIR"
 else

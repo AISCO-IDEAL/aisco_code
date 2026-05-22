@@ -6,6 +6,7 @@ refs) so it works identically for live runs and finished-run viewer.
 
 from __future__ import annotations
 
+import contextlib
 import re
 from pathlib import Path
 
@@ -14,6 +15,11 @@ _EPOCH_PATTERNS = [
     re.compile(r"Epoch\s+(\d+)/"),
 ]
 _COMPLETED_MARKERS = ("Model optimisation completed.", "Completed job successfully.")
+
+# Metrics extraction patterns from debug output
+_DRAG_PATTERN = re.compile(r"drag_value\s*:\s*([\d.eE+\-]+)")
+_SOLAR_PATTERN = re.compile(r"(?:loss_value_watts|loss_value_raw)\s*:\s*([\d.eE+\-]+)")
+_CRUISING_SPEED_PATTERN = re.compile(r"(?:cruising_speed_ms|cruising_speed)\s*:\s*([\d.eE+\-]+)")
 
 
 def tail_log(log_path: Path, max_chars: int = 60_000) -> tuple[str, bool]:
@@ -61,3 +67,34 @@ def get_progress(log_path: Path, total_epochs: int) -> dict[str, object]:
         "progress_percent": round(progress_pct, 1),
         "completed": completed,
     }
+
+
+def parse_metrics(log_text: str) -> dict[str, float | None]:
+    """Extract latest drag, solar, and cruising speed from log text.
+
+    Returns a dict with keys: drag_value, solar_power_w, cruising_speed_ms.
+    Values are floats or None if not found.
+    """
+    metrics: dict[str, float | None] = {
+        "drag_value": None,
+        "solar_power_w": None,
+        "cruising_speed_ms": None,
+    }
+
+    # Find the most recent occurrence of each metric
+    drag_matches = _DRAG_PATTERN.findall(log_text)
+    if drag_matches:
+        with contextlib.suppress(ValueError, IndexError):
+            metrics["drag_value"] = float(drag_matches[-1])
+
+    solar_matches = _SOLAR_PATTERN.findall(log_text)
+    if solar_matches:
+        with contextlib.suppress(ValueError, IndexError):
+            metrics["solar_power_w"] = float(solar_matches[-1])
+
+    speed_matches = _CRUISING_SPEED_PATTERN.findall(log_text)
+    if speed_matches:
+        with contextlib.suppress(ValueError, IndexError):
+            metrics["cruising_speed_ms"] = float(speed_matches[-1])
+
+    return metrics

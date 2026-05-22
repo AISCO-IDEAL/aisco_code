@@ -1206,7 +1206,7 @@ class DiversityTrainer:
                 raw_norm = torch.nn.utils.clip_grad_norm_(self._model.parameters(), clip_threshold)
                 self._autoclip.update(float(raw_norm))
                 per_loss_gradient_log_data["grad/total_norm_pre_clip"] = float(raw_norm)
-                per_loss_gradient_log_data["grad/total_norm_post_clip"] = float(min(raw_norm, clip_threshold))
+                per_loss_gradient_log_data["grad/total_norm_post_clip"] = min(float(raw_norm), float(clip_threshold))
                 per_loss_gradient_log_data["grad/clip_threshold"] = float(clip_threshold)
 
             self._model_optimizer.step()
@@ -1317,6 +1317,7 @@ class DiversityTrainer:
         # Merge competition charts + slot charts into single log call to avoid WandB step corruption
         log_dict.update(competition_log)
         log_dict.update(slot_log)
+
         wandb.log(log_dict, step=epoch)
 
     def _log_slot_line_charts(

@@ -75,6 +75,14 @@ sdf:
   # Only used when source == sphere:
   sphere_radius_factor: 0.35  # fraction of bounding-sphere radius
 
+# --- SDF Isolines ---
+isolines:
+  show: true
+  count: 14               # number of evenly-spaced levels (ignored when levels is set)
+  levels: null           # explicit SDF values, e.g. [10, 50, 100, 200]; null = auto
+  color: [0.0, 0.0, 0.0, 0.6]  # RGBA in [0,1]; alpha controls transparency
+  width: 1.5             # line width in pixels
+
 # --- Layout ---
 layout:
   # The figure is now a single 3-D panel + thin colorbar strip.

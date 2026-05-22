@@ -2,7 +2,7 @@
 (function () {
     'use strict';
 
-    const INACTIVITY_MS = 30 * 1000; // 30 seconds → cover reappears
+    const INACTIVITY_MS = 180 * 1000; // 120 seconds → cover reappears
     const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart'];
 
     const cover = document.getElementById('arcadeCover');

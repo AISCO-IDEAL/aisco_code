@@ -101,6 +101,7 @@ class MeshAssemblyModeV4(RenderingMode):
         self.assembly_color = tuple(config.get("assembly_color", [1.0, 0.55, 0.0]))
         self.outer_color = tuple(config.get("outer_color", [1.0, 0.35, 0.15]))
         self.outer_alpha = float(config.get("outer_alpha", 0.2))
+        self.outer_render_style = str(config.get("outer_render_style", "outer_lines_only")).strip().lower()
         self.outer_edge_color = tuple(config.get("outer_edge_color", [0.0, 0.0, 0.0]))
         self.outer_edge_strength = float(config.get("outer_edge_strength", 1.0))
 
@@ -252,8 +253,14 @@ class MeshAssemblyModeV4(RenderingMode):
         outer_img = outer_rgb[0] if hasattr(outer_rgb, "__len__") and len(outer_rgb) > 0 else outer_rgb
         outer_mask = outer_sil[0] if hasattr(outer_sil, "__len__") and len(outer_sil) > 0 else outer_sil
 
-        base = alpha_blend(inner_img, outer_img, outer_mask.squeeze(-1), alpha=self.outer_alpha)
-        edge_mask = silhouette_edge_mask(outer_mask.squeeze(-1))
+        outer_mask_2d = outer_mask.squeeze(-1)
+        edge_mask = silhouette_edge_mask(outer_mask_2d)
+        if self.outer_render_style == "outer_lines_only":
+            # Lines-only mode intentionally hides the outer fill and keeps only a fine edge overlay.
+            base = overlay_edges(inner_img, edge_mask, edge_color=self.outer_edge_color, strength=self.outer_edge_strength)
+            return base
+
+        base = alpha_blend(inner_img, outer_img, outer_mask_2d, alpha=self.outer_alpha)
         base = overlay_edges(base, edge_mask, edge_color=self.outer_edge_color, strength=self.outer_edge_strength)
         return base
 

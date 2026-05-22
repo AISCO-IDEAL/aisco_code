@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +19,9 @@ from subprojects.wp7_gui.v3.core.settings import SETTINGS
 from subprojects.wp7_gui.v3.shared.artifact_index import list_artifacts
 from subprojects.wp7_gui.v3.shared.assembly_selection import AssemblySelectionService
 from subprojects.wp7_gui.v3.shared.config_overrides import ConfigOverrideManager
+from subprojects.wp7_gui.v3.shared.panel_visibility import load_panel_visibility_defaults
 from subprojects.wp7_gui.v3.shared.run_paths import default_storage_root, detect_current_run_dir
+from subprojects.wp7_gui.v3.shared.theme import build_template_theme_context
 
 router = APIRouter(prefix="/launcher", tags=["launcher"])
 _templates = Jinja2Templates(directory=str(SETTINGS.templates_dir))
@@ -132,6 +135,7 @@ def _get_total_epochs(cfg_folder: str = "") -> int:
 # ---------------------------------------------------------------------------
 @router.get("")
 def launcher_index(request: Request, pipeline: str = "live"):
+    theme_ctx = build_template_theme_context()
     return _templates.TemplateResponse(
         request,
         "launcher/index.html",
@@ -140,6 +144,9 @@ def launcher_index(request: Request, pipeline: str = "live"):
             "active_page": "config-overrides",
             "page_title": "Launcher",
             "pipeline": pipeline,
+            "panel_visibility_defaults_json": json.dumps(load_panel_visibility_defaults(SETTINGS.panel_visibility_defaults_path)),
+            "mesh_priority_json": SETTINGS.mesh_priority_path.read_text(encoding="utf-8"),
+            **theme_ctx,
         },
     )
 
@@ -149,6 +156,7 @@ def launcher_subpage(request: Request, page_key: str, pipeline: str = "live"):
     if page_key not in _SUBPAGES:
         raise HTTPException(status_code=404, detail={"message": f"Unknown launcher page '{page_key}'"})
     title, template = _SUBPAGES[page_key]
+    theme_ctx = build_template_theme_context()
     return _templates.TemplateResponse(
         request,
         template,
@@ -157,6 +165,9 @@ def launcher_subpage(request: Request, page_key: str, pipeline: str = "live"):
             "active_page": page_key,
             "page_title": title,
             "pipeline": pipeline,
+            "panel_visibility_defaults_json": json.dumps(load_panel_visibility_defaults(SETTINGS.panel_visibility_defaults_path)),
+            "mesh_priority_json": SETTINGS.mesh_priority_path.read_text(encoding="utf-8"),
+            **theme_ctx,
         },
     )
 
@@ -279,7 +290,17 @@ async def run_stream_logs() -> StreamingResponse:
                     epoch = log_parser.parse_epoch(text)
                     if epoch >= 0:
                         active_cfg_folder = _runtime_state["active_cfg_folder"]
-                        yield sse.event("epoch", {"epoch": epoch, "total": _get_total_epochs(active_cfg_folder)})
+                        metrics = log_parser.parse_metrics(text)
+                        yield sse.event(
+                            "epoch",
+                            {
+                                "epoch": epoch,
+                                "total": _get_total_epochs(active_cfg_folder),
+                                "drag_value": metrics.get("drag_value"),
+                                "solar_power_w": metrics.get("solar_power_w"),
+                                "cruising_speed_ms": metrics.get("cruising_speed_ms"),
+                            },
+                        )
             if not state["running"]:
                 yield sse.event("done", {"return_code": state["return_code"]})
                 break
@@ -360,6 +381,16 @@ def cfg_cleanup(payload: CleanupRequest) -> dict[str, Any]:
 @router.get("/api/assembly-selection/params")
 def assembly_params(pipeline: str = "live") -> dict[str, dict[str, float]]:
     return _assembly(pipeline).get_params()
+
+
+@router.get("/api/assembly-selection/map-entry")
+def assembly_map_entry(assembly_id: int, pipeline: str = "live") -> dict[str, Any]:
+    return _assembly(pipeline).load_from_map_id(assembly_id)
+
+
+@router.get("/api/assembly-selection/map-meta")
+def assembly_map_meta(pipeline: str = "live") -> dict[str, int | None]:
+    return _assembly(pipeline).get_map_meta()
 
 
 @router.post("/api/assembly-selection/update")

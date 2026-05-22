@@ -1,15 +1,15 @@
 /* v3 shared shell — colors and shapes match v2 so the visual language stays consistent. */
 
 :root {
-  --bg: #1d2233;
-  --panel: #27314a;
-  --panel-2: #303d5d;
-  --accent: #c82121;
-  --accent-2: #a91b1b;
-  --text: #ecf2f6;
-  --muted: #bac8d0;
-  --border: #2d3a55;
-  --shadow: 0 14px 30px rgba(0, 0, 0, 0.26);
+  --bg: var(--theme-bg-soft);
+  --panel: var(--theme-panel);
+  --panel-2: var(--theme-panel-2);
+  --accent: var(--theme-surface-large);
+  --accent-2: var(--theme-title-2);
+  --text: var(--theme-text);
+  --muted: var(--theme-muted);
+  --border: var(--theme-border);
+  --shadow: var(--theme-shadow);
 }
 
 * {
@@ -24,9 +24,9 @@ body {
 
 body {
   margin: 0;
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  font-family: var(--theme-font-ui);
   color: var(--text);
-  background: radial-gradient(circle at top left, #344267 0%, #1d2233 45%, #151a28 100%);
+  background: var(--theme-gradient-page-bg);
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -42,7 +42,7 @@ body {
 }
 
 .top-bar {
-  background: linear-gradient(180deg, #35466d 0%, #2b3754 100%);
+  background: var(--theme-gradient-top-bar);
   border-radius: 14px;
   padding: 10px 14px;
   box-shadow: var(--shadow);
@@ -101,7 +101,7 @@ body {
   font-size: 0.9rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #f8d9d9;
+  color: var(--theme-warning-text);
   text-align: center;
 }
 
@@ -112,7 +112,7 @@ body {
   padding: 10px 6px;
   border-radius: 10px;
   background: var(--accent);
-  color: #fff;
+  color: var(--theme-white);
   font-weight: 700;
   font-size: 0.9rem;
   border: 2px solid transparent;
@@ -121,14 +121,14 @@ body {
 
 .mode-btn:hover {
   background: var(--accent-2);
-  box-shadow: 0 0 10px 2px rgba(200, 33, 33, 0.4);
+  box-shadow: var(--theme-hover-glow);
 }
 
 .mode-btn--active {
   background: var(--accent);
-  border-color: #ffb0b0;
-  box-shadow: 0 0 14px 2px rgba(200, 33, 33, 0.5);
-  color: #fff;
+  border-color: var(--theme-text-box);
+  box-shadow: var(--theme-active-glow);
+  color: var(--theme-white);
 }
 
 .sub-nav {
@@ -142,7 +142,7 @@ body {
   display: block;
   padding: 9px 11px;
   border-radius: 9px;
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--theme-white) 4%, transparent);
   color: var(--text);
   font-size: 0.92rem;
   font-weight: 600;
@@ -151,14 +151,14 @@ body {
 }
 
 .sub-nav a:hover {
-  background: rgba(255, 255, 255, 0.10);
+  background: color-mix(in srgb, var(--theme-white) 10%, transparent);
   transform: translateX(2px);
 }
 
 .sub-nav a.active {
   background: var(--accent);
-  border-color: #ffb0b0;
-  color: #fff;
+  border-color: var(--theme-text-box);
+  color: var(--theme-white);
 }
 
 .sidebar-footer {
@@ -169,7 +169,7 @@ body {
 
 .workspace {
   min-width: 0;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--theme-panel-overlay);
   border-radius: 14px;
   overflow: hidden;
   box-shadow: var(--shadow);
@@ -178,7 +178,7 @@ body {
 }
 
 .workspace-top {
-  background: rgba(0, 0, 0, 0.22);
+  background: var(--theme-workspace-top);
   padding: 10px 14px;
   display: flex;
   align-items: center;
@@ -199,11 +199,15 @@ body {
 .workspace-body {
   overflow: auto;
   padding: 14px;
-  background: #1e2437;
+  background: var(--theme-bg);
+  background-image:
+    repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(255,255,255,0.04) 39px, rgba(255,255,255,0.04) 40px),
+    repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(255,255,255,0.04) 39px, rgba(255,255,255,0.04) 40px);
+  background-size: 40px 40px;
 }
 
 .placeholder-card {
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--theme-white) 4%, transparent);
   border: 1px dashed var(--border);
   border-radius: 12px;
   padding: 22px;
@@ -216,7 +220,7 @@ button.primary {
   border-radius: 10px;
   padding: 10px 16px;
   background: var(--accent);
-  color: #fff;
+  color: var(--theme-white);
   font-weight: 700;
   cursor: pointer;
 }
@@ -226,7 +230,7 @@ button.primary:hover {
 }
 
 button.primary:disabled {
-  background: #777;
+  background: color-mix(in srgb, var(--theme-black) 45%, var(--theme-white) 55%);
   cursor: not-allowed;
   opacity: 0.6;
 }

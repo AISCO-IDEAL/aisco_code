@@ -33,7 +33,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812  # F is the universal PyTorch convention for this module
 import trimesh
 import yaml
 from torch_geometric.data import Batch, Data
@@ -55,6 +55,7 @@ _DEFAULT_CONFIG = Path(__file__).parent / "cp_field_viz.yaml"
 # Config helpers  (same pattern as sdf_slice_viz.py)
 # ---------------------------------------------------------------------------
 
+
 def _load_config(path: Path) -> dict[str, Any]:
     with open(path) as fh:
         return yaml.safe_load(fh)
@@ -75,6 +76,7 @@ def _get(cfg: dict[str, Any], *keys: str, default: Any = None) -> Any:
 # Mesh loading
 # ---------------------------------------------------------------------------
 
+
 def load_mesh(mesh_path: str | Path) -> trimesh.Trimesh:
     """Load and validate a triangle mesh from *mesh_path* (PLY / OBJ / STL).
 
@@ -90,15 +92,10 @@ def load_mesh(mesh_path: str | Path) -> trimesh.Trimesh:
     """
     mesh_path = Path(mesh_path)
     if not mesh_path.exists():
-        raise FileNotFoundError(
-            f"Mesh file not found: {mesh_path}\n"
-            "Set 'mesh_path' in your cp_field_viz.yaml config."
-        )
+        raise FileNotFoundError(f"Mesh file not found: {mesh_path}\nSet 'mesh_path' in your cp_field_viz.yaml config.")
     geom = trimesh.load(str(mesh_path), force="mesh")
     if not isinstance(geom, trimesh.Trimesh):
-        raise ValueError(
-            f"Loaded geometry is not a triangle mesh (got {type(geom).__name__})."
-        )
+        raise TypeError(f"Loaded geometry is not a triangle mesh (got {type(geom).__name__}).")
     return geom
 
 
@@ -139,26 +136,24 @@ class GAOTPlyInference:
                 df = pd.read_csv(csv_path)
                 break
         if df is None:
-            raise FileNotFoundError(
-                "Could not find metrics.csv at any of:\n"
-                + "\n".join(f"  {p}" for p in _METRICS_CSV_PATHS)
-            )
+            raise FileNotFoundError("Could not find metrics.csv at any of:\n" + "\n".join(f"  {p}" for p in _METRICS_CSV_PATHS))
         for _, row in df.iterrows():
+            if not isinstance(row["setup"], str):
+                continue
             setup_dict = ast.literal_eval(row["setup"])
+            if not isinstance(setup_dict, dict):
+                continue
             if str(setup_dict.get("id")) == str(self.cfd_config["model_id"]):
+                if not isinstance(row["path"], str):
+                    continue
                 path_dict = ast.literal_eval(row["path"])
                 return path_dict.get("ckpt_path")
-        raise ValueError(
-            f"model_id={self.cfd_config['model_id']!r} not found in metrics.csv."
-        )
+        raise ValueError(f"model_id={self.cfd_config['model_id']!r} not found in metrics.csv.")
 
     def _load_model(self) -> None:
         config_path = self.model_path.replace("model.pt", "config.yaml")
         if not Path(config_path).exists():
-            raise FileNotFoundError(
-                f"Model config not found at {config_path}. "
-                "Expected config.yaml next to model.pt."
-            )
+            raise FileNotFoundError(f"Model config not found at {config_path}. Expected config.yaml next to model.pt.")
 
         with open(config_path) as fh:
             config = yaml.safe_load(fh)
@@ -166,16 +161,12 @@ class GAOTPlyInference:
         self._og_config = copy.deepcopy(config)
         model_args = config["model"]["args"]
         model_args["magno"]["precompute_edges"] = False
-        model_args["transformer"]["norm_eps"] = float(
-            model_args["transformer"].get("norm_eps")
-        )
+        model_args["transformer"]["norm_eps"] = float(model_args["transformer"].get("norm_eps"))
 
         self.gaot = GAOT3D(config=model_args).to(self.device)
         self.gaot.eval()
 
-        state = torch.load(
-            self.model_path, map_location=self.device, weights_only=False
-        )
+        state = torch.load(self.model_path, map_location=self.device, weights_only=False)
         sd = state.get("model") or state.get("state_dict") or state
         sd = {k.removeprefix("module."): v for k, v in sd.items()}
 
@@ -217,9 +208,7 @@ class GAOTPlyInference:
         latent_queries = torch.stack(meshgrid, dim=-1).reshape(-1, 3)
 
         if self._use_rescale_new:
-            self._latent_tokens = rescale_new(
-                latent_queries, (-1, 1), self._phy_domain
-            ).to(self.device)
+            self._latent_tokens = rescale_new(latent_queries, (-1, 1), self._phy_domain).to(self.device)
         else:
             self._latent_tokens = rescale(latent_queries, (-1, 1)).to(self.device)
 
@@ -227,9 +216,7 @@ class GAOTPlyInference:
     # Preprocessing  (mirrors ModelLoader3._reformat_data, SDF-free)
     # ------------------------------------------------------------------
 
-    def _preprocess(
-        self, verts_mm: torch.Tensor, faces: torch.Tensor
-    ) -> Batch:
+    def _preprocess(self, verts_mm: torch.Tensor, faces: torch.Tensor) -> Batch:
         """Build a PyG Batch from raw PLY vertices (mm) and faces.
 
         Mirrors ``ModelLoader._reformat_data`` exactly, omitting only the
@@ -253,7 +240,7 @@ class GAOTPlyInference:
 
         # Accumulate face normals to vertices (equal-weight, then normalize)
         num_verts = verts.shape[0]
-        all_idx = faces.reshape(-1)                                   # (3·F,)
+        all_idx = faces.reshape(-1)  # (3·F,)
         all_normals = face_normals.unsqueeze(1).expand(-1, 3, -1).reshape(-1, 3)
         vertex_normals = torch.zeros(num_verts, 3, device=self.device, dtype=verts.dtype)
         vertex_normals = vertex_normals.index_add(0, all_idx, all_normals)
@@ -261,7 +248,7 @@ class GAOTPlyInference:
 
         raw_vertex_normals = vertex_normals.clone()
         model_vertex_normals = vertex_normals.clone()
-        model_vertex_normals[:, 0] *= -1.0   # x-flip (training convention)
+        model_vertex_normals[:, 0] *= -1.0  # x-flip (training convention)
 
         # mm → m  +  x-flip (training convention)
         model_verts_m = verts.clone() * 1e-3
@@ -273,7 +260,7 @@ class GAOTPlyInference:
 
         data = Data(
             pos=model_verts_m,
-            face=faces.T,                      # (3, F) — PyG convention
+            face=faces.T,  # (3, F) — PyG convention
             c=model_vertex_normals,
             c_raw=raw_vertex_normals,
         )
@@ -293,6 +280,8 @@ class GAOTPlyInference:
         self,
         ply_path: str | Path,
         smoothing_cfg: dict[str, Any] | None = None,
+        *,
+        flip_about_x_axis: bool = False,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Run GAOT3 inference on a PLY file.
 
@@ -301,23 +290,29 @@ class GAOTPlyInference:
           - Y-axis: lateral (symmetric, +Y = port)
           - Z-axis: vertical, +Z = up
         The x-flip applied inside ``_preprocess`` is a model-internal transform;
-        the returned *verts_mm* and *cp* are always in the original PLY space.
+        the returned *verts_mm* and *cp* are always in the (optionally flipped) PLY space.
 
         Args:
-            ply_path:      Path to a PLY mesh file (coordinates in mm).
-            smoothing_cfg: Optional dict mirroring the ``cp_smoothing`` section
-                           of the training config.  When provided and
-                           ``enabled=True``, applies curvature-aware Laplacian
-                           smoothing identical to ModelLoader's post-processing.
+            ply_path:           Path to a PLY mesh file (coordinates in mm).
+            smoothing_cfg:      Optional dict mirroring the ``cp_smoothing`` section
+                                of the training config.
+                flip_about_x_axis:  When True, negate Y and Z before inference
+                                (180° rotation around the X axis).  Unused;
+                                kept for API compatibility.
 
         Returns:
             ``(verts_mm, faces, cp)`` — numpy arrays for visualization.
-            *verts_mm*: (V, 3) original vertex positions in mm.
+            *verts_mm*: (V, 3) vertex positions in mm (post-flip if enabled).
             *faces*:    (F, 3) face indices.
             *cp*:       (V,) predicted (and optionally smoothed) Cp values.
         """
         mesh = load_mesh(ply_path)
-        verts_t = torch.tensor(mesh.vertices, dtype=torch.float32)
+        verts_np = mesh.vertices.astype(np.float64).copy()
+        if flip_about_x_axis:
+            # 180° rotation around Z: negate X and Y
+            verts_np[:, 0] *= -1.0
+            verts_np[:, 1] *= -1.0
+        verts_t = torch.tensor(verts_np, dtype=torch.float32)
         faces_t = torch.tensor(mesh.faces, dtype=torch.long)
 
         batch = self._preprocess(verts_t, faces_t)
@@ -339,12 +334,13 @@ class GAOTPlyInference:
                 curvature_quantile=float(smoothing_cfg.get("curvature_quantile", 0.95)),
             )
 
-        return mesh.vertices.astype(np.float64), mesh.faces.astype(np.int32), cp
+        return verts_np, mesh.faces.astype(np.int32), cp
 
 
 # ---------------------------------------------------------------------------
 # Cp field post-processing
 # ---------------------------------------------------------------------------
+
 
 def smooth_cp_field(
     cp: np.ndarray,
@@ -399,9 +395,7 @@ def smooth_cp_field(
 
     # Compute per-vertex smoothing strength from edge curvature
     if curvature_power > 0.0 and vertex_normals is not None:
-        normals = F.normalize(
-            torch.tensor(vertex_normals, dtype=dtype, device=device), dim=-1
-        )
+        normals = F.normalize(torch.tensor(vertex_normals, dtype=dtype, device=device), dim=-1)
         edge_curv = (1.0 - (normals[src] * normals[dst]).sum(dim=-1)).clamp_min(0.0)
         curv = torch.zeros(num_verts, dtype=dtype, device=device)
         curv = curv.index_add(0, dst, edge_curv) / degree
@@ -429,7 +423,7 @@ def smooth_cp_field(
 # Plotly colorscale names.  matplotlib RdBu_r ≈ Plotly RdBu (blue=low, red=high).
 _CMAP_MAP: dict[str, str] = {
     "rdbu": "RdBu",
-    "rdbu_r": "RdBu",       # matplotlib RdBu_r == Plotly RdBu direction
+    "rdbu_r": "RdBu",  # matplotlib RdBu_r == Plotly RdBu direction
     "bwr": "RdBu",
     "jet": "Jet",
     "viridis": "Viridis",
@@ -469,35 +463,45 @@ def _build_wireframe_trace(
         return None
     v0, v1, v2 = faces[:, 0], faces[:, 1], faces[:, 2]
     all_edges = np.sort(
-        np.concatenate([
-            np.stack([v0, v1], axis=1),
-            np.stack([v1, v2], axis=1),
-            np.stack([v2, v0], axis=1),
-        ]),
+        np.concatenate(
+            [
+                np.stack([v0, v1], axis=1),
+                np.stack([v1, v2], axis=1),
+                np.stack([v2, v0], axis=1),
+            ]
+        ),
         axis=1,
     )
     edges = np.unique(all_edges, axis=0)
     n = len(edges)
     sx, sy, sz = np.empty(n * 3), np.empty(n * 3), np.empty(n * 3)
-    sx[0::3] = verts[edges[:, 0], 0]; sx[1::3] = verts[edges[:, 1], 0]; sx[2::3] = np.nan
-    sy[0::3] = verts[edges[:, 0], 1]; sy[1::3] = verts[edges[:, 1], 1]; sy[2::3] = np.nan
-    sz[0::3] = verts[edges[:, 0], 2]; sz[1::3] = verts[edges[:, 1], 2]; sz[2::3] = np.nan
+    sx[0::3] = verts[edges[:, 0], 0]
+    sx[1::3] = verts[edges[:, 1], 0]
+    sx[2::3] = np.nan
+    sy[0::3] = verts[edges[:, 0], 1]
+    sy[1::3] = verts[edges[:, 1], 1]
+    sy[2::3] = np.nan
+    sz[0::3] = verts[edges[:, 0], 2]
+    sz[1::3] = verts[edges[:, 1], 2]
+    sz[2::3] = np.nan
     return go.Scatter3d(
-        x=sx, y=sy, z=sz,
+        x=sx,
+        y=sy,
+        z=sz,
         mode="lines",
-        line=dict(color=_rgba_str(edge_color), width=1),
+        line={"color": _rgba_str(edge_color), "width": 1},
         hoverinfo="skip",
     )
 
 
 # 6 axis-aligned views.  azimuth=0 → eye at +X ("pure front" per sdf_slice_viz convention).
 _CARDINAL_VIEWS: dict[str, tuple[float, float]] = {
-    "front":  (  0.0,   0.0),   # eye at +X, looking in -X
-    "rear":   (180.0,   0.0),   # eye at -X, looking in +X
-    "left":   ( 90.0,   0.0),   # eye at +Y, looking in -Y (port)
-    "right":  (-90.0,   0.0),   # eye at -Y, looking in +Y (starboard)
-    "top":    (  0.0,  89.0),   # eye above, looking down  (89° avoids gimbal lock)
-    "bottom": (  0.0, -89.0),   # eye below, looking up
+    "front": (0.0, 0.0),  # eye at +X, looking in -X
+    "rear": (180.0, 0.0),  # eye at -X, looking in +X
+    "left": (90.0, 0.0),  # eye at +Y, looking in -Y (port)
+    "right": (-90.0, 0.0),  # eye at -Y, looking in +Y (starboard)
+    "top": (0.0, 89.0),  # eye above, looking down  (89° avoids gimbal lock)
+    "bottom": (0.0, -89.0),  # eye below, looking up
 }
 
 
@@ -535,6 +539,7 @@ def _build_lightposition(cfg: dict[str, Any]) -> dict[str, float]:
 # ---------------------------------------------------------------------------
 # Main figure builder
 # ---------------------------------------------------------------------------
+
 
 def build_figure(
     verts_mm: np.ndarray,
@@ -580,11 +585,16 @@ def build_figure(
     else:
         vmax = float(finite.max()) if len(finite) else 1.0
 
+    # Optional X-axis flip (negates X coordinates — reverses forward direction in view)
+    if bool(_get(cfg, "flip_x_axis", default=False)):
+        verts_mm = verts_mm.copy()
+        verts_mm[:, 0] *= -1.0
+
     # Edge overlay
     edge_color = list(_get(cfg, "mesh", "edge_color") or [0.2, 0.2, 0.2, 0.0])
 
     # Camera — accept per-call overrides (used for cardinal views)
-    azim = float(azimuth_override   if azimuth_override   is not None else _get(cfg, "camera", "azimuth",   default=-15))
+    azim = float(azimuth_override if azimuth_override is not None else _get(cfg, "camera", "azimuth", default=-15))
     elev = float(elevation_override if elevation_override is not None else _get(cfg, "camera", "elevation", default=20))
     dist = float(_get(cfg, "camera", "distance_factor", default=2.5))
     azim_rad, elev_rad = math.radians(azim), math.radians(elev)
@@ -625,18 +635,18 @@ def build_figure(
         width=w_px,
         height=h_px,
         paper_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=0, r=0, t=0, b=0),
-        scene=dict(
-            camera=dict(
-                eye=dict(x=eye_x, y=eye_y, z=eye_z),
-                up=dict(x=0, y=0, z=1),
-            ),
-            xaxis=dict(visible=False, showgrid=False, zeroline=False),
-            yaxis=dict(visible=False, showgrid=False, zeroline=False),
-            zaxis=dict(visible=False, showgrid=False, zeroline=False),
-            bgcolor="rgba(0,0,0,0)",
-            aspectmode="data",
-        ),
+        margin={"l": 0, "r": 0, "t": 0, "b": 0},
+        scene={
+            "camera": {
+                "eye": {"x": eye_x, "y": eye_y, "z": eye_z},
+                "up": {"x": 0, "y": 0, "z": 1},
+            },
+            "xaxis": {"visible": False, "showgrid": False, "zeroline": False},
+            "yaxis": {"visible": False, "showgrid": False, "zeroline": False},
+            "zaxis": {"visible": False, "showgrid": False, "zeroline": False},
+            "bgcolor": "rgba(0,0,0,0)",
+            "aspectmode": "data",
+        },
         showlegend=False,
     )
     return fig
@@ -645,6 +655,7 @@ def build_figure(
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -696,8 +707,9 @@ def main() -> None:
 
     # Run inference
     smoothing_cfg = _get(cfg, "cp_smoothing")
-    print(f"Loading mesh: {mesh_path}")
-    verts_mm, faces, cp = runner.infer_from_ply(mesh_path, smoothing_cfg=smoothing_cfg)
+    flip_x = bool(_get(cfg, "mesh_rotate_z_180", default=False))
+    print(f"Loading mesh: {mesh_path}" + ("  [rotate 180° around Z]" if flip_x else ""))
+    verts_mm, faces, cp = runner.infer_from_ply(mesh_path, smoothing_cfg=smoothing_cfg, flip_about_x_axis=flip_x)
     print(
         f"  Vertices: {len(verts_mm):,}   Faces: {len(faces):,}\n"
         f"  Cp range: [{cp.min():.4f}, {cp.max():.4f}]  mean: {cp.mean():.4f}"
@@ -722,7 +734,10 @@ def main() -> None:
         print("Building 6 cardinal views …")
         for name, (azim, elev) in _CARDINAL_VIEWS.items():
             fig = build_figure(
-                verts_mm, faces, cp, cfg,
+                verts_mm,
+                faces,
+                cp,
+                cfg,
                 azimuth_override=azim,
                 elevation_override=elev,
             )

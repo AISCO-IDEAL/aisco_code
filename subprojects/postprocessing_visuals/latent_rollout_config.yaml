@@ -13,9 +13,29 @@ output_dir: /cluster/work/fuge/AISCO/wp9/ginn_gif
 # ---------------------------------------------------------------------------
 # Animation
 # ---------------------------------------------------------------------------
-n_frames: 480     # frames per full circle  (480 = one frame per 0.75°)
+n_frames: 240     # frames per traversal
 fps: 24           # GIF playback speed in frames-per-second
 radius: null      # traversal radius; null = infer from checkpoint
+mode: cross       # traversal mode: circle | spiral | line | cross
+
+# ---------------------------------------------------------------------------
+# Spiral mode  (only active when mode: spiral)
+# ---------------------------------------------------------------------------
+spiral_turns: 3          # number of full rotations outward
+spiral_radius_start: 0.0 # inner radius — 0.0 starts at the origin
+spiral_radius_end: null  # outer radius — null = use z_radius from checkpoint
+
+# ---------------------------------------------------------------------------
+# Line mode  (only active when mode: line)
+# ---------------------------------------------------------------------------
+line_start: [0.0, -1.5]  # start latent coordinates [z0, z1]
+line_end:   [0.0,  1.5]  # end latent coordinates [z0, z1]
+line_bounces: 1           # complete back-and-forth oscillations  (1 = A→B→A)
+
+# ---------------------------------------------------------------------------
+# Cross mode  (only active when mode: cross)
+# ---------------------------------------------------------------------------
+cross_radius: 1.5        # half-width of the X pattern; null = use z_radius from checkpoint
 
 # ---------------------------------------------------------------------------
 # Mesh extraction

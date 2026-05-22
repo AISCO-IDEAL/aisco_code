@@ -17,9 +17,10 @@
                 <div style="flex:1;"></div>
                 <button class="btn" id="btnRefresh">Refresh</button>
                 <div class="dark-card" id="panelEditorCard"
-                    style="display:none; position:absolute; top:calc(100% + 8px); right:0; z-index:20; width:min(680px, calc(100vw - 48px)); gap:10px; min-height:0; padding:10px 12px; box-shadow:0 18px 38px rgba(0,0,0,0.22);">
+                    style="display:none; position:absolute; top:calc(100% + 8px); right:0; z-index:20; width:min(680px, calc(100vw - 48px)); gap:10px; min-height:0; padding:10px 12px; box-shadow:0 18px 38px color-mix(in srgb, var(--theme-black) 22%, transparent);">
                     <div style="display:flex; align-items:center; gap:10px;">
-                        <div style="font-size:0.82rem; color:#f8d9d9; font-weight:700;">Panel Visibility</div>
+                        <div style="font-size:0.82rem; color:var(--theme-warning-text); font-weight:700;">Panel
+                            Visibility</div>
                         <div style="font-size:0.75rem; color:var(--muted);">Session-only. Resets on reload.</div>
                         <div style="flex:1;"></div>
                         <button class="btn secondary" id="btnClosePanelEditor"
@@ -35,7 +36,7 @@
 
     <div class="dark-card" style="display:grid; gap:8px; min-height:0; padding:10px 12px;">
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <div style="font-size:0.82rem; color:#f8d9d9; font-weight:700;">Finished Runs</div>
+            <div style="font-size:0.82rem; color:var(--theme-warning-text); font-weight:700;">Finished Runs</div>
             <span id="runCount" style="font-size:0.78rem; color:var(--muted);">Loading...</span>
             <span id="selectedMeta"
                 style="font-size:0.78rem; color:var(--muted); margin-left:auto; text-align:right;"></span>
@@ -43,7 +44,7 @@
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
             <label for="runSelect" style="font-size:0.78rem; color:var(--muted);">Select run:</label>
             <select id="runSelect"
-                style="min-width:340px; max-width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border); background:#f8fcf9; color:#23313f;">
+                style="min-width:340px; max-width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--theme-surface-large); background:color-mix(in srgb, var(--theme-panel) 88%, var(--theme-black) 12%); color:var(--theme-text);">
                 <option value="">Loading...</option>
             </select>
             <label
@@ -55,7 +56,8 @@
     </div>
 
     <div id="meshGroupsSection" style="display:none;">
-        <div style="font-size:0.82rem; color:#f8d9d9; font-weight:600; margin-bottom:6px;">Mesh Outputs</div>
+        <div style="font-size:0.82rem; color:var(--theme-warning-text); font-weight:600; margin-bottom:6px;">Mesh
+            Outputs</div>
         <div class="visuals-grid visuals-grid--two-col visuals-grid--four-up" id="meshGroupsGrid"></div>
     </div>
 
@@ -65,15 +67,10 @@
 
 <script>
     const VIEWER_API = "/viewer/api";
-    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260518";
-    const DISCOVERED_DEFAULT_VISIBLE = false;
-    const PANEL_DEFAULTS = {
-        runs: {
-            panel_cp_field: { label: "Cp Field", defaultVisible: true },
-            panel_mesh_shape: { label: "Aeroshell Mesh", defaultVisible: true },
-            panel_mesh_shape_glb: { label: "Aeroshell Mesh GLB", defaultVisible: false },
-        },
-    };
+    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260521_1";
+    const PANEL_VISIBILITY_DEFAULTS = {{ panel_visibility_defaults_json | safe }};
+    const DISCOVERED_DEFAULT_VISIBLE = !!PANEL_VISIBILITY_DEFAULTS.discovered_default_visible;
+    const PANEL_DEFAULTS = PANEL_VISIBILITY_DEFAULTS.viewer;
 
     const runSelectEl = document.getElementById("runSelect");
     const runCountEl = document.getElementById("runCount");
@@ -190,6 +187,17 @@
     function bust(url) {
         const sep = url.includes("?") ? "&" : "?";
         return `${url}${sep}t=${Date.now()}`;
+    }
+
+    function paintSliderBar(slider) {
+        if (!slider) {
+            return;
+        }
+        slider.style.accentColor = getComputedStyle(document.documentElement).getPropertyValue("--theme-slider-accent").trim();
+        slider.style.height = "14px";
+        slider.style.background = "transparent";
+        slider.style.padding = "0";
+        slider.style.margin = "0";
     }
 
     function clearMeshGroups() {
@@ -350,11 +358,11 @@
         card.dataset.panelId = panelId;
         card.innerHTML = `
       <div class="visual-title">${label}</div>
-    <div class="mesh-container mesh-container--four-up" style="position:relative; background:#f1f7f3; border-radius:8px; overflow:hidden;">
-        <span class="placeholder-text" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#496456;font-size:0.9rem;z-index:1;">Loading...</span>
-        <div class="mesh-status" style="position:absolute;bottom:8px;left:8px;font-size:0.75rem;color:#496456;z-index:2;background:rgba(255,255,255,0.8);padding:2px 6px;border-radius:4px;display:none;"></div>
+    <div class="mesh-container mesh-container--four-up" style="position:relative; background:var(--theme-mesh-bg); border-radius:8px; overflow:hidden;">
+        <span class="placeholder-text" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--theme-muted);font-size:0.9rem;z-index:1;">Loading...</span>
+        <div class="mesh-status" style="position:absolute;bottom:8px;left:8px;font-size:0.75rem;color:var(--theme-muted);z-index:2;background:color-mix(in srgb, var(--theme-white) 80%, transparent);padding:2px 6px;border-radius:4px;display:none;"></div>
       </div>
-            <div class="glb-controls" style="display:none; margin-top:8px; padding:6px 8px; border:1px solid #dce8df; border-radius:6px; background:#f7fbf8; gap:6px;"></div>
+            <div class="glb-controls" style="display:none; margin-top:8px; padding:6px 8px; border:1px solid color-mix(in srgb, var(--theme-text-box) 65%, var(--theme-white) 35%); border-radius:6px; background:color-mix(in srgb, var(--theme-text-box) 24%, var(--theme-white) 76%); gap:6px;"></div>
       <div style="display:flex; gap:8px; align-items:center; font-size:0.82rem;">
         <input type="range" class="epoch-slider" min="0" max="${files.length - 1}" value="${state.idx}" style="flex:1;">
         <button class="play-btn" style="font-size:0.8rem;padding:4px 8px; width:54px;" ${files.length > 1 ? "" : "disabled"}>Play</button>
@@ -372,6 +380,7 @@
         state.placeholder = placeholder;
         state.statusDiv = statusDiv;
         state.glbControlsDiv = glbControlsDiv;
+        paintSliderBar(slider);
 
         slider.addEventListener("input", (e) => {
             if (state.playing) {
@@ -380,6 +389,7 @@
                 playBtn.textContent = "Play";
             }
             state.idx = parseInt(e.target.value, 10);
+            paintSliderBar(slider);
             loadPlyForGroup(label, container, placeholder, statusDiv);
         });
 
@@ -396,6 +406,7 @@
             state.playInterval = setInterval(() => {
                 state.idx = (state.idx + 1) % state.files.length;
                 slider.value = String(state.idx);
+                paintSliderBar(slider);
                 loadPlyForGroup(label, container, placeholder, statusDiv);
                 if (state.idx === state.files.length - 1) {
                     state.playing = false;
@@ -435,6 +446,16 @@
                 ply_files: baseGlbMeshes,
                 panel_id: "panel_mesh_shape_glb",
                 default_visible: !!PANEL_DEFAULTS.runs.panel_mesh_shape_glb.defaultVisible,
+            });
+        }
+
+        const coneGlbMeshes = data.meshes_glb_cone || [];
+        if (coneGlbMeshes.length) {
+            groups.push({
+                label: "Aeroshell Mesh (GLB, Vision Cone)",
+                ply_files: coneGlbMeshes,
+                panel_id: "panel_mesh_shape_glb_cone",
+                default_visible: !!PANEL_DEFAULTS.runs.panel_mesh_shape_glb_cone?.defaultVisible,
             });
         }
 

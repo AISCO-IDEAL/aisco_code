@@ -8,7 +8,9 @@
 # ---------------------------------------------------------------------------
 
 # --- Input ---
-mesh_path: /cluster/work/fuge/AISCO/wp1_cfd_ai/FLUENT/GEOMETRY/RUN_156.ply
+# mesh_path: /cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/OPENFOAM_022/ply_to_simulate_subdivided/RUN_050.ply
+mesh_path: /cluster/work/fuge/AISCO/wp1_cfd_ai/OPENFOAM_federico/OPENFOAM_027/ply_to_simulate_subdivided/RUN_026.ply
+
 
 # --- Output ---
 output_path: /cluster/work/fuge/AISCO/wp9/rollout_viz/cp_field/cp_field.png
@@ -17,8 +19,9 @@ image_height: 1600
 render_scale: 3      # write_image pixel density multiplier (2 → 3200×1600)
 
 # --- Camera ---
+flip_x_axis: true       # true → negate X coords before rendering (reverses forward direction)
 camera:
-  azimuth: -50          # degrees; 0 = pure front (YZ face), -45 = front-left corner
+  azimuth: 50         # degrees; 0 = pure front (YZ face), -45 = front-left corner
   elevation: 20         # degrees above horizontal
   distance_factor: 3.5   # Plotly camera eye distance (larger = more zoomed out)
 
@@ -27,7 +30,7 @@ camera:
 # Only model_id is required for inference; v_inf / rho are carried here for
 # reference and future Cd computation extensions.
 cfd:
-  model_id: 65531686    # run-id from metrics.csv; must match the trained model
+  model_id: 66982878    # run-id from metrics.csv; must match the trained model
   version: 3            # informational only — this script always uses GAOT3
   v_inf: 25.0           # [m/s] free-stream velocity (must match training value)
   rho: 1.225            # [kg/m³] air density (must match training value)
@@ -54,10 +57,10 @@ cp_alpha: 1.0           # mesh opacity [0..1]
 # Training defaults: 50 iterations of full-strength uniform Laplacian.
 cp_smoothing:
   enabled: true
-  iterations: 8
+  iterations: 500
   min_strength: 1.0       # [0,1] lower bound of per-vertex smoothing weight
   max_strength: 1.0       # [0,1] upper bound
-  curvature_power: 1.0    # 0 = uniform (ignore curvature); >0 = sharper edges
+  curvature_power: 0    # 0 = uniform (ignore curvature); >0 = sharper edges
   curvature_quantile: 0.95  # quantile for normalising curvature (only if power>0)
 
 # --- Shading ---
@@ -83,6 +86,11 @@ mesh:
 # instead of the single view defined by `camera:` above.
 # Output files get a _{view} suffix, e.g. cp_field_front.png.
 cardinal_views: false
+
+# --- Mesh pre-processing ---
+# mesh_rotate_z_180: true → rotate 180° around Z axis before inference (negates X and Y).
+# Use when the PLY nose direction / lateral axis are inverted vs. the model's training convention.
+mesh_rotate_z_180: true
 
 # --- Compute device ---
 device: cuda   # "cuda" or "cpu"
