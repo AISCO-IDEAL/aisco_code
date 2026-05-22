@@ -1,5 +1,0 @@
-# loaded by main_v1_1_one_model.py as model_config, passed as **model_config to BasicMLP(**model_config)
-# BasicMLP.__init__ -> BaseModel.__init__ accepts these as keyword arguments
-in_dim : 3  #  model_baseclass.py: __init__(in_dim=3) -> defines MLP input dimension
-layers : 10  # model_baseclass.py: __init__(layers=10) -> defines number of hidden layers
-hidden : 256  # model_baseclass.py: __init__(hidden=256) -> defines hidden layer width
