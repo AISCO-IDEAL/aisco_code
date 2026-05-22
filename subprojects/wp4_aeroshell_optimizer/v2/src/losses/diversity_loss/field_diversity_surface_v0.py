@@ -66,8 +66,6 @@ class FieldDiversitySurfaceV0:
         self._surface_subsample_n: int = int(cfg.get("surface_subsample_n", 4096))
         self._mc_resolution: int = int(cfg.get("mc_resolution", 64))
         self._mc_bbox_scale: float = float(cfg.get("mc_bbox_scale", 1.0))
-        self._max_div: float | None = cfg.get("max_div", None)
-        self._max_div = None if self._max_div is None else float(self._max_div)
         self._warmup_epochs: int = int(cfg.get("warmup_epochs", 0))
 
         assembly_id = int(self.losses_config.get("bb_config", {}).get("assembly_id", 1))
@@ -186,7 +184,6 @@ class FieldDiversitySurfaceV0:
             Y,
             norm_order=norm_order,
             neighbor_agg_fn=neighbor_agg_fn,
-            max_div=self._max_div,
             leinster_temp=leinster_temp,
             leinster_q=leinster_q,
         )

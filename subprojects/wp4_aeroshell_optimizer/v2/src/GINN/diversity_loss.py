@@ -30,7 +30,6 @@ def field_diversity_loss(
     y: Tensor,
     norm_order: int = 2,
     neighbor_agg_fn: str = "min",
-    max_div: float | None = None,
     leinster_temp: float | None = None,
     leinster_q: float | None = None,
 ) -> Tensor:
@@ -50,16 +49,14 @@ def field_diversity_loss(
             'mean' — maximize mean distance to all others
             'sum'  — maximize sum of distances to all others
             'leinster' — global all-pairs Leinster diversity (needs leinster_temp/q)
-        max_div: optional GINN-style clamp. If set (negative value, e.g. -0.1), the
-            loss becomes `clamp(loss - max_div, min=0)` — the diversity gradient turns
-            off once shapes are "different enough", preventing the population from
-            being pulled further apart at the expense of other objectives.
         leinster_temp: similarity-kernel temperature — a FIXED field distance (mm, SDF
             units) at which two shapes count as notably different. Only used for 'leinster'.
         leinster_q: diversity order q; only used for the 'leinster' mode (q=2 is the
             inverse-Simpson "effective number of distinct shapes").
     Returns:
-        Scalar loss (negative → minimizing pushes shapes apart).
+        Scalar loss (negative → minimizing pushes shapes apart). The max_div saturation
+        clamp is no longer applied here — the caller (DiversityLossManager) handles it
+        as an ALM inequality constraint.
     """
     distances = pairwise_dist_fields(y, norm_order=norm_order)  # [N, N]
 
@@ -97,6 +94,4 @@ def field_diversity_loss(
         # sqrt prevents one large distance from dominating; .mean().square() for smooth gradient
         loss = (-1.0) * dists.sqrt().mean().square()
 
-    if max_div is not None:
-        loss = torch.clamp(loss - max_div, min=0.0)
     return loss

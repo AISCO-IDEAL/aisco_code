@@ -55,8 +55,6 @@ class FieldDiversityMaskedV0:
         self._bb_inner_cutoff_mm: float = float(cfg.get("bb_inner_cutoff_mm", 15.0))
         self._wheel_sampling_density: int = int(cfg.get("wheel_sampling_density", 10))
         self._bb_inner_target_point_count: int = int(cfg.get("bb_inner_target_point_count", 20000))
-        self._max_div: float | None = cfg.get("max_div", None)
-        self._max_div = None if self._max_div is None else float(self._max_div)
         self._max_resample_iters: int = int(cfg.get("max_resample_iters", 8))
         self._warmup_epochs: int = int(cfg.get("warmup_epochs", 0))
 
@@ -142,7 +140,6 @@ class FieldDiversityMaskedV0:
             Y,
             norm_order=norm_order,
             neighbor_agg_fn=neighbor_agg_fn,
-            max_div=self._max_div,
             leinster_temp=leinster_temp,
             leinster_q=leinster_q,
         )

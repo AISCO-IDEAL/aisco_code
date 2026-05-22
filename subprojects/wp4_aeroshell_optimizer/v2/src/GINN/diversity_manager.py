@@ -74,7 +74,6 @@ class DiversityTrainer:
         diversity_neighbor_agg_fn: str = "min",
         diversity_leinster_temp: float = 1.0,
         diversity_leinster_q: float = 2.0,
-        diversity_grad_ratio: float = 0.0,
         force_z0_to_origin: bool = True,
         z_resample_cadence: int = 0,  # so the original pretrained spots remain
         initial_Z: Tensor | None = None,
@@ -168,7 +167,6 @@ class DiversityTrainer:
         self._diversity_neighbor_agg_fn: str = diversity_neighbor_agg_fn
         self._diversity_leinster_temp: float = diversity_leinster_temp
         self._diversity_leinster_q: float = diversity_leinster_q
-        self._diversity_grad_ratio: float = max(0.0, float(diversity_grad_ratio))
 
         self._force_z0_to_origin: bool = force_z0_to_origin
         self._z_resample_cadence: int = max(0, int(z_resample_cadence))
@@ -1135,6 +1133,7 @@ class DiversityTrainer:
                     )
                     if diversity_result.active:
                         diversity_result.weighted.backward(retain_graph=False)
+                        self._diversity_manager.update_multipliers(diversity_result.c_div.detach())
                         _captured["diversity"] = diversity_result
 
                 if not math.isinf(self._autoclip.get_clip_value()):
@@ -1206,24 +1205,12 @@ class DiversityTrainer:
                     ]
                     delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
 
-                    # Gradient-ratio balancer: rescale the diversity contribution so its norm is a
-                    # fixed fraction of the Phase-1 (constraint) gradient norm. A fixed diversity
-                    # weight cannot keep pace with the ALM constraints, whose gradients ramp over
-                    # training; this makes diversity track them automatically.
-                    div_scale = 1.0
-                    if self._diversity_grad_ratio > 0.0 and delta_norm > 1e-12:
-                        constraint_norm = sum(pv.pow(2).sum().item() for pv in prev_grad) ** 0.5
-                        div_scale = self._diversity_grad_ratio * constraint_norm / delta_norm
-                        for p, pv, c in zip(trainable_params, prev_grad, curr_grad, strict=False):
-                            if p.grad is not None:
-                                p.grad = pv + div_scale * (c - pv)
-                        per_loss_gradient_log_data["grad/phase1_constraint_norm"] = constraint_norm
-
-                    per_loss_gradient_log_data[diversity_grad_key] = div_scale * delta_norm
+                    self._diversity_manager.update_multipliers(diversity_result.c_div.detach())
+                    per_loss_gradient_log_data[diversity_grad_key] = delta_norm
 
                     if capture_conflict and self._conflict_tracker is not None:
                         diversity_delta = torch.cat(
-                            [(div_scale * (c - pv)).detach().cpu().flatten() for c, pv in zip(curr_grad, prev_grad, strict=False)]
+                            [(c - pv).detach().cpu().flatten() for c, pv in zip(curr_grad, prev_grad, strict=False)]
                         )
                         conflict_vectors[self._diversity_manager.loss_name] = diversity_delta.numpy()
 

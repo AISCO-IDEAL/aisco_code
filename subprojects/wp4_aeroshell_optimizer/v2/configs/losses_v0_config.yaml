@@ -249,10 +249,18 @@ field_diversity_surface_v0_config:
   surface_subsample_n: 3500     # max retained vertices per shape after subsample
   mc_resolution: 40           # marching-cubes grid resolution
   mc_bbox_scale: 1.0            # outer-prism bbox multiplier for the extractor
-  # null while calibrating: with the new Leinster aggregation the loss scale changes
-  # entirely, so re-measure D on a Leinster run before setting max_div (= -D). GINN uses -0.1.
-  max_div: -17.5
+  # Diversity saturation threshold. D ≤ max_div is the ALM inequality; c_div = max(0, D - max_div).
+  # Re-measure D on a Leinster run before tuning — GINN uses -0.1, our scale is larger (~-15 to -25).
+  max_div: -15.0
   warmup_epochs: 0       # constraints-only warmup before diversity engages (tune; GINN start_div=500)
+  # ALM dual-variable params for the diversity constraint (mirrors general_info ALM params)
+  initial_lambda: 1.0
+  initial_mu: 1.0
+  initial_nu: 1.0
+  alpha: 0.8
+  gamma: 0.2
+  gamma_aggressive: 1.1
+  alm_formula: "linear_augmented"  # quadratic_augmented | linear_augmented
 
 field_diversity_hybrid_v0_config:
   w_vol: 0.1                 # weight on the masked-volumetric sub-loss
