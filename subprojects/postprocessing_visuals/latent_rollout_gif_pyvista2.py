@@ -523,6 +523,7 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
     mode: str = "circle",
     panel_scale_radius: float | None = None,
     show_anchors: bool = True,
+    epoch_num: int | None = None,
 ) -> np.ndarray:
     """Return (H, W, 3) uint8 side panel showing the 2D latent map."""
     _C = colors or {}
@@ -542,17 +543,35 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
     img = Image.new("RGB", (w, h), color=bg)
     draw = ImageDraw.Draw(img)
 
-    cx, cy = w // 2, h // 2
-
-    # --- NEW: Compute dynamic scaling factor relative to baseline height of 600px ---
     scale_factor = h / 600.0
-    
-    # Scale line widths
     lw_grid = max(1, int(1 * scale_factor))
     lw_axis = max(1, int(1 * scale_factor))
     lw_thick = max(1, int(2 * scale_factor))
+    font_info = _get_font(max(8, int(11 * scale_factor)))
+    font_title = _get_font(max(9, int(12 * scale_factor)))
 
-    # Map the reference radius x 1.5 to 40% of the panel's half-width
+    # Epoch counter — top-left, always shown when epoch_num is provided
+    if epoch_num is not None:
+        font_epoch = _get_font(max(10, int(15 * scale_factor)))
+        draw.text(
+            (int(8 * scale_factor), int(8 * scale_factor)),
+            f"Epoch {epoch_num}",
+            fill=title_col,
+            font=font_epoch,
+        )
+        draw.text(
+            (int(8 * scale_factor), h - int(20 * scale_factor)),
+            f"frame {frame_idx + 1} / {n_frames}",
+            fill=frame_text_col,
+            font=font_info,
+        )
+
+    if mode == "epoch_gif":
+        # epoch_gif: panel is plain background — no latent map content
+        return np.asarray(img)
+
+    cx, cy = w // 2, h // 2
+
     _scale_ref = panel_scale_radius if panel_scale_radius is not None else z_radius
     scale = (min(w, h) * 0.40) / max(_scale_ref * 1.5, 1e-6)
 
@@ -572,7 +591,6 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
             width=lw_axis,
         )
 
-    # Pretrained anchor dots
     # Pretrained anchor dots (Proportionally Scaled)
     if show_anchors and Z_pretrained is not None:
         font_sm = _get_font(max(8, int(11 * scale_factor)))
@@ -582,12 +600,12 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
             offset = max(3, int(7 * scale_factor))
             draw.ellipse([(px - r, py - r), (px + r, py + r)], fill=anchor_col)
             draw.text((px + offset, py - offset), str(i), fill=anchor_lbl_col, font=font_sm)
+
     # Trajectory / progress visualization
     if mode == "circle":
-        # Progress arc for circle traversal
         if n_frames > 1 and r_px > 5:
-            arc_end_deg = -90 + (360.0 * frame_idx / n_frames)  # PIL 0° = 3 o'clock, start at 12
-            with contextlib.suppress(Exception):  # older Pillow versions may not support width on arc
+            arc_end_deg = -90 + (360.0 * frame_idx / n_frames)
+            with contextlib.suppress(Exception):
                 draw.arc(
                     [(cx - r_px, cy - r_px), (cx + r_px, cy + r_px)],
                     start=-90,
@@ -597,22 +615,17 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
                 )
     elif trajectory_coords is not None and len(trajectory_coords) > 1:
         full_pts = [z2px(zc0, zc1) for zc0, zc1 in trajectory_coords]
-        # Full path in dim color
         draw.line(full_pts, fill=circle_col, width=lw_grid)
-        # Traversed portion in highlight color
         traversed = full_pts[: frame_idx + 1]
         if len(traversed) >= 2:
             draw.line(traversed, fill=progress_col, width=lw_thick)
-        # Endpoint markers for line mode
         if mode == "line":
             ep_r = max(2, int(5 * scale_factor))
             for ep_z0, ep_z1 in (trajectory_coords[0], trajectory_coords[-1]):
                 ex, ey = z2px(ep_z0, ep_z1)
                 draw.ellipse([(ex - ep_r, ey - ep_r), (ex + ep_r, ey + ep_r)], outline=circle_col, width=lw_thick)
-        # Corner markers for cross mode
         if mode == "cross":
             ep_r = max(2, int(5 * scale_factor))
-            # Draw dots at the 4 unique corners only (skip center and duplicate start/end)
             seen: set[tuple[int, int]] = set()
             for ep_z0, ep_z1 in trajectory_coords:
                 ep = z2px(ep_z0, ep_z1)
@@ -625,19 +638,15 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
     r = max(3, int(7 * scale_factor))
     draw.ellipse([(px - r, py - r), (px + r, py + r)], fill=cursor_col, outline=cursor_out_col, width=lw_thick)
 
-    # Axis labels & Info Text (Proportionally Scaled Positions & Sizes)
-    font_label = ImageFont.truetype("DejaVuSans-Bold.ttf", max(9, int(13 * scale_factor)), layout_engine=ImageFont.Layout.BASIC)    
-    font_info = _get_font(max(8, int(11 * scale_factor)))
-    font_title = _get_font(max(9, int(12 * scale_factor)))
+    # Axis labels & Info Text
+    font_label = ImageFont.truetype("DejaVuSans-Bold.ttf", max(9, int(13 * scale_factor)), layout_engine=ImageFont.Layout.BASIC)
 
     draw.text((w - int(26 * scale_factor), cy - int(16 * scale_factor)), "z₀", fill=axis_lbl_col, font=font_label)
     draw.text((cx + int(5 * scale_factor), int(8 * scale_factor)), "z₁", fill=axis_lbl_col, font=font_label)
 
-    # Coordinates + frame counter
     draw.text((int(8 * scale_factor), h - int(36 * scale_factor)), f"z = [{z0:+.3f}, {z1:+.3f}]", fill=coord_text_col, font=font_info)
     draw.text((int(8 * scale_factor), h - int(20 * scale_factor)), f"frame {frame_idx + 1} / {n_frames}", fill=frame_text_col, font=font_info)
 
-    # Panel title
     _mode_label = {
         "circle": "Circle",
         "spiral": "Spiral",
@@ -645,7 +654,9 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
         "cross": "Cross",
         "epoch_gif": "Epoch GIF",
     }.get(mode, mode.capitalize())
-    draw.text((int(8 * scale_factor), int(8 * scale_factor)), f"Latent Space · {_mode_label}", fill=title_col, font=font_title)
+    # Title only shown in latent-space modes (epoch_gif returned early above)
+    if epoch_num is None:
+        draw.text((int(8 * scale_factor), int(8 * scale_factor)), f"Latent Space · {_mode_label}", fill=title_col, font=font_title)
 
     return np.asarray(img)
 
@@ -1027,10 +1038,11 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     print("\nGenerating frames...")
     for i, (z0, z1) in enumerate(z_coords):
         frame_ckpt = frame_checkpoints[i]
+        frame_epoch_num: int | None = None
         if frame_ckpt is not None:
             _load_model_state_from_checkpoint(model, frame_ckpt, device)
-            ep = _parse_epoch_from_stem(frame_ckpt.stem)
-            ep_str = f" epoch={ep}" if ep is not None else ""
+            frame_epoch_num = _parse_epoch_from_stem(frame_ckpt.stem)
+            ep_str = f" epoch={frame_epoch_num}" if frame_epoch_num is not None else ""
         else:
             ep_str = ""
 
@@ -1054,6 +1066,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                     mode=active_mode,
                     panel_scale_radius=panel_scale_radius,
                     show_anchors=args.show_anchors,
+                    epoch_num=frame_epoch_num,
                 )
                 frames.append(np.concatenate([last_valid_rgb, panel], axis=1))
             continue
@@ -1096,6 +1109,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             mode=active_mode,
             panel_scale_radius=panel_scale_radius,
             show_anchors=args.show_anchors,
+            epoch_num=frame_epoch_num,
         )
         composite = np.concatenate([rgb, panel], axis=1)  # (H, W+panel, 3)
         if i == 0:

@@ -4,7 +4,7 @@
 #SBATCH --time=00:15:00                  
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem-per-cpu=4G                  # 16G total memory
+#SBATCH --mem-per-cpu=8G                  # 32G total memory
 #SBATCH --gpus=pro_6000:1                 # Matches your cluster's GPU profile
 #SBATCH --output=/cluster/scratch/%u/logs/%x_%j.out
 
@@ -45,7 +45,7 @@ ts "Launching latent_rollout_gif.py..."
 
 # Execute script with defaults 
 "$PYTHON_BIN" /cluster/home/kdiehl/AISCO_code/subprojects/postprocessing_visuals/latent_rollout_gif_pyvista2.py \
-    --checkpoint "/cluster/work/fuge/AISCO/wp9/for_victor/6166b4e953/109_398564_good-paper/models/109_398564_good-paper_epoch2000.pth" \
+    --checkpoint "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/latent_space_training/6166b4e953/41_148784_logical-lake/models/41_148784_logical-lake_epoch5400.pth" \
     --n_frames 240 \
     --resolution 60 \
     --fps 24 \
@@ -55,6 +55,7 @@ ts "Launching latent_rollout_gif.py..."
     --width 2560 \
     --panel_width 1280 \
     --no-show-anchors \
-    --out /cluster/work/fuge/AISCO/wp9/4k/good-paper_epoch2000.gif 
+    --epoch_gif \
+    --out /cluster/work/fuge/AISCO/wp9/4k/2good-paper_evolution.gif 
 
 ts "Job finished successfully."
