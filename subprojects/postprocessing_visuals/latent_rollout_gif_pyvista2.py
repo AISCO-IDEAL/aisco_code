@@ -528,6 +528,7 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
     """Return (H, W, 3) uint8 side panel showing the 2D latent map."""
     _C = colors or {}
     bg = _C.get("bg", (35, 40, 62))
+    bg_epoch = _C.get("bg_epoch", bg)
     axis_col = _C.get("axis", (75, 85, 115))
     circle_col = _C.get("circle", (110, 125, 165))
     anchor_col = _C.get("anchor", (220, 90, 90))
@@ -537,10 +538,9 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
     cursor_out_col = _C.get("cursor_outline", (255, 255, 255))
     axis_lbl_col = _C.get("axis_label", (180, 190, 220))
     coord_text_col = _C.get("coord_text", (130, 195, 255))
-    frame_text_col = _C.get("frame_text", (140, 145, 170))
     title_col = _C.get("title", (200, 205, 230))
 
-    img = Image.new("RGB", (w, h), color=bg)
+    img = Image.new("RGB", (w, h), color=bg_epoch if mode == "epoch_gif" else bg)
     draw = ImageDraw.Draw(img)
 
     scale_factor = h / 600.0
@@ -550,7 +550,7 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
     font_info = _get_font(max(8, int(11 * scale_factor)))
     font_title = _get_font(max(9, int(12 * scale_factor)))
 
-    # Epoch counter — top-left, always shown when epoch_num is provided
+    # Epoch counter — top-left in all modes
     if epoch_num is not None:
         font_epoch = _get_font(max(10, int(15 * scale_factor)))
         draw.text(
@@ -558,12 +558,6 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
             f"Epoch {epoch_num}",
             fill=title_col,
             font=font_epoch,
-        )
-        draw.text(
-            (int(8 * scale_factor), h - int(20 * scale_factor)),
-            f"frame {frame_idx + 1} / {n_frames}",
-            fill=frame_text_col,
-            font=font_info,
         )
 
     if mode == "epoch_gif":
@@ -645,7 +639,6 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
     draw.text((cx + int(5 * scale_factor), int(8 * scale_factor)), "z₁", fill=axis_lbl_col, font=font_label)
 
     draw.text((int(8 * scale_factor), h - int(36 * scale_factor)), f"z = [{z0:+.3f}, {z1:+.3f}]", fill=coord_text_col, font=font_info)
-    draw.text((int(8 * scale_factor), h - int(20 * scale_factor)), f"frame {frame_idx + 1} / {n_frames}", fill=frame_text_col, font=font_info)
 
     _mode_label = {
         "circle": "Circle",
@@ -654,7 +647,8 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
         "cross": "Cross",
         "epoch_gif": "Epoch GIF",
     }.get(mode, mode.capitalize())
-    # Title only shown in latent-space modes (epoch_gif returned early above)
+    # Title only shown in latent-space modes (epoch_gif returned early above).
+    # Skip title when epoch label is shown to keep top-left uncluttered.
     if epoch_num is None:
         draw.text((int(8 * scale_factor), int(8 * scale_factor)), f"Latent Space · {_mode_label}", fill=title_col, font=font_title)
 
@@ -939,6 +933,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     # Build panel colors dict (sourced from YAML cfg, with hardcoded fallbacks)
     panel_colors = {
         "bg": _parse_color_rgb(_c("panel_bg", "#23283E")),
+        "bg_epoch": _parse_color_rgb(args.render_bg),
         "axis": _parse_color_rgb(_c("panel_axis", "#4B5573")),
         "circle": _parse_color_rgb(_c("panel_circle", "#6E7DA5")),
         "anchor": _parse_color_rgb(_c("panel_anchor", "#DC5A5A")),
@@ -956,6 +951,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     print(f"Device: {device}")
 
     active_mode = "epoch_gif" if args.epoch_gif else args.mode
+    base_epoch_num = _parse_epoch_from_stem(args.checkpoint.stem)
 
     # --- Load model ---
     model, z_dim, z_radius_ckpt, Z_pretrained = load_checkpoint(args.checkpoint, device)
@@ -1038,7 +1034,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     print("\nGenerating frames...")
     for i, (z0, z1) in enumerate(z_coords):
         frame_ckpt = frame_checkpoints[i]
-        frame_epoch_num: int | None = None
+        frame_epoch_num: int | None = base_epoch_num
         if frame_ckpt is not None:
             _load_model_state_from_checkpoint(model, frame_ckpt, device)
             frame_epoch_num = _parse_epoch_from_stem(frame_ckpt.stem)
@@ -1112,9 +1108,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             epoch_num=frame_epoch_num,
         )
         composite = np.concatenate([rgb, panel], axis=1)  # (H, W+panel, 3)
-        if i == 0:
-            Image.fromarray(composite).save("/cluster/work/fuge/AISCO/wp9/ginn_gif/DEBUG_FRAME_3.png")
-            print(f"  → DEBUG_FRAME_2.png saved")
+        # if i == 0:
+        #     Image.fromarray(composite).save("/cluster/work/fuge/AISCO/wp9/ginn_gif/DEBUG_FRAME_3.png")
+        #     print(f"  → DEBUG_FRAME_2.png saved")
         frames.append(composite)
         last_valid_rgb = rgb
         print(f"  → {len(mesh.vertices):,} verts")
