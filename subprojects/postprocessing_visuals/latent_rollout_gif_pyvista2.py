@@ -658,8 +658,16 @@ def draw_epoch_label_on_frame(
     frame_rgb: np.ndarray,
     epoch_num: int | None,
     color: tuple[int, int, int] = (200, 205, 230),
+    x_offset_px: int = 0,
 ) -> np.ndarray:
-    """Overlay the epoch label at top-left directly onto an RGB frame."""
+    """Overlay the epoch label at top-left directly onto an RGB frame.
+
+    Args:
+        frame_rgb: Full RGB frame.
+        epoch_num: Epoch number to render; if None no text is drawn.
+        color: RGB text color.
+        x_offset_px: Extra x-offset in pixels for the label anchor.
+    """
     if epoch_num is None:
         return frame_rgb
 
@@ -668,7 +676,12 @@ def draw_epoch_label_on_frame(
     h = frame_rgb.shape[0]
     scale_factor = h / 600.0
     font_epoch = _get_font(max(10, int(15 * scale_factor)))
-    draw.text((int(8 * scale_factor), int(8 * scale_factor)), f"Epoch {epoch_num}", fill=color, font=font_epoch)
+    draw.text(
+        (x_offset_px + int(8 * scale_factor), int(8 * scale_factor)),
+        f"Epoch {epoch_num}",
+        fill=color,
+        font=font_epoch,
+    )
     return np.asarray(img)
 
 
@@ -1159,6 +1172,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                                 last_valid_epoch_base,
                                 frame_epoch_num,
                                 color=panel_colors["title"],
+                                x_offset_px=args.width,
                             )
                         )
                 else:
@@ -1237,6 +1251,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 epoch_base,
                 frame_epoch_num,
                 color=panel_colors["title"],
+                x_offset_px=args.width,
             )
             last_valid_epoch_base = epoch_base
         else:
