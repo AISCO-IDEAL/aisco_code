@@ -60,9 +60,8 @@ def _assembly(pipeline: str) -> AssemblySelectionService:
 
 
 _SUBPAGES = {
-    "config-overrides": ("Launcher — Config Overrides", "launcher/config_overrides.html"),
+    "config-overrides": ("Launcher — Configure & Run", "launcher/config_overrides.html"),
     "assembly-selection": ("Launcher — Assembly Selection", "launcher/assembly_selection.html"),
-    "optimization": ("Launcher — Live Run", "launcher/optimization.html"),
     "output": ("Launcher — Output", "launcher/output.html"),
     "leaderboard": ("Launcher — Leaderboard", "launcher/leaderboard.html"),
 }
@@ -674,7 +673,7 @@ def cfg_rename(payload: RenameRequest) -> dict[str, Any]:
             gen_cfg["wandb_general"]["name"] = result["name"]
             with gen_cfg_path.open("w", encoding="utf-8") as f:
                 yaml.dump(gen_cfg, f, allow_unicode=True, default_flow_style=False)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             LOGGER.warning("Could not update wandb_general.name in general_config.yaml: %s", exc)
     return result
 

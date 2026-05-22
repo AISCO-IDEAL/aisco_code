@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+{% block hint %}Live leaderboard &mdash; run names sorted by best performance.{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Overall layout: leaderboard narrow, video fills the rest ───────────── */
+  .display-layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 16px;
+    height: 100%;
+    min-height: 0;
+  }
+
+  /* Narrow screens: stack vertically */
+  @media (max-width: 860px) {
+    .display-layout {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto 1fr;
+    }
+  }
+
+  /* ── Shared card ──────────────────────────────────────────────────────────── */
+  .display-card {
+    background: color-mix(in srgb, var(--theme-panel) 80%, var(--theme-panel-2) 20%);
+    border: 1px solid var(--theme-border);
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  .display-card-title {
+    padding: 10px 16px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--theme-warning-text);
+    border-bottom: 1px solid var(--theme-border);
+    background: color-mix(in srgb, var(--theme-panel-2) 60%, transparent 40%);
+    flex-shrink: 0;
+  }
+
+  /* ── Leaderboard ──────────────────────────────────────────────────────────── */
+  .lb-scroll {
+    overflow-y: auto;
+    flex: 1 1 0;
+    min-height: 0;
+  }
+
+  .lb-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+
+  .lb-table tbody tr {
+    border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent 50%);
+    transition: background 0.12s;
+  }
+
+  .lb-table tbody tr:last-child {
+    border-bottom: none;
+  }
+
+  .lb-table tbody tr:hover {
+    background: color-mix(in srgb, var(--theme-title-2) 8%, transparent 92%);
+  }
+
+  .lb-table td {
+    padding: 11px 16px;
+    color: var(--theme-text);
+    vertical-align: middle;
+  }
+
+  /* Rank column */
+  .lb-rank {
+    font-weight: 700;
+    font-size: 0.9rem;
+    font-family: var(--theme-font-mono, monospace);
+    color: var(--theme-muted);
+    width: 52px;
+    white-space: nowrap;
+  }
+
+  .lb-rank.gold   { color: #f5c842; }
+  .lb-rank.silver { color: #b0b8c8; }
+  .lb-rank.bronze { color: #cd7f32; }
+
+  /* Run name column */
+  .lb-run-id {
+    font-family: var(--theme-font-mono, monospace);
+    font-size: 0.82rem;
+    color: var(--theme-text);
+    word-break: break-all;
+  }
+
+  /* Status placeholder */
+  #lbStatus {
+    padding: 28px 16px;
+    text-align: center;
+    color: var(--theme-muted);
+    font-size: 0.82rem;
+  }
+
+  /* Footer */
+  .lb-footer {
+    flex-shrink: 0;
+    padding: 6px 14px;
+    font-size: 0.68rem;
+    color: var(--theme-muted);
+    text-align: right;
+    border-top: 1px solid var(--theme-border);
+  }
+
+  /* ── Video ────────────────────────────────────────────────────────────────── */
+  .video-wrap {
+    flex: 1 1 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    min-height: 0;
+    background: #000;
+  }
+
+  .video-wrap video {
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 6px;
+    outline: none;
+  }
+
+  .video-unavailable {
+    flex: 1 1 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 28px;
+    color: var(--theme-muted);
+    font-size: 0.82rem;
+    text-align: center;
+    line-height: 1.7;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="display-layout">
+
+  <!-- ── LEADERBOARD ───────────────────────────────────────────────────────── -->
+  <div class="display-card">
+    <div class="display-card-title">Leaderboard — Run Names</div>
+    <div class="lb-scroll" id="lbScroll">
+      <div id="lbStatus">Loading leaderboard&hellip;</div>
+      <table class="lb-table" id="lbTable" style="display:none;">
+        <tbody id="lbBody"></tbody>
+      </table>
+    </div>
+    <div class="lb-footer" id="lbFooter" style="display:none;"></div>
+  </div>
+
+  <!-- ── VIDEO ─────────────────────────────────────────────────────────────── -->
+  <div class="display-card">
+    <div class="display-card-title">Video</div>
+    {% if video_available %}
+    <div class="video-wrap">
+      <video id="mainVideo" controls loop>
+        <source src="/video" type="video/mp4">
+        Your browser does not support the video tag.
+      </video>
+    </div>
+    {% else %}
+    <div class="video-unavailable">
+      No video configured.<br>
+      Set <code>VIDEO_PATH</code> in
+      <code>subprojects/wp7_gui/v3_display/core/settings.py</code>
+      and restart the app.
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+  // ── Leaderboard fetch + render ───────────────────────────────────────────
+  const REFRESH_MS = {{ leaderboard_refresh_ms | int }};
+
+  function rankClass(rank) {
+    if (rank === 1) return "gold";
+    if (rank === 2) return "silver";
+    if (rank === 3) return "bronze";
+    return "";
+  }
+
+  function rankLabel(rank) {
+    if (rank === 1) return "\uD83E\uDD47 1";
+    if (rank === 2) return "\uD83E\uDD48 2";
+    if (rank === 3) return "\uD83E\uDD49 3";
+    return String(rank);
+  }
+
+  function renderLeaderboard(data) {
+    var tbody = document.getElementById("lbBody");
+    var status = document.getElementById("lbStatus");
+    var table = document.getElementById("lbTable");
+    var footer = document.getElementById("lbFooter");
+
+    tbody.innerHTML = "";
+
+    if (!data.entries || data.entries.length === 0) {
+      status.textContent = "No runs recorded yet.";
+      status.style.display = "";
+      table.style.display = "none";
+      footer.style.display = "none";
+      return;
+    }
+
+    data.entries.forEach(function (entry) {
+      var tr = document.createElement("tr");
+
+      var tdRank = document.createElement("td");
+      tdRank.className = "lb-rank " + rankClass(entry.rank);
+      tdRank.textContent = rankLabel(entry.rank);
+      tr.appendChild(tdRank);
+
+      var tdId = document.createElement("td");
+      var span = document.createElement("span");
+      span.className = "lb-run-id";
+      span.textContent = entry.run_id;
+      tdId.appendChild(span);
+      tr.appendChild(tdId);
+
+      tbody.appendChild(tr);
+    });
+
+    status.style.display = "none";
+    table.style.display = "";
+    footer.textContent = data.total_runs + " run" + (data.total_runs !== 1 ? "s" : "") + " total";
+    footer.style.display = "";
+  }
+
+  function fetchLeaderboard() {
+    fetch("/api/leaderboard")
+      .then(function (r) { return r.json(); })
+      .then(renderLeaderboard)
+      .catch(function (err) {
+        console.warn("Leaderboard fetch failed:", err);
+      });
+  }
+
+  fetchLeaderboard();
+  setInterval(fetchLeaderboard, REFRESH_MS);
+</script>
+{% endblock %}

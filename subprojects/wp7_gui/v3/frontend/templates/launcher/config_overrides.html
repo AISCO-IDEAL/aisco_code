@@ -1,15 +1,14 @@
 {% extends "base.html" %}
-{% block hint %}{% if pipeline == 'live' %}Edit whitelisted config values, save to a session folder, then run.{% else
-%}Browse config values used for a completed run (read-only).{% endif %}{% endblock %}
+{% block hint %}{% if pipeline == 'live' %}Edit config overrides, then launch a training run and watch live progress below.{% else %}Browse config values used for a completed run (read-only).{% endif %}{% endblock %}
 
 {% block content %}
-<div class="section-grid" style="grid-template-rows: auto auto 1fr auto; height: 100%;">
+<div class="section-grid" style="grid-template-rows: auto auto 1fr {% if pipeline == 'live' %}auto {% endif %}auto; height: 100%;">
 
   <!-- Wizard navigation -->
   <div class="dark-card toolbar">
     <a href="/launcher/assembly-selection?pipeline={{ pipeline }}" class="btn secondary">← Back</a>
     <div style="flex:1;"></div>
-    <a id="btnNext" href="/launcher/optimization?pipeline=live" class="btn">Next →</a>
+    <a id="btnNext" href="/launcher/output?pipeline=live" class="btn">Next →</a>
   </div>
 
   <!-- Session toolbar -->
@@ -40,6 +39,26 @@
       </div>
     </div>
   </div>
+
+  {% if pipeline == 'live' %}
+  <!-- Run controls -->
+  <div class="dark-card toolbar">
+    <button class="btn" id="btnRun" disabled>&#9654; Run</button>
+    <button class="btn secondary" id="btnStop" disabled>&#9632; Stop</button>
+    <div style="flex:1; min-width:80px;">
+      <div class="progress-bar-wrap" id="progressWrap">
+        <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+      </div>
+      <div id="progressLabel" style="font-size:0.76rem; color:var(--theme-muted); font-weight:500; margin-top:3px;">Idle</div>
+    </div>
+    <span style="font-size:0.78rem; color:var(--theme-muted);">Drag</span>
+    <span id="runDragValue" style="font-size:0.8rem; color:var(--theme-white); white-space:nowrap; min-width:52px;">&#8212;</span>
+    <span style="font-size:0.78rem; color:var(--theme-muted);">Solar</span>
+    <span id="runSolarValue" style="font-size:0.8rem; color:var(--theme-white); white-space:nowrap; min-width:52px;">&#8212;</span>
+    <span style="font-size:0.78rem; color:var(--theme-muted);">Speed</span>
+    <span id="runSpeedValue" style="font-size:0.8rem; color:var(--theme-white); white-space:nowrap; min-width:52px;">&#8212;</span>
+  </div>
+  {% endif %}
 
   <!-- Output console -->
   <div class="dark-card" style="max-height: 200px; display: grid; grid-template-rows: auto 1fr; gap: 6px;">
@@ -79,7 +98,7 @@
       const folderParam = activeFolder ? `&cfg_folder=${encodeURIComponent(activeFolder)}` : "";
       btnNext.href = `/launcher/output?pipeline=completed${cfgParam}${folderParam}`;
     } else {
-      btnNext.href = "/launcher/optimization?pipeline=live";
+      btnNext.href = "/launcher/output?pipeline=live";
     }
   }
 
@@ -98,6 +117,8 @@
       if (btnSave) btnSave.disabled = true;
     }
     updateNextHref();
+    const _runBtn = document.getElementById("btnRun");
+    if (_runBtn) _runBtn.disabled = !activeFolder;
   }
 
   function checkValidity() {
@@ -388,5 +409,121 @@
   })();
 
   updateNextHref();
+
+  {% if pipeline == 'live' %}
+  // ---------------------------------------------------------------------------
+  // Run controls
+  // ---------------------------------------------------------------------------
+  const progressFill = document.getElementById("progressFill");
+  const progressLabel = document.getElementById("progressLabel");
+  const btnRun = document.getElementById("btnRun");
+  const btnStop = document.getElementById("btnStop");
+  let progressEventSource = null;
+  let _runCompleted = false;
+  let _reconnectTimer = null;
+
+  function startSSEProgress() {
+    if (progressEventSource) { progressEventSource.close(); progressEventSource = null; }
+    if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
+    _runCompleted = false;
+    progressEventSource = new EventSource(`${API}/run/stream/logs`);
+    progressEventSource.addEventListener("epoch", e => {
+      const { epoch, total, drag_value, solar_power_w, cruising_speed_ms } = JSON.parse(e.data);
+      const pct = total > 0 ? Math.min(100, ((epoch + 1) / total) * 100) : 0;
+      progressFill.style.width = pct + "%";
+      progressLabel.textContent = `Epoch ${epoch + 1} / ${total} (${pct.toFixed(1)}%)`;
+      if (drag_value != null) document.getElementById("runDragValue").textContent = drag_value.toFixed(3) + "\u00a0N";
+      if (solar_power_w != null) document.getElementById("runSolarValue").textContent = solar_power_w.toFixed(1) + "\u00a0W";
+      if (cruising_speed_ms != null) document.getElementById("runSpeedValue").textContent = cruising_speed_ms.toFixed(2) + "\u00a0m/s";
+    });
+    progressEventSource.addEventListener("done", e => {
+      const { return_code } = JSON.parse(e.data);
+      progressLabel.textContent = return_code === 0 ? "Completed." : `Finished (code ${return_code})`;
+      progressFill.style.width = "100%";
+      if (progressEventSource) { progressEventSource.close(); progressEventSource = null; }
+      btnRun.disabled = !activeFolder; btnStop.disabled = true;
+      _runCompleted = true;
+    });
+    progressEventSource.onerror = () => {
+      if (_reconnectTimer) clearTimeout(_reconnectTimer);
+      _reconnectTimer = setTimeout(() => {
+        _reconnectTimer = null;
+        if (_runCompleted) return;
+        fetch(`${API}/run/state`).then(r => r.json()).then(state => {
+          if (!state.running && state.return_code !== null) {
+            if (progressEventSource) { progressEventSource.close(); progressEventSource = null; }
+            progressLabel.textContent = state.return_code === 0 ? "Completed." : `Finished (code ${state.return_code})`;
+            progressFill.style.width = "100%";
+            btnRun.disabled = !activeFolder; btnStop.disabled = true;
+            _runCompleted = true;
+          }
+        }).catch(() => {});
+      }, 5000);
+    };
+  }
+
+  btnRun.addEventListener("click", async () => {
+    if (!activeFolder) { log("No active session \u2014 start a session above first.", "error"); return; }
+    btnRun.disabled = true; btnStop.disabled = false;
+    progressFill.style.width = "0%"; progressLabel.textContent = "Starting\u2026";
+    try {
+      const r = await fetch(`${API}/run/start`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cfg_folder: activeFolder }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail?.message || r.status);
+      startSSEProgress();
+    } catch (err) {
+      progressLabel.textContent = "Error: " + err.message;
+      btnRun.disabled = !activeFolder; btnStop.disabled = true;
+    }
+  });
+
+  btnStop.addEventListener("click", async () => {
+    btnStop.disabled = true;
+    await fetch(`${API}/run/stop`, { method: "POST" });
+    if (progressEventSource) { progressEventSource.close(); progressEventSource = null; }
+    progressLabel.textContent = "Stopped.";
+    btnRun.disabled = !activeFolder;
+  });
+
+  // On page load: reconnect to an already-running process
+  (async () => {
+    try {
+      const state = await fetch(`${API}/run/state`).then(r => r.json());
+      if (state.running || state.log_path) {
+        if (state.running) { btnRun.disabled = true; btnStop.disabled = false; }
+        const [prog, m] = await Promise.all([
+          fetch(`${API}/run/progress`).then(r => r.json()),
+          fetch(`${API}/run/metrics/latest`).then(r => r.json()),
+        ]);
+        if (prog.completed) {
+          progressFill.style.width = "100%";
+          progressLabel.textContent = "Completed.";
+        } else if (prog.current_epoch >= 0) {
+          progressFill.style.width = prog.progress_percent + "%";
+          progressLabel.textContent = `Epoch ${prog.current_epoch + 1} / ${prog.num_epochs} (${prog.progress_percent.toFixed(1)}%) \u2014 reconnecting\u2026`;
+        }
+        if (m.found) {
+          if (m.drag_value != null) document.getElementById("runDragValue").textContent = m.drag_value.toFixed(3) + "\u00a0N";
+          if (m.solar_power_w != null) document.getElementById("runSolarValue").textContent = m.solar_power_w.toFixed(1) + "\u00a0W";
+          if (m.cruising_speed_ms != null) document.getElementById("runSpeedValue").textContent = m.cruising_speed_ms.toFixed(2) + "\u00a0m/s";
+        }
+        if (state.running) startSSEProgress();
+      }
+    } catch (_) { /* non-fatal */ }
+  })();
+
+  function _reconnectRunIfNeeded() {
+    if (_runCompleted) return;
+    if (progressEventSource && progressEventSource.readyState !== EventSource.CLOSED) return;
+    fetch(`${API}/run/state`).then(r => r.json()).then(state => {
+      if (state.running) { btnRun.disabled = true; btnStop.disabled = false; startSSEProgress(); }
+    }).catch(() => {});
+  }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) _reconnectRunIfNeeded(); });
+  window.addEventListener("focus", _reconnectRunIfNeeded);
+  {% endif %}
 </script>
 {% endblock %}

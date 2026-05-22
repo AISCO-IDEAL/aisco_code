@@ -8,7 +8,16 @@
 {% endblock %}
 
 {% block content %}
-<div style="display:grid; grid-template-columns:320px 1fr; gap:14px; height:100%; min-height:0;">
+<div style="display:flex; flex-direction:column; height:100%; min-height:0; gap:10px;">
+
+    <!-- Home button -->
+    <div class="dark-card toolbar">
+        <div style="flex:1;"></div>
+        <a href="/" class="btn">Done &#8212; Home</a>
+    </div>
+
+    <!-- Two-column layout -->
+    <div style="display:grid; grid-template-columns:320px 1fr; gap:14px; flex:1; min-height:0;">
 
     <!-- ====== LEFT PANEL: controls + canvas ====== -->
     <div style="display:flex; flex-direction:column; gap:10px; min-height:0; overflow:auto;">
@@ -82,6 +91,32 @@
             <div id="coordLabel" style="font-size:0.74rem; color:var(--theme-muted); min-height:1em;">—</div>
         </div>
 
+        <!-- Latent path animation -->
+        <div class="dark-card" style="display:flex; flex-direction:column; gap:8px;">
+            <span style="font-size:0.78rem; color:var(--muted); font-weight:600;">Path Animation</span>
+            <div style="font-size:0.72rem; color:var(--theme-muted); line-height:1.4;">
+                Traces a circular path through latent space and morphs shapes continuously.
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <button class="btn" id="btnAnimate">&#9654; Animate</button>
+                <label style="font-size:0.78rem; color:var(--theme-muted); white-space:nowrap;">
+                    Steps
+                    <input id="animSteps" type="number" value="16" min="4" max="64"
+                        style="width:46px; margin-left:4px; padding:3px 5px; font-size:0.78rem;
+                               background:var(--theme-bg-input,#1e1e2e); color:var(--theme-fg,#cdd6f4);
+                               border:1px solid var(--theme-border,#45475a); border-radius:4px; outline:none;" />
+                </label>
+                <label style="font-size:0.78rem; color:var(--theme-muted); white-space:nowrap;">
+                    Radius &#xd7;
+                    <input id="animRadius" type="number" value="0.8" min="0.1" max="2.0" step="0.1"
+                        style="width:46px; margin-left:4px; padding:3px 5px; font-size:0.78rem;
+                               background:var(--theme-bg-input,#1e1e2e); color:var(--theme-fg,#cdd6f4);
+                               border:1px solid var(--theme-border,#45475a); border-radius:4px; outline:none;" />
+                </label>
+            </div>
+            <div id="animStatus" style="font-size:0.74rem; color:var(--theme-muted); min-height:1em;">&#8212;</div>
+        </div>
+
     </div>
 
     <!-- ====== RIGHT PANEL: Three.js mesh viewer ====== -->
@@ -96,7 +131,8 @@
             style="display:none; gap:8px; grid-template-columns:repeat(3,minmax(0,1fr));"></div>
     </div>
 
-</div>
+    </div><!-- end inner grid -->
+</div><!-- end flex wrapper -->
 
 <script>
     const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260521_2";
@@ -297,8 +333,8 @@
     // ---------------------------------------------------------------------------
     // Mesh extraction
     // ---------------------------------------------------------------------------
-    async function queryMesh(z0, z1) {
-        const resolution = parseInt(document.getElementById("resInput").value, 10) || 35;
+    async function queryMesh(z0, z1, overrideResolution) {
+        const resolution = overrideResolution ?? (parseInt(document.getElementById("resInput").value, 10) || 35);
         statusMsg.textContent = `Extracting mesh at z=(${z0.toFixed(3)}, ${z1.toFixed(3)})…`;
         try {
             const resp = await fetch("/viewer/api/latent/query-mesh", {
@@ -353,5 +389,55 @@
             statusMsg.textContent = "Network error: " + err.message;
         }
     }
+
+    // ---------------------------------------------------------------------------
+    // Latent path animation
+    // Traces a closed circular path (same start & end point) and loops until stopped.
+    // ---------------------------------------------------------------------------
+    let _animating = false;
+    let _animAngle = 0;
+    const _ANIM_RESOLUTION = 20; // lower res for smooth playback
+
+    async function runAnimationLoop() {
+        const btn = document.getElementById("btnAnimate");
+        const animStatusEl = document.getElementById("animStatus");
+        while (_animating) {
+            const steps = Math.max(4, parseInt(document.getElementById("animSteps").value, 10) || 16);
+            const rFactor = Math.max(0.05, parseFloat(document.getElementById("animRadius").value) || 0.8);
+            const r = zRadius * rFactor;
+            const z0 = Math.cos(_animAngle) * r;
+            const z1 = Math.sin(_animAngle) * r;
+            const stepNum = Math.round(_animAngle / (2 * Math.PI / steps)) % steps + 1;
+
+            clickedZ = [z0, z1];
+            drawCanvas(null);
+            animStatusEl.textContent = `Step ${stepNum} / ${steps} \u00b7 z\u2080=(${z0.toFixed(2)},\u202f${z1.toFixed(2)})`;
+
+            try { await queryMesh(z0, z1, _ANIM_RESOLUTION); } catch (_) { /* continue on error */ }
+            if (!_animating) break;
+
+            _animAngle = (_animAngle + (2 * Math.PI / steps)) % (2 * Math.PI);
+            // Brief pause so the rendered mesh is visible before requesting the next one.
+            await new Promise(resolve => setTimeout(resolve, 250));
+        }
+        if (btn) { btn.textContent = "\u25b6 Animate"; btn.className = "btn"; }
+        animStatusEl.textContent = "Stopped.";
+        _animating = false;
+    }
+
+    document.getElementById("btnAnimate").addEventListener("click", () => {
+        if (_animating) {
+            _animating = false; // loop checks this and exits
+        } else {
+            if (!resolvedPath) { statusMsg.textContent = "Load a checkpoint first."; return; }
+            _animating = true;
+            _animAngle = 0; // always start from angle 0 so path is closed
+            const btn = document.getElementById("btnAnimate");
+            btn.textContent = "\u23f9 Stop";
+            btn.className = "btn danger";
+            document.getElementById("animStatus").textContent = "Starting\u2026";
+            runAnimationLoop();
+        }
+    });
 </script>
 {% endblock %}
