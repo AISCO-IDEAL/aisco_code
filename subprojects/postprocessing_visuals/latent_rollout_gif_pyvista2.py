@@ -241,6 +241,48 @@ def _parse_epoch_from_stem(stem: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
+def _checkpoint_prefix_from_stem(stem: str) -> str:
+    """Return the shared checkpoint prefix for stems shaped as '<prefix>_epoch<NNN>'."""
+    m = re.match(r"^(.*)_epoch\d+$", stem)
+    if m is None:
+        sys.exit(
+            "ERROR: checkpoint name must end with '_epoch<NNN>' for epoch_gif mode. "
+            "Use a checkpoint like '<run_name>_epoch2000.pth'."
+        )
+    return m.group(1)
+
+
+def _find_epoch_checkpoints(ckpt_path: Path) -> list[tuple[int, Path]]:
+    """Find all epoch checkpoints in the same directory, sorted chronologically."""
+    prefix = _checkpoint_prefix_from_stem(ckpt_path.stem)
+    pattern = f"{prefix}_epoch*.pth"
+    matches = sorted(ckpt_path.parent.glob(pattern))
+
+    parsed: list[tuple[int, Path]] = []
+    for candidate in matches:
+        epoch = _parse_epoch_from_stem(candidate.stem)
+        if epoch is not None:
+            parsed.append((epoch, candidate))
+
+    if not parsed:
+        sys.exit(
+            f"ERROR: no epoch checkpoints found next to {ckpt_path}. "
+            f"Expected files matching pattern '{pattern}'."
+        )
+
+    parsed.sort(key=lambda x: x[0])
+    print(f"[epoch_gif] discovered {len(parsed)} checkpoints: epoch {parsed[0][0]} -> {parsed[-1][0]}")
+    return parsed
+
+
+def _load_model_state_from_checkpoint(model: Any, ckpt_path: Path, device: torch.device) -> None:
+    """Load model weights from a single checkpoint into an already-built model."""
+    raw = torch.load(ckpt_path, map_location=device, weights_only=True)
+    state_dict = raw["model_state_dict"] if isinstance(raw, dict) and "model_state_dict" in raw else raw
+    model.load_state_dict(state_dict)
+    model.eval()
+
+
 def load_inner_assembly(ckpt_path: Path, epoch_num: int) -> trimesh.Trimesh | None:
     """Load the inner_assembly mesh from the slot_00_mesh.glb next to the checkpoint.
 
@@ -596,7 +638,13 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
     draw.text((int(8 * scale_factor), h - int(20 * scale_factor)), f"frame {frame_idx + 1} / {n_frames}", fill=frame_text_col, font=font_info)
 
     # Panel title
-    _mode_label = {"circle": "Circle", "spiral": "Spiral", "line": "Line", "cross": "Cross"}.get(mode, mode.capitalize())
+    _mode_label = {
+        "circle": "Circle",
+        "spiral": "Spiral",
+        "line": "Line",
+        "cross": "Cross",
+        "epoch_gif": "Epoch GIF",
+    }.get(mode, mode.capitalize())
     draw.text((int(8 * scale_factor), int(8 * scale_factor)), f"Latent Space · {_mode_label}", fill=title_col, font=font_title)
 
     return np.asarray(img)
@@ -790,12 +838,28 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         default=bool(_c("show_anchors", True)),
         help="Show/hide pretrained anchor dots in the latent-space panel",
     )
+    parser.add_argument(
+        "--epoch_gif",
+        "--epoch-gif",
+        dest="epoch_gif",
+        action=argparse.BooleanOptionalAction,
+        default=bool(_c("epoch_gif", False)),
+        help="Render one frame per checkpoint epoch (chronological) at fixed latent coordinates",
+    )
+    parser.add_argument(
+        "--epoch_coords",
+        type=float,
+        nargs=2,
+        default=_c("epoch_coords", [0.0, 0.0]),
+        metavar=("Z0", "Z1"),
+        help="Fixed latent coordinates [z0 z1] for epoch_gif mode",
+    )
     # Traversal mode
     parser.add_argument(
         "--mode",
         default=_c("mode", "circle"),
-        choices=["circle", "spiral", "line", "cross"],
-        help="Latent-space traversal mode: circle | spiral | line | cross",
+        choices=["circle", "spiral", "line", "cross", "epoch_gif"],
+        help="Latent-space traversal mode: circle | spiral | line | cross | epoch_gif",
     )
     # Spiral-mode params
     parser.add_argument("--spiral_turns", type=float, default=_c("spiral_turns", 3.0), help="Full rotations in spiral mode")
@@ -880,10 +944,24 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     device = torch.device(args.device)
     print(f"Device: {device}")
 
+    active_mode = "epoch_gif" if args.epoch_gif else args.mode
+
     # --- Load model ---
     model, z_dim, z_radius_ckpt, Z_pretrained = load_checkpoint(args.checkpoint, device)
     z_radius = args.radius if args.radius is not None else z_radius_ckpt
-    print(f"Traversal radius: {z_radius:.3f}  |  mode: {args.mode}  |  frames: {args.n_frames}  |  resolution: {args.resolution}")
+
+    epoch_checkpoints: list[tuple[int, Path]] = []
+    if active_mode == "epoch_gif":
+        epoch_checkpoints = _find_epoch_checkpoints(args.checkpoint)
+        print(
+            f"Traversal radius: {z_radius:.3f}  |  mode: {active_mode}  |  "
+            f"frames: {len(epoch_checkpoints)}  |  resolution: {args.resolution}"
+        )
+    else:
+        print(
+            f"Traversal radius: {z_radius:.3f}  |  mode: {active_mode}  |  "
+            f"frames: {args.n_frames}  |  resolution: {args.resolution}"
+        )
 
     Z_np = Z_pretrained.cpu().numpy() if Z_pretrained is not None else None
 
@@ -902,18 +980,30 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     # --- Build z-vector sequence for selected traversal mode ---
     line_start_pt = (float(args.line_start[0]), float(args.line_start[1]))
     line_end_pt = (float(args.line_end[0]), float(args.line_end[1]))
-    z_coords, panel_scale_radius = _build_trajectory(
-        mode=args.mode,
-        n_frames=args.n_frames,
-        z_radius=z_radius,
-        spiral_turns=args.spiral_turns,
-        spiral_radius_start=args.spiral_radius_start,
-        spiral_radius_end=args.spiral_radius_end,
-        line_start=line_start_pt,
-        line_end=line_end_pt,
-        line_bounces=args.line_bounces,
-        cross_radius=args.cross_radius,
-    )
+    frame_checkpoints: list[Path | None]
+    if active_mode == "epoch_gif":
+        fixed_z0 = float(args.epoch_coords[0])
+        fixed_z1 = float(args.epoch_coords[1])
+        z_coords = [(fixed_z0, fixed_z1) for _ in epoch_checkpoints]
+        panel_scale_radius = max(z_radius, abs(fixed_z0), abs(fixed_z1), 1e-6)
+        frame_checkpoints = [ckpt for _, ckpt in epoch_checkpoints]
+    else:
+        z_coords, panel_scale_radius = _build_trajectory(
+            mode=active_mode,
+            n_frames=args.n_frames,
+            z_radius=z_radius,
+            spiral_turns=args.spiral_turns,
+            spiral_radius_start=args.spiral_radius_start,
+            spiral_radius_end=args.spiral_radius_end,
+            line_start=line_start_pt,
+            line_end=line_end_pt,
+            line_bounces=args.line_bounces,
+            cross_radius=args.cross_radius,
+        )
+        frame_checkpoints = [None] * len(z_coords)
+
+    total_frames = len(z_coords)
+    panel_trajectory = None if active_mode == "epoch_gif" else z_coords
 
     global_bounds = None
     if inner_assembly is not None and len(inner_assembly.vertices) > 0:
@@ -936,7 +1026,15 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
 
     print("\nGenerating frames...")
     for i, (z0, z1) in enumerate(z_coords):
-        print(f"  [{i + 1:3d}/{args.n_frames}] z=[{z0:+.3f}, {z1:+.3f}]", end="", flush=True)
+        frame_ckpt = frame_checkpoints[i]
+        if frame_ckpt is not None:
+            _load_model_state_from_checkpoint(model, frame_ckpt, device)
+            ep = _parse_epoch_from_stem(frame_ckpt.stem)
+            ep_str = f" epoch={ep}" if ep is not None else ""
+        else:
+            ep_str = ""
+
+        print(f"  [{i + 1:3d}/{total_frames}]" + ep_str + f" z=[{z0:+.3f}, {z1:+.3f}]", end="", flush=True)
 
         mesh = extract_mesh(model, extractor, z0, z1, z_dim, device)
         if mesh is None or len(mesh.vertices) == 0:
@@ -950,10 +1048,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                     z0,
                     z1,
                     i,
-                    args.n_frames,
+                    total_frames,
                     colors=panel_colors,
-                    trajectory_coords=z_coords,
-                    mode=args.mode,
+                    trajectory_coords=panel_trajectory,
+                    mode=active_mode,
                     panel_scale_radius=panel_scale_radius,
                     show_anchors=args.show_anchors,
                 )
@@ -992,10 +1090,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             z0,
             z1,
             i,
-            args.n_frames,
+            total_frames,
             colors=panel_colors,
-            trajectory_coords=z_coords,
-            mode=args.mode,
+            trajectory_coords=panel_trajectory,
+            mode=active_mode,
             panel_scale_radius=panel_scale_radius,
             show_anchors=args.show_anchors,
         )
