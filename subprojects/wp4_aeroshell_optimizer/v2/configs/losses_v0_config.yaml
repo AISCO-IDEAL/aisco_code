@@ -251,8 +251,8 @@ field_diversity_surface_v0_config:
   mc_bbox_scale: 1.0            # outer-prism bbox multiplier for the extractor
   # null while calibrating: with the new Leinster aggregation the loss scale changes
   # entirely, so re-measure D on a Leinster run before setting max_div (= -D). GINN uses -0.1.
-  max_div: null
-  warmup_epochs: 0         # constraints-only warmup before diversity engages (tune; GINN start_div=500)
+  max_div: -17.5
+  warmup_epochs: 0       # constraints-only warmup before diversity engages (tune; GINN start_div=500)
 
 field_diversity_hybrid_v0_config:
   w_vol: 0.1                 # weight on the masked-volumetric sub-loss
@@ -261,8 +261,8 @@ field_diversity_hybrid_v0_config:
   warmup_epochs: 0
 
 connectedness_config:
-  eval_period: 10  # evaluate PH loss every N epochs (expensive persistent homology computation)
-  return_cached_on_skip: "False"  # if True, reuse last computed scalar on skipped epochs
+  eval_period: 3  # evaluate PH loss every N epochs (expensive persistent homology computation)
+  return_cached_on_skip: "True"  # if True, reuse last computed scalar on skipped epochs
   grid_dim: 3
   grid_resolution: 64
   bbox_scale_factor: 1.0  # multiply outer_prism bounds by this; sourced from wp2

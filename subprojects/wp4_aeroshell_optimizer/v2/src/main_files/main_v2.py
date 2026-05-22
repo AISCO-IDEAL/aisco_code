@@ -594,6 +594,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             diversity_neighbor_agg_fn=ginn_config.get("diversity_neighbor_agg_fn", "min"),
             diversity_leinster_temp=ginn_config.get("diversity_leinster_temp", 1.0),
             diversity_leinster_q=ginn_config.get("diversity_leinster_q", 2.0),
+            diversity_grad_ratio=ginn_config.get("diversity_grad_ratio", 0.0),
             force_z0_to_origin=ginn_config.get("force_z0_to_origin", True),
             z_resample_cadence=ginn_config.get("z_resample_cadence", 0),
             z_resample_mode=ginn_config.get("z_resample_mode", "on_circle"),

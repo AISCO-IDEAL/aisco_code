@@ -54,8 +54,8 @@ def field_diversity_loss(
             loss becomes `clamp(loss - max_div, min=0)` — the diversity gradient turns
             off once shapes are "different enough", preventing the population from
             being pulled further apart at the expense of other objectives.
-        leinster_temp: similarity-kernel temperature as a multiple of the mean inter-shape
-            field distance (scale-free; ~1.0 is a sensible default). Only used for 'leinster'.
+        leinster_temp: similarity-kernel temperature — a FIXED field distance (mm, SDF
+            units) at which two shapes count as notably different. Only used for 'leinster'.
         leinster_q: diversity order q; only used for the 'leinster' mode (q=2 is the
             inverse-Simpson "effective number of distinct shapes").
     Returns:
@@ -69,15 +69,13 @@ def field_diversity_loss(
         # Global all-pairs diversity. The diagonal (self-similarity 1) is kept on
         # purpose — Leinster ordinariness is the mean over the full row.
         #
-        # The temperature is taken *relative* to the mean inter-shape field distance, so
-        # leinster_temp is scale-free: it is a multiple of "the typical distance between
-        # two shapes". With a fixed temperature the mm-scale SDF distances drive every
-        # exp() term to 0, pegging diversity at N. The normaliser is detached so it sets
-        # the kernel width without itself carrying gradient.
-        n_fields = distances.size(0)
-        mean_dist = distances.detach().sum() / (n_fields * (n_fields - 1))
-        temp = leinster_temp * mean_dist.clamp(min=1e-6)
-        similarities = torch.exp(-distances / temp)
+        # leinster_temp is a FIXED absolute distance (mm, SDF units) — the field-distance
+        # scale at which two shapes count as "notably different". It must be absolute, not
+        # relative to the current spread: a relative temperature is scale-invariant and so
+        # has no gradient to actually grow the population's diversity, only to rearrange
+        # it. Too small saturates (every exp() -> 0, diversity pegs at N); too large and
+        # nothing registers as diverse.
+        similarities = torch.exp(-distances / leinster_temp)
         ordinariness = similarities.mean(dim=1)  # [N]
         if leinster_q == 1:
             diversity = torch.exp(-torch.log(ordinariness).mean())

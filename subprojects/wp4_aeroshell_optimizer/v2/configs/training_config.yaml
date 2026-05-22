@@ -2,9 +2,9 @@
 # Training hyper-parameters (from training_v0_config.yaml)
 # ===========================================================================
 training_params:
-  learning_rate: 0.000025  # 0.000008 for WIREV5, 0.0005 for WIREV2 and ConcatWireV2, 0.0001 for basic MLP, 0.0005 for AISCOModel_v0
+  learning_rate: 0.00001  # 0.000008 for WIREV5, 0.0005 for WIREV2 and ConcatWireV2, 0.0001 for basic MLP, 0.0005 for AISCOModel_v0
   optimizer: "adam_fast"  # key from optimizers.json — adam | adamw | sgd_momentum | lbfgs
-  num_epochs: 150 # basic_MLP_v1.py: training_config["training_params"].get("num_epochs", 1000)
+  num_epochs: 8000 # basic_MLP_v1.py: training_config["training_params"].get("num_epochs", 1000)
   mesh_save_interval: 20  # basic_MLP_v1.py: training_config["training_params"].get("mesh_save_interval", 50)
   marching_cubes_usage: "True"  # storage_utils.py: general_config["general_info"].get("marching_cubes_usage", "False") (if True, uses marching cubes with threads for mesh extraction, if False uses kaolin-based mesh extraction without threads, which is more stable but slower)
   gradient_conflict_cadence: 0  # Gradient conflict tracking cadence (0 = disabled, N = every N epochs). Stores per-component gradient vectors and cosine similarities to disk.
@@ -59,14 +59,14 @@ gradient_clipping:
   auto_clip_hist_len: 50
   auto_clip_min_len: 50
 
-#used in optimise() path
+#used in optimise() path?
 gradient_clip_norm: 100
 # ===========================================================================
 # GINN / Diversity parameters (merged from GINN.yaml)
 # ===========================================================================
 
 pretrain_population_size: false # optimisation loop uses same population size as pretraining
-population_size: 24 # used only when pretrain_population_size: false
+population_size: 12 # used only when pretrain_population_size: false
 
 # Initial Z placement when pretrain_population_size: false.
 #   z_init_mode: circle        → slots placed at evenly-spaced angles on the
@@ -84,7 +84,28 @@ r_init_scale: 1.0             # radius multiplier for wider_circle mode
 bbox_scale_factor: 1.4  # multiply outer_prism bounds by this; 1.0 = full outer_prism
 diversity_num_points: 4096
 diversity_norm_order: 2          # p for L^p field distance
-diversity_neighbor_agg_fn: "min" # 'min' = maximize nearest-neighbour distance (GINN paper Eq. 26)
+# Aggregation across the population:
+#   min/mean/sum — local: each shape scored against its neighbours individually.
+#   leinster     — global all-pairs Leinster diversity (GINN train/losses.py). Pressures the
+#                  population to spread evenly across the shape manifold → structured latent space.
+diversity_neighbor_agg_fn: "leinster"
+# leinster_temp is a FIXED field distance (mm, SDF units): the scale at which two shapes
+# count as notably different. Must be absolute, not relative — a relative temperature is
+# scale-invariant and cannot drive the population to actually diversify, only rearrange it.
+#   too small → saturates (diversity pegs at population size N, gradient dies)
+#   too large → nothing registers as diverse (diversity stuck near 1)
+# ~100 ≈ the pairwise field-distance scale of a diversified population (from past runs);
+# calibrate from the D curve: D shooting to N = too small, D stuck near 1 = too large.
+diversity_leinster_temp: 100     # only used when agg_fn=leinster
+diversity_leinster_q: 2          # diversity order q; q=2 = inverse-Simpson effective shape count
+
+# Gradient-ratio balancer. A fixed diversity weight cannot keep pace with the ALM
+# constraints, whose gradients ramp over training. When this is > 0, the diversity
+# gradient is rescaled each epoch so its norm is this fraction of the Phase-1
+# (constraint) gradient norm — diversity then tracks the constraints automatically.
+#   0    → disabled: the fixed `weight` in losses_v0_config.yaml controls magnitude.
+#   >0   → balancer on: the fixed weight no longer sets magnitude, this ratio does.
+diversity_grad_ratio: 0.3
 
 # ===========================================================================
 # Latent population behaviour
