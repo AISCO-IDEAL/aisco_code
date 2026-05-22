@@ -2,7 +2,44 @@
 {% block hint %}{% if pipeline == 'live' %}Edit config overrides, then launch a training run and watch live progress below.{% else %}Browse config values used for a completed run (read-only).{% endif %}{% endblock %}
 
 {% block content %}
-<div class="section-grid" style="grid-template-rows: auto auto 1fr {% if pipeline == 'live' %}auto {% endif %}auto; height: 100%;">
+<style>
+  .run-metric-label {
+    font-size: 0.88rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+  }
+
+  .run-metric-value {
+    font-size: 1.12rem;
+    font-family: var(--theme-font-mono, monospace);
+    font-weight: 700;
+    white-space: nowrap;
+    min-width: 92px;
+  }
+
+  .run-metric-speed {
+    color: var(--theme-metric-speed-text);
+  }
+
+  .run-metric-drag {
+    color: var(--theme-metric-drag-text);
+  }
+
+  .run-metric-solar {
+    color: var(--theme-metric-solar-text);
+  }
+
+  @media (max-width: 1080px) {
+    .run-metric-label {
+      font-size: 0.8rem;
+    }
+    .run-metric-value {
+      font-size: 0.98rem;
+      min-width: 78px;
+    }
+  }
+</style>
+<div class="section-grid" style="grid-template-rows: auto auto minmax(220px, 0.62fr) {% if pipeline == 'live' %}auto {% endif %}minmax(120px, 0.38fr); height: 100%;">
 
   <!-- Wizard navigation -->
   <div class="dark-card toolbar">
@@ -42,21 +79,21 @@
 
   {% if pipeline == 'live' %}
   <!-- Run controls -->
-  <div class="dark-card toolbar">
+  <div class="dark-card toolbar" style="gap: 10px; padding-top: 10px; padding-bottom: 10px;">
     <button class="btn" id="btnRun" disabled>&#9654; Run</button>
     <button class="btn secondary" id="btnStop" disabled>&#9632; Stop</button>
-    <div style="flex:1; min-width:80px;">
+    <div style="flex:1; min-width:190px;">
       <div class="progress-bar-wrap" id="progressWrap">
         <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
       </div>
-      <div id="progressLabel" style="font-size:0.76rem; color:var(--theme-muted); font-weight:500; margin-top:3px;">Idle</div>
+      <div id="progressLabel" style="font-size:0.9rem; color:var(--theme-muted); font-weight:600; margin-top:5px;">Idle</div>
     </div>
-    <span style="font-size:0.78rem; color:var(--theme-muted);">Drag</span>
-    <span id="runDragValue" style="font-size:0.8rem; color:var(--theme-white); white-space:nowrap; min-width:52px;">&#8212;</span>
-    <span style="font-size:0.78rem; color:var(--theme-muted);">Solar</span>
-    <span id="runSolarValue" style="font-size:0.8rem; color:var(--theme-white); white-space:nowrap; min-width:52px;">&#8212;</span>
-    <span style="font-size:0.78rem; color:var(--theme-muted);">Speed</span>
-    <span id="runSpeedValue" style="font-size:0.8rem; color:var(--theme-white); white-space:nowrap; min-width:52px;">&#8212;</span>
+    <span class="run-metric-label run-metric-drag">Drag</span>
+    <span id="runDragValue" class="run-metric-value run-metric-drag">&#8212;</span>
+    <span class="run-metric-label run-metric-solar">Solar</span>
+    <span id="runSolarValue" class="run-metric-value run-metric-solar">&#8212;</span>
+    <span class="run-metric-label run-metric-speed">Speed</span>
+    <span id="runSpeedValue" class="run-metric-value run-metric-speed">&#8212;</span>
   </div>
   {% endif %}
 
@@ -434,7 +471,7 @@
       progressLabel.textContent = `Epoch ${epoch + 1} / ${total} (${pct.toFixed(1)}%)`;
       if (drag_value != null) document.getElementById("runDragValue").textContent = drag_value.toFixed(3) + "\u00a0N";
       if (solar_power_w != null) document.getElementById("runSolarValue").textContent = solar_power_w.toFixed(1) + "\u00a0W";
-      if (cruising_speed_ms != null) document.getElementById("runSpeedValue").textContent = cruising_speed_ms.toFixed(2) + "\u00a0m/s";
+      if (cruising_speed_ms != null) document.getElementById("runSpeedValue").textContent = (cruising_speed_ms * 3.6).toFixed(2) + "\u00a0km/h";
     });
     progressEventSource.addEventListener("done", e => {
       const { return_code } = JSON.parse(e.data);
@@ -508,7 +545,7 @@
         if (m.found) {
           if (m.drag_value != null) document.getElementById("runDragValue").textContent = m.drag_value.toFixed(3) + "\u00a0N";
           if (m.solar_power_w != null) document.getElementById("runSolarValue").textContent = m.solar_power_w.toFixed(1) + "\u00a0W";
-          if (m.cruising_speed_ms != null) document.getElementById("runSpeedValue").textContent = m.cruising_speed_ms.toFixed(2) + "\u00a0m/s";
+          if (m.cruising_speed_ms != null) document.getElementById("runSpeedValue").textContent = (m.cruising_speed_ms * 3.6).toFixed(2) + "\u00a0km/h";
         }
         if (state.running) startSSEProgress();
       }

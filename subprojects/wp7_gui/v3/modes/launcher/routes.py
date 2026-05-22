@@ -60,10 +60,10 @@ def _assembly(pipeline: str) -> AssemblySelectionService:
 
 
 _SUBPAGES = {
-    "config-overrides": ("Launcher — Configure & Run", "launcher/config_overrides.html"),
-    "assembly-selection": ("Launcher — Assembly Selection", "launcher/assembly_selection.html"),
-    "output": ("Launcher — Output", "launcher/output.html"),
-    "leaderboard": ("Launcher — Leaderboard", "launcher/leaderboard.html"),
+    "assembly-selection": ("1 - Launcher — Assembly Selection", "launcher/assembly_selection.html"),
+    "config-overrides": ("2 - Launcher — Configure & Run", "launcher/config_overrides.html"),
+    "output": ("3 - Launcher — Output", "launcher/output.html"),
+    "leaderboard": ("4 - Launcher — Live Leaderboard", "launcher/leaderboard.html"),
 }
 
 
@@ -354,6 +354,36 @@ def run_metrics_latest() -> dict[str, Any]:
     }
 
 
+@router.get("/api/run/metrics/history")
+def run_metrics_history(limit: int = 120) -> dict[str, Any]:
+    """Return trailing epoch metric arrays for the active run.
+
+    Backend values stay in SI units (speed in m/s); clients may convert for display.
+    """
+    safe_limit = max(1, min(int(limit), 500))
+    active_cfg_folder = _runtime_state["active_cfg_folder"].strip() if _runtime_state["active_cfg_folder"] else ""
+    session_dir = Path(active_cfg_folder) if active_cfg_folder else None
+    storage_root = get_storage_root_for_session(session_dir)
+    cfg_session = Path(active_cfg_folder).name if active_cfg_folder else None
+    run_dir = detect_current_run_dir(storage_root, preferred_cfg_session=cfg_session or None)
+    if run_dir is None:
+        return {
+            "found": False,
+            "run_dir": None,
+            "history": {
+                "epoch": [],
+                "drag_value": [],
+                "solar_power_w": [],
+                "cruising_speed_ms": [],
+            },
+        }
+    return {
+        "found": True,
+        "run_dir": str(run_dir),
+        "history": _csv_metrics.read_metric_history(run_dir, limit=safe_limit),
+    }
+
+
 @router.get("/api/run/artifacts")
 def run_artifacts() -> dict[str, Any]:
     active_cfg_folder = _runtime_state["active_cfg_folder"].strip() if _runtime_state["active_cfg_folder"] else ""
@@ -479,6 +509,21 @@ def api_leaderboard(current_run_id: str | None = None) -> JSONResponse:
             "effective_run_id": effective_run_id,
         }
     )
+
+
+@router.get("/api/leaderboard/sparklines")
+def api_leaderboard_sparklines(run_ids: str = "", limit: int = 40) -> JSONResponse:
+    """Return trailing per-run metric series for leaderboard sparkline rendering."""
+    requested = [rid.strip() for rid in run_ids.split(",") if rid.strip()]
+    if not requested:
+        return JSONResponse(content={"histories": {}})
+
+    active_cfg_folder = _runtime_state["active_cfg_folder"].strip() if _runtime_state["active_cfg_folder"] else ""
+    session_dir = Path(active_cfg_folder) if active_cfg_folder else None
+    storage_root = get_storage_root_for_session(session_dir)
+    safe_limit = max(1, min(int(limit), 120))
+    histories = _csv_metrics.read_histories_by_run_id(storage_root=storage_root, run_ids=requested, limit=safe_limit)
+    return JSONResponse(content={"histories": histories})
 
 
 # ---------------------------------------------------------------------------

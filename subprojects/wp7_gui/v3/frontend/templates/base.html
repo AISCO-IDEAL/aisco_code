@@ -42,12 +42,12 @@
           <a href="/launcher/assembly-selection?pipeline=live" class="mode-btn mode-btn--active">Live</a>
           <nav class="sub-nav" aria-label="Live sub-navigation">
             <a href="/launcher/assembly-selection?pipeline=live"
-              class="{% if active_page == 'assembly-selection' %}active{% endif %}">Assembly Selection</a>
+              class="{% if active_page == 'assembly-selection' %}active{% endif %}">1 - Assembly Selection</a>
             <a href="/launcher/config-overrides?pipeline=live"
-              class="{% if active_page == 'config-overrides' %}active{% endif %}">Configure &amp; Run</a>
+              class="{% if active_page == 'config-overrides' %}active{% endif %}">2 - Configure &amp; Run</a>
             <a href="/launcher/output?pipeline=live"
-              class="{% if active_page == 'output' %}active{% endif %}">Output</a>            <a href="/launcher/leaderboard?pipeline=live"
-              class="{% if active_page == 'leaderboard' %}active{% endif %}">Leaderboard</a>          </nav>
+              class="{% if active_page == 'output' %}active{% endif %}">3 - Output</a>            <a href="/launcher/leaderboard?pipeline=live"
+              class="{% if active_page == 'leaderboard' %}active{% endif %}">4 - Live Leaderboard</a>          </nav>
           {% elif active_mode == 'launcher' and _pl == 'completed' %}
           <a href="/viewer/latent-explorer" class="mode-btn mode-btn--active">Completed</a>
           <nav class="sub-nav" aria-label="Completed sub-navigation">

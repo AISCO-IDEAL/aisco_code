@@ -192,3 +192,75 @@ class CSVMetricsWriter:
             "solar_power_w": _parse_float(last.get("solar_power_w", "")),
             "cruising_speed_ms": _parse_float(last.get("cruising_speed_ms", "")),
         }
+
+    def read_metric_history(self, run_dir: Path, limit: int = 120) -> dict[str, list[float | int | None]]:
+        """Return trailing epoch-series from ``run_dir/epoch_metrics.csv``.
+
+        Args:
+            run_dir: WP4 output directory for the current run.
+            limit: Maximum number of trailing rows to return.
+
+        Returns:
+            Dict with aligned arrays: ``epoch``, ``drag_value``,
+            ``solar_power_w``, ``cruising_speed_ms``.
+        """
+        csv_path = run_dir / "epoch_metrics.csv"
+        empty = {
+            "epoch": [],
+            "drag_value": [],
+            "solar_power_w": [],
+            "cruising_speed_ms": [],
+        }
+        if not csv_path.exists():
+            return empty
+        try:
+            with csv_path.open(newline="", encoding="utf-8") as fh:
+                rows = list(csv.DictReader(fh))
+        except OSError as exc:
+            LOGGER.warning("Could not read epoch history CSV %s: %s", csv_path, exc)
+            return empty
+        if not rows:
+            return empty
+
+        tail = rows[-max(1, int(limit)) :]
+        history: dict[str, list[float | int | None]] = {
+            "epoch": [],
+            "drag_value": [],
+            "solar_power_w": [],
+            "cruising_speed_ms": [],
+        }
+        for row in tail:
+            epoch_raw = (row.get("epoch", "") or "").strip()
+            epoch: int | None = None
+            with contextlib.suppress(ValueError):
+                epoch = int(epoch_raw)
+            history["epoch"].append(epoch)
+            history["drag_value"].append(_parse_float(row.get("drag_value", "")))
+            history["solar_power_w"].append(_parse_float(row.get("solar_power_w", "")))
+            history["cruising_speed_ms"].append(_parse_float(row.get("cruising_speed_ms", "")))
+        return history
+
+    def read_histories_by_run_id(
+        self,
+        storage_root: Path,
+        run_ids: list[str],
+        limit: int = 40,
+    ) -> dict[str, dict[str, list[float | int | None]]]:
+        """Return trailing metric histories for multiple run IDs.
+
+        This method scans ``storage_root`` for ``epoch_metrics.csv`` files and
+        maps run directory names to history payloads.
+        """
+        wanted = {rid for rid in run_ids if rid}
+        out: dict[str, dict[str, list[float | int | None]]] = {}
+        if not wanted or not storage_root.exists():
+            return out
+
+        for csv_path in storage_root.rglob("epoch_metrics.csv"):
+            run_id = csv_path.parent.name
+            if run_id not in wanted:
+                continue
+            out[run_id] = self.read_metric_history(csv_path.parent, limit=limit)
+            if len(out) >= len(wanted):
+                break
+        return out

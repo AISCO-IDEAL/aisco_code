@@ -78,6 +78,32 @@
         font-size: 0.85rem;
     }
 
+    .lb-table td.lb-num-speed {
+        color: var(--theme-metric-speed-text);
+    }
+
+    .lb-table td.lb-num-drag {
+        color: var(--theme-metric-drag-text);
+    }
+
+    .lb-table td.lb-num-solar {
+        color: var(--theme-metric-solar-text);
+    }
+
+    .lb-mini-wrap {
+        display: flex;
+        gap: 4px;
+        justify-content: flex-end;
+        align-items: center;
+    }
+
+    .lb-mini {
+        width: 34px;
+        height: 12px;
+        border-radius: 3px;
+        background: color-mix(in srgb, var(--theme-panel-2) 36%, transparent 64%);
+    }
+
     /* ── Rank cell ──────────────────────────────────────────────────────────── */
     .lb-rank {
         font-weight: 700;
@@ -186,9 +212,10 @@
                         <tr>
                             <th style="width:52px;">Rank</th>
                             <th>Run ID</th>
-                            <th class="num">Speed&nbsp;(m/s)</th>
+                            <th class="num">Speed&nbsp;(km/h)</th>
                             <th class="num">Drag&nbsp;(N)</th>
                             <th class="num">Solar&nbsp;(W)</th>
+                            <th class="num">Trends</th>
                         </tr>
                     </thead>
                     <tbody id="lbBody"></tbody>
@@ -219,6 +246,70 @@
         return Number(val).toFixed(decimals !== undefined ? decimals : 2);
     }
 
+    function speedKmh(speedMs) {
+        if (speedMs === null || speedMs === undefined) return null;
+        return Number(speedMs) * 3.6;
+    }
+
+    function drawMiniSpark(canvas, values, strokeColor) {
+        if (!canvas) return;
+        var ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        var w = canvas.width;
+        var h = canvas.height;
+        ctx.clearRect(0, 0, w, h);
+
+        var series = (values || []).filter(function (v) { return v !== null && v !== undefined && Number.isFinite(Number(v)); })
+            .map(function (v) { return Number(v); });
+        if (series.length < 2) return;
+
+        var minVal = Math.min.apply(null, series);
+        var maxVal = Math.max.apply(null, series);
+        var span = Math.max(1e-9, maxVal - minVal);
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (var i = 0; i < series.length; i++) {
+            var x = (i / (series.length - 1)) * (w - 2) + 1;
+            var y = h - 1 - ((series[i] - minVal) / span) * (h - 2);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+    }
+
+    function trendCell(entry, histories) {
+        var td = document.createElement("td");
+        td.className = "num";
+        var wrap = document.createElement("div");
+        wrap.className = "lb-mini-wrap";
+
+        var speedCanvas = document.createElement("canvas");
+        speedCanvas.className = "lb-mini";
+        speedCanvas.width = 68;
+        speedCanvas.height = 24;
+        var dragCanvas = document.createElement("canvas");
+        dragCanvas.className = "lb-mini";
+        dragCanvas.width = 68;
+        dragCanvas.height = 24;
+        var solarCanvas = document.createElement("canvas");
+        solarCanvas.className = "lb-mini";
+        solarCanvas.width = 68;
+        solarCanvas.height = 24;
+
+        wrap.appendChild(speedCanvas);
+        wrap.appendChild(dragCanvas);
+        wrap.appendChild(solarCanvas);
+        td.appendChild(wrap);
+
+        var h = histories && entry && entry.run_id ? histories[entry.run_id] : null;
+        var speedSeries = (h && h.cruising_speed_ms ? h.cruising_speed_ms : []).map(function (v) { return v == null ? null : Number(v) * 3.6; });
+        drawMiniSpark(speedCanvas, speedSeries, getComputedStyle(document.documentElement).getPropertyValue("--theme-metric-speed-border").trim() || "#66CC99");
+        drawMiniSpark(dragCanvas, h ? h.drag_value : [], getComputedStyle(document.documentElement).getPropertyValue("--theme-metric-drag-border").trim() || "#66A3FF");
+        drawMiniSpark(solarCanvas, h ? h.solar_power_w : [], getComputedStyle(document.documentElement).getPropertyValue("--theme-metric-solar-border").trim() || "#FFD966");
+        return td;
+    }
+
     function rankClass(rank) {
         if (rank === 1) return "gold";
         if (rank === 2) return "silver";
@@ -234,7 +325,7 @@
         return String(rank);
     }
 
-    function buildRow(entry) {
+    function buildRow(entry, histories) {
         var tr = document.createElement("tr");
         if (entry.is_current) tr.classList.add("lb-current");
         tr.classList.add("lb-clickable");
@@ -269,19 +360,21 @@
         tr.appendChild(tdId);
 
         var tdSpeed = document.createElement("td");
-        tdSpeed.className = "num";
-        tdSpeed.textContent = fmt(entry.cruising_speed_ms, 3);
+        tdSpeed.className = "num lb-num-speed";
+        tdSpeed.textContent = fmt(speedKmh(entry.cruising_speed_ms), 2);
         tr.appendChild(tdSpeed);
 
         var tdDrag = document.createElement("td");
-        tdDrag.className = "num";
+        tdDrag.className = "num lb-num-drag";
         tdDrag.textContent = fmt(entry.drag_value, 1);
         tr.appendChild(tdDrag);
 
         var tdSolar = document.createElement("td");
-        tdSolar.className = "num";
+        tdSolar.className = "num lb-num-solar";
         tdSolar.textContent = fmt(entry.solar_power_w, 1);
         tr.appendChild(tdSolar);
+
+        tr.appendChild(trendCell(entry, histories));
 
         return tr;
     }
@@ -302,8 +395,10 @@
             return;
         }
 
+        var histories = data.sparkline_histories || {};
+
         data.entries.forEach(function (entry) {
-            tbody.appendChild(buildRow(entry));
+            tbody.appendChild(buildRow(entry, histories));
         });
 
         // Current run outside top 10: append divider + extra row
@@ -311,7 +406,7 @@
             var divRow = document.createElement("tr");
             divRow.className = "lb-divider";
             var divCell = document.createElement("td");
-            divCell.colSpan = 5;
+            divCell.colSpan = 6;
             divCell.textContent =
                 data.current_entry.rank !== null
                     ? "\u00b7\u00b7\u00b7 your run \u2014 rank #" + data.current_entry.rank +
@@ -319,7 +414,7 @@
                     : "\u00b7\u00b7\u00b7 your run \u2014 not yet on leaderboard \u00b7\u00b7\u00b7";
             divRow.appendChild(divCell);
             tbody.appendChild(divRow);
-            tbody.appendChild(buildRow(data.current_entry));
+            tbody.appendChild(buildRow(data.current_entry, histories));
         }
 
         document.getElementById("lbStatus").style.display = "none";
@@ -338,6 +433,20 @@
             var resp = await fetch(url, { cache: "no-store" });
             if (!resp.ok) throw new Error("HTTP " + resp.status);
             var data = await resp.json();
+            var runIds = [];
+            (data.entries || []).forEach(function (entry) { if (entry && entry.run_id) runIds.push(entry.run_id); });
+            if (data.current_entry && data.current_entry.run_id) runIds.push(data.current_entry.run_id);
+            if (runIds.length) {
+                var uniqueRunIds = Array.from(new Set(runIds));
+                var sparkResp = await fetch(
+                    "/launcher/api/leaderboard/sparklines?run_ids=" + encodeURIComponent(uniqueRunIds.join(",")) + "&limit=40",
+                    { cache: "no-store" },
+                );
+                if (sparkResp.ok) {
+                    var sparkData = await sparkResp.json();
+                    data.sparkline_histories = sparkData.histories || {};
+                }
+            }
             var dataJson = JSON.stringify(data);
             if (dataJson === _lastDataJson) return; // no change — skip re-render
             _lastDataJson = dataJson;

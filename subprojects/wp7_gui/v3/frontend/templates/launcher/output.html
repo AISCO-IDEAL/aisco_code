@@ -22,41 +22,79 @@
         min-width: 0;
     }
 
-    /* ── Metric placeholder cards (middle column) ───────────────────────────── */
+    /* ── Metric cards (middle column) ───────────────────────────────────────── */
     .metric-card {
-        border: 1px dashed color-mix(in srgb, var(--theme-title-2) 50%, var(--theme-border) 50%);
+        border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent 30%);
         border-radius: 8px;
-        padding: 12px 10px;
+        padding: 12px 10px 10px;
         display: flex;
         flex-direction: column;
-        align-items: center;
-        justify-content: center;
+        align-items: stretch;
+        justify-content: flex-start;
         gap: 3px;
-        min-height: 88px;
-        text-align: center;
-        background: color-mix(in srgb, var(--theme-panel) 35%, transparent 65%);
+        min-height: 152px;
+        text-align: left;
+        background: color-mix(in srgb, var(--theme-panel) 45%, transparent 55%);
     }
 
     .metric-card__name {
         font-size: 0.68rem;
         font-weight: 700;
         letter-spacing: 0.12em;
-        color: var(--theme-warning-text);
+        color: var(--theme-muted);
         text-transform: uppercase;
     }
 
     .metric-card__value {
-        font-size: 1.6rem;
+        font-size: 2rem;
         font-weight: 700;
         color: var(--theme-text);
         font-family: var(--theme-font-mono, monospace);
         line-height: 1;
     }
 
+    .metric-card__graph {
+        width: 100%;
+        height: 62px;
+        border-radius: 6px;
+        margin-top: 6px;
+        background: color-mix(in srgb, var(--theme-panel-2) 30%, transparent 70%);
+    }
+
     .metric-card__hint {
         font-size: 0.64rem;
         color: var(--theme-muted);
         margin-top: 2px;
+    }
+
+    .metric-card[data-metric="speed"] {
+        border-color: var(--theme-metric-speed-border);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-metric-speed-border) 25%, transparent 75%);
+    }
+
+    .metric-card[data-metric="speed"] .metric-card__name,
+    .metric-card[data-metric="speed"] .metric-card__value {
+        color: var(--theme-metric-speed-text);
+    }
+
+    .metric-card[data-metric="drag"] {
+        border-color: var(--theme-metric-drag-border);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-metric-drag-border) 25%, transparent 75%);
+    }
+
+    .metric-card[data-metric="drag"] .metric-card__name,
+    .metric-card[data-metric="drag"] .metric-card__value {
+        color: var(--theme-metric-drag-text);
+    }
+
+    .metric-card[data-metric="solar"] {
+        border-color: var(--theme-metric-solar-border);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-metric-solar-border) 25%, transparent 75%);
+    }
+
+    .metric-card[data-metric="solar"] .metric-card__name,
+    .metric-card[data-metric="solar"] .metric-card__value {
+        color: var(--theme-metric-solar-text);
     }
 
     /* ── Run name in toolbar ────────────────────────────────────────────────── */
@@ -215,20 +253,23 @@
 
             <!-- MIDDLE: Metric placeholders -->
             <div class="output-col">
-                <div class="metric-card">
-                    <div class="metric-card__name">CS</div>
+                <div class="metric-card" data-metric="speed">
+                    <div class="metric-card__name">Speed (km/h)</div>
                     <div class="metric-card__value" id="metricCS">&#x2014;</div>
-                    <div class="metric-card__hint">Cruising speed &middot; not yet linked</div>
+                    <canvas class="metric-card__graph" id="metricSpeedGraph" width="420" height="96"></canvas>
+                    <div class="metric-card__hint">Continuously refreshed from run metrics</div>
                 </div>
-                <div class="metric-card">
+                <div class="metric-card" data-metric="drag">
                     <div class="metric-card__name">Drag</div>
                     <div class="metric-card__value" id="metricDrag">&#x2014;</div>
-                    <div class="metric-card__hint">Drag coefficient &middot; not yet linked</div>
+                    <canvas class="metric-card__graph" id="metricDragGraph" width="420" height="96"></canvas>
+                    <div class="metric-card__hint">Force in Newtons (N)</div>
                 </div>
-                <div class="metric-card">
+                <div class="metric-card" data-metric="solar">
                     <div class="metric-card__name">Solar</div>
                     <div class="metric-card__value" id="metricSolar">&#x2014;</div>
-                    <div class="metric-card__hint">Solar yield &middot; not yet linked</div>
+                    <canvas class="metric-card__graph" id="metricSolarGraph" width="420" height="96"></canvas>
+                    <div class="metric-card__hint">Output power in Watts (W)</div>
                 </div>
             </div>
 
@@ -331,6 +372,12 @@
     const leaderboardBtn = document.getElementById("leaderboardBtn");
     const priorityListPreview = document.getElementById("priorityListPreview");
     const statusLabel = document.getElementById("statusLabel");
+    const metricSpeedValue = document.getElementById("metricCS");
+    const metricDragValue = document.getElementById("metricDrag");
+    const metricSolarValue = document.getElementById("metricSolar");
+    const metricSpeedGraph = document.getElementById("metricSpeedGraph");
+    const metricDragGraph = document.getElementById("metricDragGraph");
+    const metricSolarGraph = document.getElementById("metricSolarGraph");
 
     // ── State ──────────────────────────────────────────────────────────────────
     let primaryGlbFiles = [];
@@ -359,6 +406,7 @@
     let activeRightLabel = null; // currently selected label
     let latestArtifactData = null;
     let artifactPollTimer = null;
+    let metricsPollTimer = null;
 
     const _urlParams = new URLSearchParams(window.location.search);
     const cfgSession = _urlParams.get("cfg_session") || null;
@@ -375,6 +423,92 @@
         const accent = getComputedStyle(document.documentElement)
             .getPropertyValue("--theme-slider-accent").trim();
         if (accent) slider.style.accentColor = accent;
+    }
+
+    function _metricColor(cssVarName, fallback) {
+        var value = getComputedStyle(document.documentElement).getPropertyValue(cssVarName).trim();
+        return value || fallback;
+    }
+
+    function _formatMetric(value, decimals, suffix) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) return "—";
+        return Number(value).toFixed(decimals) + "\u00a0" + suffix;
+    }
+
+    function drawMetricTrend(canvas, values, strokeColor) {
+        if (!canvas) return;
+        var ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        var w = canvas.width;
+        var h = canvas.height;
+        ctx.clearRect(0, 0, w, h);
+
+        ctx.strokeStyle = "rgba(255,255,255,0.16)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, h - 1);
+        ctx.lineTo(w, h - 1);
+        ctx.stroke();
+
+        var series = (values || []).filter(function (v) { return v !== null && v !== undefined && Number.isFinite(Number(v)); })
+            .map(function (v) { return Number(v); });
+        if (series.length < 2) return;
+
+        var minVal = Math.min.apply(null, series);
+        var maxVal = Math.max.apply(null, series);
+        var span = Math.max(1e-9, maxVal - minVal);
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (var i = 0; i < series.length; i++) {
+            var x = (i / (series.length - 1)) * (w - 2) + 1;
+            var y = h - 2 - ((series[i] - minVal) / span) * (h - 6);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+    }
+
+    function applyMetricDisplays(latestMetrics, history) {
+        var speedMs = latestMetrics ? latestMetrics.cruising_speed_ms : null;
+        var speedKmh = speedMs == null ? null : Number(speedMs) * 3.6;
+        if (metricSpeedValue) metricSpeedValue.textContent = _formatMetric(speedKmh, 2, "km/h");
+        if (metricDragValue) metricDragValue.textContent = _formatMetric(latestMetrics ? latestMetrics.drag_value : null, 2, "N");
+        if (metricSolarValue) metricSolarValue.textContent = _formatMetric(latestMetrics ? latestMetrics.solar_power_w : null, 1, "W");
+
+        var speedSeriesKmh = (history && history.cruising_speed_ms ? history.cruising_speed_ms : [])
+            .map(function (v) { return v == null ? null : Number(v) * 3.6; });
+        drawMetricTrend(metricSpeedGraph, speedSeriesKmh, _metricColor("--theme-metric-speed-border", "#66CC99"));
+        drawMetricTrend(metricDragGraph, history ? history.drag_value : [], _metricColor("--theme-metric-drag-border", "#66A3FF"));
+        drawMetricTrend(metricSolarGraph, history ? history.solar_power_w : [], _metricColor("--theme-metric-solar-border", "#FFD966"));
+    }
+
+    async function refreshLiveMetrics() {
+        if (!isLive) return;
+        try {
+            var pair = await Promise.all([
+                fetch(LAUNCHER_API + "/run/metrics/latest?t=" + Date.now(), { cache: "no-store" }),
+                fetch(LAUNCHER_API + "/run/metrics/history?limit=120&t=" + Date.now(), { cache: "no-store" }),
+            ]);
+            if (!pair[0].ok || !pair[1].ok) return;
+            var latest = await pair[0].json();
+            var historyPayload = await pair[1].json();
+            var latestMetrics = latest.found ? latest : null;
+            var history = historyPayload && historyPayload.history ? historyPayload.history : {
+                epoch: [], drag_value: [], solar_power_w: [], cruising_speed_ms: [],
+            };
+            if (latest.run_dir && runNameDisplay.textContent === "—") {
+                var parts = String(latest.run_dir).replace(/\\/g, "/").split("/");
+                var name = parts.filter(Boolean).pop();
+                if (name) {
+                    runNameDisplay.textContent = name;
+                    updateLeaderboardLink(name);
+                }
+            }
+            applyMetricDisplays(latestMetrics, history);
+        } catch (err) {
+            console.debug("refreshLiveMetrics:", err);
+        }
     }
 
     // ── Primary GLB (left panel) ───────────────────────────────────────────────
@@ -888,13 +1022,20 @@
             .then(function (r) { return r.json(); })
             .then(function (state) {
                 fetchLiveArtifacts();
+                refreshLiveMetrics();
                 if (state.running) {
                     artifactPollTimer = setInterval(fetchLiveArtifacts, 3000);
+                    metricsPollTimer = setInterval(refreshLiveMetrics, 1000);
                 } else {
                     statusLabel.textContent = "Run complete \u2014 showing final artifacts.";
+                    metricsPollTimer = setInterval(refreshLiveMetrics, 3000);
                 }
             })
-            .catch(function () { fetchLiveArtifacts(); });
+            .catch(function () {
+                fetchLiveArtifacts();
+                refreshLiveMetrics();
+                metricsPollTimer = setInterval(refreshLiveMetrics, 3000);
+            });
     } else {
         fetchViewerArtifacts();
     }
