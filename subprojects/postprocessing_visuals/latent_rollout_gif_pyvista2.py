@@ -18,6 +18,7 @@ Usage:
 from __future__ import annotations
 
 import os
+
 os.environ["PYVISTA_OFF_SCREEN"] = "true"
 
 import contextlib
@@ -42,13 +43,12 @@ import argparse
 import imageio
 import numpy as np
 import pyrender
+import pyvista as pv
 import torch
 import trimesh
 import yaml
 from PIL import Image, ImageDraw, ImageFont
 from torch import Tensor
-import pyvista as pv
-
 
 # ---------------------------------------------------------------------------
 # Color helpers
@@ -413,11 +413,11 @@ def render_mesh(
     if assembly_mesh is not None:
         pv_asm = pv.wrap(assembly_mesh)
         plotter.add_mesh(
-            pv_asm, 
-            color=assembly_color[:3], 
-            ambient=0.3, 
-            diffuse=0.7, 
-            smooth_shading=True, 
+            pv_asm,
+            color=assembly_color[:3],
+            ambient=0.3,
+            diffuse=0.7,
+            smooth_shading=True,
             specular=0.2,          # Slightly raise specular reflection highlight
             specular_power=50,     # Tighten shine focus to accentuate smooth curvature
         )
@@ -494,7 +494,7 @@ _FONT_PATHS = [
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-    "/etc/X11/fonts/TTF/DejaVuSans.ttf", 
+    "/etc/X11/fonts/TTF/DejaVuSans.ttf",
 ]
 
 
@@ -505,7 +505,6 @@ def _get_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
             return ImageFont.truetype(fp, size)
         except Exception:
             print(f"!!!Trying font failed: {fp}")
-            pass
     return ImageFont.load_default()
 
 
@@ -653,6 +652,86 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
         draw.text((int(8 * scale_factor), int(8 * scale_factor)), f"Latent Space · {_mode_label}", fill=title_col, font=font_title)
 
     return np.asarray(img)
+
+
+def draw_epoch_label_on_frame(
+    frame_rgb: np.ndarray,
+    epoch_num: int | None,
+    color: tuple[int, int, int] = (200, 205, 230),
+) -> np.ndarray:
+    """Overlay the epoch label at top-left directly onto an RGB frame."""
+    if epoch_num is None:
+        return frame_rgb
+
+    img = Image.fromarray(frame_rgb)
+    draw = ImageDraw.Draw(img)
+    h = frame_rgb.shape[0]
+    scale_factor = h / 600.0
+    font_epoch = _get_font(max(10, int(15 * scale_factor)))
+    draw.text((int(8 * scale_factor), int(8 * scale_factor)), f"Epoch {epoch_num}", fill=color, font=font_epoch)
+    return np.asarray(img)
+
+
+def align_epoch_frame_to_standard_view(
+    frame_rgb: np.ndarray,
+    standard_width: int,
+    bg_color: tuple[int, int, int],
+) -> np.ndarray:
+    """Shift wide epoch_gif render so framing matches non-epoch modes.
+
+    Non-epoch renders use ``standard_width`` for the 3D viewport and center the
+    camera there. Epoch mode renders wider (``standard_width + panel_width``) so
+    geometry can spill into the right area. This helper shifts that wide image
+    left by half of the extra width, preserving scale while restoring the same
+    object placement as non-epoch modes.
+    """
+    h, w, _ = frame_rgb.shape
+    if w <= standard_width:
+        return frame_rgb
+
+    extra = w - standard_width
+    shift_px = extra // 2
+    if shift_px <= 0:
+        return frame_rgb
+
+    out = np.empty((h, w, 3), dtype=np.uint8)
+    out[:, :, 0] = bg_color[0]
+    out[:, :, 1] = bg_color[1]
+    out[:, :, 2] = bg_color[2]
+
+    # Move content left; keep right-side overflow visible in the blank area.
+    out[:, : (w - shift_px), :] = frame_rgb[:, shift_px:, :]
+    return out
+
+
+def compose_epoch_frame(
+    standard_rgb: np.ndarray,
+    wide_aligned_rgb: np.ndarray,
+    standard_width: int,
+    bg_color: tuple[int, int, int],
+) -> np.ndarray:
+    """Compose epoch frame with exact standard-mode left view plus right overflow.
+
+    Left region [0:standard_width] is taken from the standard-width render to keep
+    size/location identical to non-epoch modes. Right region is taken from the
+    aligned wide render to preserve spillover beyond the former seam.
+    """
+    h, w_std, _ = standard_rgb.shape
+    h_wide, w_wide, _ = wide_aligned_rgb.shape
+    if h != h_wide:
+        raise ValueError("compose_epoch_frame requires matching frame heights")
+    if w_std != standard_width:
+        raise ValueError("compose_epoch_frame standard width mismatch")
+    if w_wide <= standard_width:
+        return wide_aligned_rgb
+
+    out = np.empty((h, w_wide, 3), dtype=np.uint8)
+    out[:, :, 0] = bg_color[0]
+    out[:, :, 1] = bg_color[1]
+    out[:, :, 2] = bg_color[2]
+    out[:, :standard_width, :] = standard_rgb
+    out[:, standard_width:, :] = wide_aligned_rgb[:, standard_width:, :]
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -1027,9 +1106,34 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
 
     frames: list[Any] = []
     last_valid_rgb: np.ndarray | None = None
+    last_valid_epoch_base: np.ndarray | None = None
     locked_camera_position: np.ndarray | None = None
     locked_camera_focal_point: np.ndarray | None = None
     locked_camera_view_up: np.ndarray | None = None
+    render_width = args.width + args.panel_width if active_mode == "epoch_gif" else args.width
+
+    if active_mode == "epoch_gif" and frame_checkpoints:
+        # Lock camera from the user-selected checkpoint (not earliest epoch), so
+        # epoch_gif framing matches non-epoch runs that use this checkpoint.
+        ref_idx = 0
+        with contextlib.suppress(ValueError):
+            ref_idx = frame_checkpoints.index(args.checkpoint)
+        ref_ckpt = frame_checkpoints[ref_idx]
+        if ref_ckpt is not None:
+            _load_model_state_from_checkpoint(model, ref_ckpt, device)
+            ref_z0, ref_z1 = z_coords[ref_idx]
+            ref_mesh = extract_mesh(model, extractor, ref_z0, ref_z1, z_dim, device)
+            if ref_mesh is not None and len(ref_mesh.vertices) > 0:
+                (
+                    locked_camera_position,
+                    locked_camera_focal_point,
+                    locked_camera_view_up,
+                ) = compute_camera_pose(
+                    ref_mesh,
+                    azim_deg=args.azim,
+                    elev_deg=args.elev,
+                )
+                print(f"[camera lock] using reference checkpoint: {ref_ckpt.name}")
 
     print("\nGenerating frames...")
     for i, (z0, z1) in enumerate(z_coords):
@@ -1048,23 +1152,33 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         if mesh is None or len(mesh.vertices) == 0:
             print("  → SKIP (no mesh)")
             if last_valid_rgb is not None:
-                panel = draw_latent_panel(
-                    args.panel_width,
-                    args.height,
-                    z_radius,
-                    Z_np,
-                    z0,
-                    z1,
-                    i,
-                    total_frames,
-                    colors=panel_colors,
-                    trajectory_coords=panel_trajectory,
-                    mode=active_mode,
-                    panel_scale_radius=panel_scale_radius,
-                    show_anchors=args.show_anchors,
-                    epoch_num=frame_epoch_num,
-                )
-                frames.append(np.concatenate([last_valid_rgb, panel], axis=1))
+                if active_mode == "epoch_gif":
+                    if last_valid_epoch_base is not None:
+                        frames.append(
+                            draw_epoch_label_on_frame(
+                                last_valid_epoch_base,
+                                frame_epoch_num,
+                                color=panel_colors["title"],
+                            )
+                        )
+                else:
+                    panel = draw_latent_panel(
+                        args.panel_width,
+                        args.height,
+                        z_radius,
+                        Z_np,
+                        z0,
+                        z1,
+                        i,
+                        total_frames,
+                        colors=panel_colors,
+                        trajectory_coords=panel_trajectory,
+                        mode=active_mode,
+                        panel_scale_radius=panel_scale_radius,
+                        show_anchors=args.show_anchors,
+                        epoch_num=frame_epoch_num,
+                    )
+                    frames.append(np.concatenate([last_valid_rgb, panel], axis=1))
             continue
 
         if locked_camera_position is None:
@@ -1082,7 +1196,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             mesh_alpha=args.mesh_alpha,
             assembly_mesh=inner_assembly,
             assembly_color=assembly_color_rgba,
-            width=args.width,
+            width=args.width if active_mode == "epoch_gif" else render_width,
             height=args.height,
             azim_deg=args.azim,
             elev_deg=args.elev,
@@ -1091,23 +1205,58 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             camera_focal_point=locked_camera_focal_point,
             camera_view_up=locked_camera_view_up,
         )
-        panel = draw_latent_panel(
-            args.panel_width,
-            args.height,
-            z_radius,
-            Z_np,
-            z0,
-            z1,
-            i,
-            total_frames,
-            colors=panel_colors,
-            trajectory_coords=panel_trajectory,
-            mode=active_mode,
-            panel_scale_radius=panel_scale_radius,
-            show_anchors=args.show_anchors,
-            epoch_num=frame_epoch_num,
-        )
-        composite = np.concatenate([rgb, panel], axis=1)  # (H, W+panel, 3)
+        if active_mode == "epoch_gif":
+            rgb_wide = render_mesh(
+                mesh=mesh,
+                bg_color=render_bg_rgba,
+                mesh_color=mesh_color_rgba,
+                mesh_alpha=args.mesh_alpha,
+                assembly_mesh=inner_assembly,
+                assembly_color=assembly_color_rgba,
+                width=render_width,
+                height=args.height,
+                azim_deg=args.azim,
+                elev_deg=args.elev,
+                look_at_bounds=global_bounds,
+                camera_position=locked_camera_position,
+                camera_focal_point=locked_camera_focal_point,
+                camera_view_up=locked_camera_view_up,
+            )
+            aligned = align_epoch_frame_to_standard_view(
+                rgb_wide,
+                standard_width=args.width,
+                bg_color=panel_colors["bg_epoch"],
+            )
+            epoch_base = compose_epoch_frame(
+                standard_rgb=rgb,
+                wide_aligned_rgb=aligned,
+                standard_width=args.width,
+                bg_color=panel_colors["bg_epoch"],
+            )
+            composite = draw_epoch_label_on_frame(
+                epoch_base,
+                frame_epoch_num,
+                color=panel_colors["title"],
+            )
+            last_valid_epoch_base = epoch_base
+        else:
+            panel = draw_latent_panel(
+                args.panel_width,
+                args.height,
+                z_radius,
+                Z_np,
+                z0,
+                z1,
+                i,
+                total_frames,
+                colors=panel_colors,
+                trajectory_coords=panel_trajectory,
+                mode=active_mode,
+                panel_scale_radius=panel_scale_radius,
+                show_anchors=args.show_anchors,
+                epoch_num=frame_epoch_num,
+            )
+            composite = np.concatenate([rgb, panel], axis=1)  # (H, W+panel, 3)
         # if i == 0:
         #     Image.fromarray(composite).save("/cluster/work/fuge/AISCO/wp9/ginn_gif/DEBUG_FRAME_3.png")
         #     print(f"  → DEBUG_FRAME_2.png saved")
@@ -1128,12 +1277,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         # Forces a dedicated local palette optimization per frame instead of a global blur
         out_path = Path(args.out)
         print(f"\nWriting {len(frames)} frames → {out_path}  (fps={args.fps})")
-        
+
         # Force imageio to calculate an optimized palette per frame rather than a single blurry global palette
         imageio.mimsave(
-            out_path, 
-            frames, 
-            fps=args.fps, 
+            out_path,
+            frames,
+            fps=args.fps,
             loop=0,
             quantizer='nq',  # NeuQuant high-quality neural network quantizer
             palettesize=256
