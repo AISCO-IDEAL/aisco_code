@@ -13,7 +13,7 @@
 
   <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; width:100%; max-width:760px;">
 
-    <a href="/launcher/assembly-selection?pipeline=live" style="text-decoration:none; color:inherit;">
+    <a id="liveCardLink" href="/launcher/assembly-selection?pipeline=live" style="text-decoration:none; color:inherit;">
       <div style="
         background:var(--theme-gradient-intro-card);
         border:2px solid var(--theme-surface-large);
@@ -33,6 +33,7 @@
         <div style="font-size:0.82rem; color:var(--theme-muted); line-height:1.5;">
           Configure geometry, set overrides,<br>launch a WP4 run, and watch it live.
         </div>
+        <div id="liveCardError" style="margin-top:10px; font-size:0.78rem; color:var(--accent); min-height:1.2em;"></div>
       </div>
     </a>
 
@@ -61,4 +62,49 @@
   </div>
 
 </div>
+
+<script>
+  // ── M1: Wizard session creation on Live Optimisation card click ───────────────
+  (function () {
+    const LS_FOLDER      = "aiscoOverrideFolderV3";
+    const LS_ASM_FROZEN  = "aiscoAssemblyFrozenV3";
+    const LS_CFG_FROZEN  = "aiscoConfigFrozenV3";
+    const LS_RUN_LAUNCHED = "aiscoRunLaunchedV3";
+    const LS_PENDING_ID  = "aiscoPendingAssemblyIdV3";
+    const LS_RETURN_URL  = "aiscoReturnUrlV3";
+
+    const link     = document.getElementById("liveCardLink");
+    const errorEl  = document.getElementById("liveCardError");
+
+    link.addEventListener("click", async (e) => {
+      e.preventDefault();
+      link.style.pointerEvents = "none";
+      link.style.opacity = "0.6";
+      errorEl.textContent = "Creating session\u2026";
+
+      try {
+        const r = await fetch("/launcher/api/config-overrides/init", { method: "POST" });
+        if (!r.ok) {
+          const d = await r.json();
+          throw new Error(d.detail?.message || String(r.status));
+        }
+        const d = await r.json();
+        // Always overwrite any previously stored session key — prior sessions
+        // are preserved on disk and do not need to be resumed.
+        localStorage.setItem(LS_FOLDER, d.folder);
+        localStorage.removeItem(LS_ASM_FROZEN);
+        localStorage.removeItem(LS_CFG_FROZEN);
+        localStorage.removeItem(LS_RUN_LAUNCHED);
+        localStorage.removeItem(LS_PENDING_ID);
+        localStorage.removeItem(LS_RETURN_URL);
+        console.info("[AISCO] Session created:", d.folder);
+        window.location.href = "/launcher/assembly-selection?pipeline=live";
+      } catch (err) {
+        errorEl.textContent = "Error: " + err.message;
+        link.style.pointerEvents = "";
+        link.style.opacity = "";
+      }
+    });
+  }());
+</script>
 {% endblock %}

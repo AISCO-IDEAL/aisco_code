@@ -12,6 +12,7 @@
 
     <!-- Home button -->
     <div class="dark-card toolbar">
+        <a id="latExpBkRunBtn" href="#" class="btn secondary" style="display:none;">&#8592; Back to run</a>
         <div style="flex:1;"></div>
         <a href="/" class="btn">Done &#8212; Home</a>
     </div>
@@ -439,5 +440,20 @@
             runAnimationLoop();
         }
     });
+
+  // M5: Back-to-run passthrough
+  (function () {
+    const returnUrl = localStorage.getItem("aiscoReturnUrlV3") || "";
+    if (!returnUrl) return;
+    const btn = document.getElementById("latExpBkRunBtn");
+    if (!btn) return;
+    btn.href = returnUrl;
+    btn.style.display = "";
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      localStorage.removeItem("aiscoReturnUrlV3");
+      window.location.href = returnUrl;
+    });
+  }());
 </script>
 {% endblock %}

@@ -329,7 +329,7 @@ endblock %}
 {% block content %}
 <div class="section-grid" style="grid-template-rows: auto 1fr; height: 100%;">
     <div class="dark-card toolbar">
-        <a href="/" class="btn secondary">← Back to Home</a>
+        <a id="backToHomeBtn" href="/" class="btn secondary">← Back to Home</a>
         <div style="flex:1;"></div>
         <a id="btnNextToOverrides" href="/launcher/config-overrides?pipeline={{ pipeline }}" class="btn">Next →</a>
     </div>
@@ -406,6 +406,7 @@ endblock %}
     let hasCheckWarnings = true;
     let maxAssemblyMapId = null;
     let assemblyPlyColorRgb = null;
+    let _assemblyFrozen = false; // M2: set true by freeze check; prevents table edits
 
     const statusEl = document.getElementById("status");
     const sourceStatusEl = document.getElementById("source-status");
@@ -525,7 +526,12 @@ endblock %}
     }
 
     function inputCell(part, axis, value, disabled = false) {
-        const disabledAttr = disabled ? " disabled title=\"Wheel Z is fixed and cannot be changed\"" : "";
+        const isDisabled = disabled || _assemblyFrozen;
+        const disabledAttr = isDisabled
+            ? (disabled
+                ? " disabled title=\"Wheel Z is fixed and cannot be changed\""
+                : " disabled title=\"Assembly is locked \u2014 go back to edit\"")
+            : "";
         return `
       <td>
         <input type="number" step="1" value="${Math.round(value)}"
@@ -549,7 +555,7 @@ endblock %}
                 ${inputCell(part, "x", vals.x)}
                 ${inputCell(part, "y", vals.y)}
                 ${inputCell(part, "z", vals.z, isWheel)}
-                <td style="padding:4px 6px;">${isWheel ? `<div style="display:flex; gap:10px;"><button class="move-btn" ${canUp ? "" : "disabled"} style="background:var(--theme-white); border-color:var(--theme-surface-large); color:var(--theme-bg); min-width:34px;" onclick="movePart('${part}',-1)" title="Move up">&#8593;</button><button class="move-btn" ${canDn ? "" : "disabled"} style="background:var(--theme-white); border-color:var(--theme-title-2); color:var(--theme-bg); min-width:34px;" onclick="movePart('${part}',1)" title="Move down">&#8595;</button></div>` : ""}</td>
+                <td style="padding:4px 6px;">${isWheel ? `<div style="display:flex; gap:10px;"><button class="move-btn" ${(canUp && !_assemblyFrozen) ? "" : "disabled"} style="background:var(--theme-white); border-color:var(--theme-surface-large); color:var(--theme-bg); min-width:34px;" onclick="movePart('${part}',-1)" title="Move up">&#8593;</button><button class="move-btn" ${(canDn && !_assemblyFrozen) ? "" : "disabled"} style="background:var(--theme-white); border-color:var(--theme-title-2); color:var(--theme-bg); min-width:34px;" onclick="movePart('${part}',1)" title="Move down">&#8595;</button></div>` : ""}</td>
             `;
             body.appendChild(row);
         }
@@ -580,6 +586,7 @@ endblock %}
     }
 
     window.movePart = function movePart(part, dir) {
+        if (_assemblyFrozen) return;
         const wheels = orderedParts().filter(([p]) => p.startsWith("wheel_"));
         const idx = wheels.findIndex(([p]) => p === part);
         if (idx === -1) return;
@@ -597,6 +604,7 @@ endblock %}
     };
 
     window.onEdit = function onEdit(el) {
+        if (_assemblyFrozen) return;
         const key = el.dataset.key;
         const axis = el.dataset.axis;
         if (!params[key]) {
@@ -1183,6 +1191,12 @@ endblock %}
             }
         }
 
+        // M2: Freeze assembly once the user proceeds to config-overrides.
+        if (pipeline === "live") {
+            localStorage.setItem("aiscoAssemblyFrozenV3", "1");
+            console.info("[AISCO] Assembly frozen.");
+        }
+
         window.location.href = targetHref;
     });
 
@@ -1243,5 +1257,50 @@ endblock %}
     loadAssemblyPlyColorConfig();
     loadAssemblyMapMeta();
     loadParams();
+
+    // M2: Apply assembly-frozen state on page load (user navigated Back from config-overrides).
+    if (pipeline === "live" && localStorage.getItem("aiscoAssemblyFrozenV3")) {
+        // Set flag first so renderTable() (called by loadParams() async) renders frozen inputs.
+        _assemblyFrozen = true;
+        document.querySelectorAll(".selection-root input, .selection-root select").forEach(el => {
+            el.disabled = true;
+        });
+        if (assemblyIdInputEl) assemblyIdInputEl.disabled = true;
+        [btnAddToMap,
+         document.getElementById("btnAddWheel"),
+         document.getElementById("btnRemoveWheel"),
+         btnLoadAssemblyId
+        ].forEach(b => { if (b) b.disabled = true; });
+        document.querySelectorAll("canvas").forEach(c => { c.style.pointerEvents = "none"; });
+        const toolbar = document.querySelector(".toolbar");
+        if (toolbar) {
+            const banner = document.createElement("div");
+            banner.style.cssText = [
+                "padding:8px 14px",
+                "margin-top:8px",
+                "background:color-mix(in srgb, var(--theme-warning-text) 12%, transparent)",
+                "border-radius:8px",
+                "font-size:0.82rem",
+                "color:var(--theme-text)"
+            ].join(";");
+            banner.textContent = "\uD83D\uDD12 Assembly locked \u2014 Go Back to edit (only if run not yet started).";
+            toolbar.after(banner);
+        }
+    }
+
+    // M6: Back-to-Home clears wizard state and navigates home.
+    function clearWizardState() {
+        ["aiscoOverrideFolderV3", "aiscoAssemblyFrozenV3", "aiscoConfigFrozenV3",
+         "aiscoRunLaunchedV3", "aiscoPendingAssemblyIdV3", "aiscoReturnUrlV3"
+        ].forEach(k => localStorage.removeItem(k));
+        console.info("[AISCO] Wizard state cleared.");
+    }
+
+    document.getElementById("backToHomeBtn").addEventListener("click", (e) => {
+        e.preventDefault();
+        fetch("/launcher/api/run/stop", { method: "POST" }).catch(() => {});
+        clearWizardState();
+        window.location.href = "/";
+    });
 </script>
 {% endblock %}

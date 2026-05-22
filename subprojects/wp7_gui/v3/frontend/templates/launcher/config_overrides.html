@@ -43,7 +43,7 @@
 
   <!-- Wizard navigation -->
   <div class="dark-card toolbar">
-    <a href="/launcher/assembly-selection?pipeline={{ pipeline }}" class="btn secondary">← Back</a>
+    <a id="btnBackToAssembly" href="/launcher/assembly-selection?pipeline={{ pipeline }}" class="btn secondary">← Back</a>
     <div style="flex:1;"></div>
     <a id="btnNext" href="/launcher/output?pipeline=live" class="btn">Next →</a>
   </div>
@@ -51,27 +51,28 @@
   <!-- Session toolbar -->
   <div class="dark-card toolbar">
     {% if pipeline == 'live' %}
-    <button class="btn" id="btnInit">Start new session</button>
     <button class="btn secondary" id="btnReload" disabled>Reset to defaults</button>
-    <div class="session-info" id="sessionInfo">No active session.</div>
-    <button class="btn" id="btnSave" disabled>Save changes</button>
-    <button class="btn danger" id="btnDiscard" disabled>Discard session</button>
-    <button class="btn danger" id="btnCleanAll">Clean all sessions</button>
+    <div class="session-info" id="sessionInfo">Initializing session…</div>
     {% else %}
-    <button class="btn" id="btnInit">Start new session</button>
     <button class="btn secondary" id="btnReload" disabled>Reset to defaults</button>
     <div class="session-info" id="sessionInfo">No active session.</div>
-    <button class="btn" id="btnSave" disabled>Save changes</button>
-    <button class="btn danger" id="btnDiscard" disabled>Discard session</button>
-    <button class="btn danger" id="btnCleanAll">Clean all sessions</button>
     {% endif %}
   </div>
+
+  <!-- Config locked banner (live only — shown after Save & Run is clicked) -->
+  {% if pipeline == 'live' %}
+  <div id="configLockedBanner" class="dark-card toolbar" style="display:none; background: color-mix(in srgb, var(--theme-warning-text) 12%, transparent);">
+    <span style="font-size:0.84rem;">&#128274; Config locked — run is in progress or completed.</span>
+    <div style="flex:1;"></div>
+    <a href="/" id="btnGoHomeFromBanner" class="btn secondary">← Go Home</a>
+  </div>
+  {% endif %}
 
   <!-- Config form -->
   <div class="card" style="overflow-y: auto; min-height: 0;">
     <div id="formArea">
       <div style="color: var(--theme-muted); font-style: italic; text-align: center; padding: 40px 10px;">
-        {% if pipeline == 'live' %}Click &ldquo;Start new session&rdquo; to copy configs and begin editing.{% else
+        {% if pipeline == 'live' %}Loading session…{% else
         %}Select a session above to view its configuration.{% endif %}
       </div>
     </div>
@@ -105,9 +106,13 @@
 </div>
 
 <script>
-  const STORAGE_KEY = "aiscoOverrideFolderV3";
-  const PENDING_ID_KEY = "aiscoPendingAssemblyIdV3";
-  const LOSSES_CFG = "losses_v0_config.yaml";
+  const STORAGE_KEY    = "aiscoOverrideFolderV3";
+  const PENDING_ID_KEY = "aiscoPendingAssemblyIdV3"; // TODO: remove once M1 is confirmed stable
+  const FROZEN_KEY     = "aiscoConfigFrozenV3";
+  const RUN_KEY        = "aiscoRunLaunchedV3";
+  const ASM_FROZEN_KEY = "aiscoAssemblyFrozenV3";
+  const RETURN_URL_KEY = "aiscoReturnUrlV3";
+  const LOSSES_CFG     = "losses_v0_config.yaml";
   const ASSEMBLY_ID_PATH = "bb_config.assembly_id";
   const API = "/launcher/api";
   const pipeline = "{{ pipeline }}";
@@ -115,17 +120,25 @@
   let activeFolder = localStorage.getItem(STORAGE_KEY) || "";
   let cachedSchema = null;
 
-  const btnInit = document.getElementById("btnInit");
-  const btnReload = document.getElementById("btnReload");
-  const btnDiscard = document.getElementById("btnDiscard");
-  const btnCleanAll = document.getElementById("btnCleanAll");
-  const btnSave = document.getElementById("btnSave");
-  const btnNext = document.getElementById("btnNext");
+  const btnReload  = document.getElementById("btnReload");
+  const btnNext    = document.getElementById("btnNext");
   const sessionInfo = document.getElementById("sessionInfo");
-  const formArea = document.getElementById("formArea");
-  const output = document.getElementById("outputConsole");
+  const formArea   = document.getElementById("formArea");
+  const output     = document.getElementById("outputConsole");
 
   const log = makeConsoleLogger(output);
+
+  // ── M2: Back button interceptor — unfreeze assembly if run not yet launched ─
+  const btnBackToAssembly = document.getElementById("btnBackToAssembly");
+  if (btnBackToAssembly && pipeline === "live") {
+    btnBackToAssembly.addEventListener("click", () => {
+      if (!localStorage.getItem(RUN_KEY)) {
+        localStorage.removeItem(ASM_FROZEN_KEY);
+        console.info("[AISCO] Assembly unfrozen (run not launched).");
+      }
+      // allow normal navigation
+    });
+  }
 
   function updateNextHref() {
     if (!btnNext) return;
@@ -145,13 +158,10 @@
       localStorage.setItem(STORAGE_KEY, activeFolder);
       sessionInfo.textContent = "Active: " + activeFolder.split("/").pop();
       if (btnReload) btnReload.disabled = false;
-      if (btnDiscard) btnDiscard.disabled = false;
     } else {
       localStorage.removeItem(STORAGE_KEY);
       sessionInfo.textContent = "No active session.";
       if (btnReload) btnReload.disabled = true;
-      if (btnDiscard) btnDiscard.disabled = true;
-      if (btnSave) btnSave.disabled = true;
     }
     updateNextHref();
     const _runBtn = document.getElementById("btnRun");
@@ -175,7 +185,6 @@
       inp.classList.toggle("invalid", !ok);
       if (!ok) valid = false;
     });
-    if (btnSave) btnSave.disabled = !valid || !activeFolder;
   }
 
   function makeInput(param, current) {
@@ -240,7 +249,6 @@
     formArea.innerHTML = "";
     let sectionIndex = 1;
 
-    // Run name field (top of form, always shown when a session is active)
     const nameSection = document.createElement("details");
     nameSection.className = "config-section"; nameSection.open = true;
     const nameSummary = document.createElement("summary");
@@ -328,6 +336,7 @@
   }
 
   async function applyPendingAssemblyId(folder) {
+    // TODO: remove PENDING_ID_KEY fallback once M1 (home-click session creation) is confirmed stable
     const pendingId = localStorage.getItem(PENDING_ID_KEY);
     if (pendingId === null || !folder) return;
     const mapId = parseInt(pendingId, 10);
@@ -346,24 +355,28 @@
     }
   }
 
-  btnInit?.addEventListener("click", async () => {
-    btnInit.disabled = true;
-    try {
-      const initUrl = `${API}/config-overrides/init`;
-      const r = await fetch(initUrl, { method: "POST" });
-      if (!r.ok) { const d = await r.json(); throw new Error(d.detail?.message || r.status); }
-      const d = await r.json();
-      log(`Session: ${d.name} (${d.copied_files.length} files)`, "success");
-      setFolder(d.folder);
-      await applyPendingAssemblyId(d.folder);
-      await loadSchemaAndValues();
-    } catch (err) { log(`ERROR: ${err.message}`, "error"); }
-    finally { btnInit.disabled = false; }
-  });
+  // ── M3: Apply config freeze UI state ──────────────────────────────────────────
+  function applyConfigFreeze() {
+    // Disable all param inputs
+    formArea.querySelectorAll(".param-input").forEach(inp => { inp.disabled = true; });
+    // Hide Reset and Save & Run buttons
+    if (btnReload) btnReload.style.display = "none";
+    const _runBtn = document.getElementById("btnRun");
+    if (_runBtn) _runBtn.style.display = "none";
+    // Show locked banner
+    const banner = document.getElementById("configLockedBanner");
+    if (banner) banner.style.display = "";
+    console.info("[AISCO] Config frozen.");
+  }
 
+  // ── M8: Reset to defaults — preserves assembly ID ─────────────────────────────
   btnReload?.addEventListener("click", async () => {
     if (!activeFolder) return;
     if (!confirm("Reset all configs in this session to WP4 defaults? Unsaved edits will be lost.")) return;
+    // Capture current assembly ID before reset
+    const asmIdEl = formArea.querySelector(`[data-path="${ASSEMBLY_ID_PATH}"]`);
+    const capturedAsmId = (asmIdEl && asmIdEl.value.trim() !== "")
+      ? parseInt(asmIdEl.value.trim(), 10) : null;
     try {
       const r = await fetch(`${API}/config-overrides/reset`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -373,62 +386,16 @@
       const d = await r.json();
       log(`Reset ${d.reset_files.length} file(s) to defaults.`, "success");
       await loadSchemaAndValues();
-    } catch (err) { log(`ERROR: ${err.message}`, "error"); }
-  });
-
-  btnDiscard?.addEventListener("click", async () => {
-    if (!activeFolder || !confirm(`Delete session ${activeFolder.split("/").pop()}?`)) return;
-    try {
-      const r = await fetch(`${API}/config-overrides/cleanup`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ folders: [activeFolder] })
-      });
-      const d = await r.json();
-      log(`Removed: ${d.removed.join(", ") || "(none)"}`, "success");
-      setFolder("");
-    } catch (err) { log(`ERROR: ${err.message}`, "error"); }
-  });
-
-  btnCleanAll?.addEventListener("click", async () => {
-    if (!confirm("Delete ALL sessions?")) return;
-    try {
-      const r = await fetch(`${API}/config-overrides/cleanup`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ all: true })
-      });
-      const d = await r.json();
-      log(`Removed ${d.removed.length} session(s)`, "success");
-      setFolder("");
-    } catch (err) { log(`ERROR: ${err.message}`, "error"); }
-  });
-
-  btnSave?.addEventListener("click", async () => {
-    if (!activeFolder) return;
-    const updates = collectUpdates();
-    if (!updates) { log("Fix invalid fields before saving.", "error"); return; }
-    try {
-      // Rename session folder if a new run name was entered
-      const newName = (document.getElementById("runNameFormInput")?.value || "").trim();
-      const currentName = extractRunName(activeFolder);
-      if (newName && newName !== currentName) {
-        const rr = await fetch(`${API}/config-overrides/rename`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ folder: activeFolder, run_name: newName }),
+      // Re-apply preserved assembly ID after form re-renders
+      if (capturedAsmId !== null && !isNaN(capturedAsmId)) {
+        await fetch(`${API}/config-overrides/values`, {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ folder: activeFolder, updates: { [LOSSES_CFG]: { [ASSEMBLY_ID_PATH]: capturedAsmId } } }),
         });
-        if (!rr.ok) { const rd = await rr.json(); throw new Error(rd.detail?.message || rr.status); }
-        const rd = await rr.json();
-        activeFolder = rd.new_folder;
-        localStorage.setItem(STORAGE_KEY, activeFolder);
-        sessionInfo.textContent = "Active: " + activeFolder.split("/").pop();
-        log(`Renamed to: ${activeFolder.split("/").pop()}`, "success");
+        const newAsmEl = formArea.querySelector(`[data-path="${ASSEMBLY_ID_PATH}"]`);
+        if (newAsmEl) newAsmEl.value = String(capturedAsmId);
+        log(`Assembly ID ${capturedAsmId} preserved after reset.`, "success");
       }
-      const r = await fetch(`${API}/config-overrides/values`, {
-        method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ folder: activeFolder, updates })
-      });
-      if (!r.ok) { const d = await r.json(); throw new Error(d.detail?.message || r.status); }
-      const d = await r.json();
-      log(`Saved: ${d.written.join(", ")}`, "success");
     } catch (err) { log(`ERROR: ${err.message}`, "error"); }
   });
 
@@ -441,6 +408,10 @@
         setFolder(activeFolder);
         await applyPendingAssemblyId(activeFolder);
         await loadSchemaAndValues();
+        // M3: re-apply freeze state if page was reloaded after run launched
+        if (pipeline === "live" && localStorage.getItem(FROZEN_KEY)) {
+          applyConfigFreeze();
+        }
       } else { log("Stored session no longer exists; cleared.", "error"); setFolder(""); }
     } catch (err) { log(`Could not restore: ${err.message}`, "error"); setFolder(""); }
   })();
@@ -451,13 +422,46 @@
   // ---------------------------------------------------------------------------
   // Run controls
   // ---------------------------------------------------------------------------
-  const progressFill = document.getElementById("progressFill");
+  const progressFill  = document.getElementById("progressFill");
   const progressLabel = document.getElementById("progressLabel");
-  const btnRun = document.getElementById("btnRun");
-  const btnStop = document.getElementById("btnStop");
+  const btnRun        = document.getElementById("btnRun");
+  const btnStop       = document.getElementById("btnStop");
   let progressEventSource = null;
-  let _runCompleted = false;
+  let _runCompleted   = false;
   let _reconnectTimer = null;
+
+  // ── M7: beforeunload guard ─────────────────────────────────────────────────
+  function _runUnloadGuard(e) {
+    e.preventDefault();
+    return (e.returnValue = "A WP4 run is in progress. Are you sure you want to leave?");
+  }
+
+  // Register guard immediately if run was launched in a previous page load
+  if (localStorage.getItem(RUN_KEY)) {
+    window.addEventListener("beforeunload", _runUnloadGuard);
+  }
+
+  // ── M6: Go Home from locked banner ────────────────────────────────────────
+  function clearWizardState() {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(ASM_FROZEN_KEY);
+    localStorage.removeItem(FROZEN_KEY);
+    localStorage.removeItem(RUN_KEY);
+    localStorage.removeItem(PENDING_ID_KEY);
+    localStorage.removeItem(RETURN_URL_KEY);
+    console.info("[AISCO] Wizard state cleared.");
+  }
+
+  const btnGoHome = document.getElementById("btnGoHomeFromBanner");
+  if (btnGoHome) {
+    btnGoHome.addEventListener("click", (e) => {
+      e.preventDefault();
+      window.removeEventListener("beforeunload", _runUnloadGuard);
+      fetch(`${API}/run/stop`, { method: "POST" }).catch(() => {});
+      clearWizardState();
+      window.location.href = "/";
+    });
+  }
 
   function startSSEProgress() {
     if (progressEventSource) { progressEventSource.close(); progressEventSource = null; }
@@ -480,6 +484,7 @@
       if (progressEventSource) { progressEventSource.close(); progressEventSource = null; }
       btnRun.disabled = !activeFolder; btnStop.disabled = true;
       _runCompleted = true;
+      window.removeEventListener("beforeunload", _runUnloadGuard); // M7: run finished
     });
     progressEventSource.onerror = () => {
       if (_reconnectTimer) clearTimeout(_reconnectTimer);
@@ -493,32 +498,76 @@
             progressFill.style.width = "100%";
             btnRun.disabled = !activeFolder; btnStop.disabled = true;
             _runCompleted = true;
+            window.removeEventListener("beforeunload", _runUnloadGuard); // M7: run finished
           }
         }).catch(() => {});
       }, 5000);
     };
   }
 
+  // ── M3: Save & Run button ─────────────────────────────────────────────────
   btnRun.addEventListener("click", async () => {
-    if (!activeFolder) { log("No active session \u2014 start a session above first.", "error"); return; }
+    if (!activeFolder) { log("No active session.", "error"); return; }
+    const updates = collectUpdates();
+    if (!updates) { log("Fix invalid fields before saving.", "error"); return; }
     btnRun.disabled = true; btnStop.disabled = false;
-    progressFill.style.width = "0%"; progressLabel.textContent = "Starting\u2026";
+    progressFill.style.width = "0%"; progressLabel.textContent = "Saving\u2026";
     try {
-      const r = await fetch(`${API}/run/start`, {
+      // 1. Rename session folder if a new run name was entered
+      const newName = (document.getElementById("runNameFormInput")?.value || "").trim();
+      const currentName = extractRunName(activeFolder);
+      if (newName && newName !== currentName) {
+        const rr = await fetch(`${API}/config-overrides/rename`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ folder: activeFolder, run_name: newName }),
+        });
+        if (!rr.ok) { const rd = await rr.json(); throw new Error(rd.detail?.message || rr.status); }
+        const rd = await rr.json();
+        activeFolder = rd.new_folder;
+        localStorage.setItem(STORAGE_KEY, activeFolder);
+        sessionInfo.textContent = "Active: " + activeFolder.split("/").pop();
+        log(`Renamed to: ${activeFolder.split("/").pop()}`, "success");
+      }
+      // 2. PUT config values
+      progressLabel.textContent = "Saving config\u2026";
+      const r = await fetch(`${API}/config-overrides/values`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folder: activeFolder, updates })
+      });
+      if (!r.ok) { const d = await r.json(); throw new Error(d.detail?.message || r.status); }
+      const d = await r.json();
+      log(`Config saved: ${d.written.join(", ")}`, "success");
+      // 3. Freeze — set both flags, apply UI freeze
+      localStorage.setItem(FROZEN_KEY, "1");
+      localStorage.setItem(RUN_KEY, "1");
+      applyConfigFreeze();
+      window.addEventListener("beforeunload", _runUnloadGuard); // M7
+      console.info("[AISCO] Save & Run: config frozen, launching run.");
+      // 4. Start run
+      progressLabel.textContent = "Launching\u2026";
+      const rs = await fetch(`${API}/run/start`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cfg_folder: activeFolder }),
       });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.detail?.message || r.status);
+      const rd2 = await rs.json();
+      if (!rs.ok) throw new Error(rd2.detail?.message || rs.status);
       startSSEProgress();
     } catch (err) {
+      log(`ERROR: ${err.message}`, "error");
       progressLabel.textContent = "Error: " + err.message;
-      btnRun.disabled = !activeFolder; btnStop.disabled = true;
+      // If freeze was already applied (flags set), form stays frozen.
+      // The ← Go Home banner link is the recovery path (Scenario 3).
+      // If PUT failed (before freeze), re-enable Run so the user can retry.
+      if (!localStorage.getItem(FROZEN_KEY)) {
+        btnRun.disabled = !activeFolder;
+        btnStop.disabled = true;
+      }
     }
   });
 
   btnStop.addEventListener("click", async () => {
     btnStop.disabled = true;
+    window.removeEventListener("beforeunload", _runUnloadGuard); // M7
     await fetch(`${API}/run/stop`, { method: "POST" });
     if (progressEventSource) { progressEventSource.close(); progressEventSource = null; }
     progressLabel.textContent = "Stopped.";

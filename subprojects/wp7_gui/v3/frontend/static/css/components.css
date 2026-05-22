@@ -400,3 +400,17 @@ textarea:focus {
   background: var(--theme-ok-bg);
   color: var(--theme-ok-text);
 }
+
+/* ── Wizard nav lock (M4) ───────────────────────────────────────────────────── */
+.nav-locked .sub-nav a {
+  pointer-events: none;
+  opacity: 0.40;
+  cursor: not-allowed;
+}
+
+.session-label {
+  font-size: 0.68rem;
+  color: var(--theme-muted);
+  padding: 4px 10px 8px;
+  word-break: break-all;
+}

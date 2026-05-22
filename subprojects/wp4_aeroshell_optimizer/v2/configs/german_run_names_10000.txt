@@ -6910,7 +6910,6 @@ ordentlich-bogen
 ordentlich-brenner
 ordentlich-delta
 ordentlich-denker
-ordentlich-dom
 ordentlich-drache
 ordentlich-dynamo
 ordentlich-echo
@@ -7549,7 +7548,6 @@ robust-kiesel
 robust-klang
 robust-kompass
 robust-kraft
-robust-krone
 robust-kursor
 robust-laser
 robust-linie
@@ -7898,7 +7896,6 @@ schnell-triebwerk
 schnell-turm
 schnell-vektor
 schnell-wirbel
-schubstark-adler
 schubstark-anker
 schubstark-antrieb
 schubstark-atlas
