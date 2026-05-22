@@ -350,6 +350,7 @@ def render_mesh(
     height: int = 600,
     azim_deg: float = -60.0,
     elev_deg: float = 25.0,
+    look_at_bounds: list[float] | None = None,
 ) -> np.ndarray:
     """Render mesh and inner assembly using PyVista with Order-Independent Transparency."""
     
@@ -392,11 +393,14 @@ def render_mesh(
     plotter.camera_position = 'iso' # Initial isometric view orientation
     plotter.camera.azimuth = azim_deg
     plotter.camera.elevation = elev_deg
-    plotter.reset_camera() # Automatically frames the bounding box snugly
 
-    # 6. Extract the 4K / High-Res frame buffer
-    # Note: To get a 4K frame buffer while keeping the window scale matching the panel,
-    # you can pass a scale factor to screenshot, e.g., plotter.screenshot(scale=4)
+    # LOCK VIEWPOINT POSITION:
+    if look_at_bounds is not None:
+        # Reset camera using a persistent space volume instead of the changing mesh size
+        plotter.reset_camera(bounds=look_at_bounds)
+    else:
+        plotter.reset_camera()
+
     img = plotter.screenshot(return_img=True)
     plotter.close()
     
@@ -850,6 +854,20 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         cross_radius=args.cross_radius,
     )
 
+    global_bounds = None
+    if inner_assembly is not None and len(inner_assembly.vertices) > 0:
+        # trimesh bounds format: [[min_x, min_y, min_z], [max_x, max_y, max_z]]
+        b = inner_assembly.bounds
+        # Convert to PyVista expected flat bounds structure: [minx, maxx, miny, maxy, minz, maxz]
+        global_bounds = [b[0][0], b[1][0], b[0][1], b[1][1], b[0][2], b[1][2]]
+
+        # Optional: Add a 20% spatial padding margin so the outer shell 
+        # doesn't clip through screen borders when expanding
+        padding = max(global_bounds[1]-global_bounds[0], global_bounds[3]-global_bounds[2]) * 0.2
+        global_bounds[0] -= padding; global_bounds[1] += padding
+        global_bounds[2] -= padding; global_bounds[3] += padding
+        global_bounds[4] -= padding; global_bounds[5] += padding
+
     frames: list[Any] = []
     last_valid: np.ndarray | None = None
 
@@ -875,6 +893,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             height=args.height,
             azim_deg=args.azim,
             elev_deg=args.elev,
+            look_at_bounds=global_bounds
         )
         panel = draw_latent_panel(
             args.panel_width,
