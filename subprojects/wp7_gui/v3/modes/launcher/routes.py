@@ -458,6 +458,19 @@ def api_leaderboard(current_run_id: str | None = None) -> JSONResponse:
                 current_entry = _make_entry(idx + 1, row, True)
                 break
 
+    # If an explicit current_run_id was given but isn't in the CSV at all
+    # (e.g. a SLURM/offline run), create an unranked placeholder so the
+    # frontend can still highlight which run the user is viewing.
+    if current_run_id and not current_in_top10 and current_entry is None:
+        current_entry = {
+            "rank": None,
+            "run_id": current_run_id,
+            "cruising_speed_ms": None,
+            "drag_value": None,
+            "solar_power_w": None,
+            "is_current": True,
+        }
+
     return JSONResponse(
         content={
             "entries": entries,

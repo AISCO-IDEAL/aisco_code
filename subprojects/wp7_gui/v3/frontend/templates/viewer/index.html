@@ -12,7 +12,7 @@
     style="position:relative; grid-template-rows: auto auto auto; --panel-row-h: calc(50vh - 200px);">
 
     <div class="dark-card toolbar" style="position:relative;">
-        <a href="/" class="btn secondary"><- Back to Home</a>
+        <a id="archiveBackBtn" href="/" class="btn secondary">← Back to Home</a>
                 <button class="btn secondary" id="btnEditPanels">Edit Panels</button>
                 <div style="flex:1;"></div>
                 <button class="btn" id="btnRefresh">Refresh</button>
@@ -87,6 +87,29 @@
 
     const urlParams = new URLSearchParams(window.location.search);
     const cfgSession = urlParams.get("cfg_session") || null;
+    const preSelectRunId = urlParams.get("run_id") || null;
+
+    // ── Smart back button ───────────────────────────────────────────────────────────────
+    (function () {
+        const backBtn = document.getElementById("archiveBackBtn");
+        const ref = document.referrer;
+        if (!ref) return;
+        try {
+            const refPath = new URL(ref).pathname;
+            if (refPath.includes("/launcher/leaderboard")) {
+                backBtn.textContent = "← Back to Leaderboard";
+                backBtn.href = ref;
+            } else if (refPath === "/" || refPath === "") {
+                backBtn.textContent = "← Back to Home";
+                backBtn.href = "/";
+            } else {
+                backBtn.textContent = "← Back";
+                backBtn.href = ref;
+            }
+        } catch (_) {
+            // invalid referrer URL — keep default
+        }
+    }());
 
     let runsByPath = new Map();
     let selectedRunPath = null;
@@ -435,7 +458,7 @@
                 label: "Aeroshell Mesh (PLY)",
                 ply_files: baseMeshes,
                 panel_id: "panel_mesh_shape",
-                default_visible: !!PANEL_DEFAULTS.runs.panel_mesh_shape.defaultVisible,
+                default_visible: !!PANEL_DEFAULTS.runs.panel_mesh_shape?.defaultVisible,
             });
         }
 
@@ -445,7 +468,7 @@
                 label: "Aeroshell Mesh (GLB)",
                 ply_files: baseGlbMeshes,
                 panel_id: "panel_mesh_shape_glb",
-                default_visible: !!PANEL_DEFAULTS.runs.panel_mesh_shape_glb.defaultVisible,
+                default_visible: !!PANEL_DEFAULTS.runs.panel_mesh_shape_glb?.defaultVisible,
             });
         }
 
@@ -467,7 +490,7 @@
                 groups.push({
                     ...g,
                     panel_id: "panel_cp_field",
-                    default_visible: !!PANEL_DEFAULTS.runs.panel_cp_field.defaultVisible,
+                    default_visible: !!PANEL_DEFAULTS.runs.panel_cp_field?.defaultVisible,
                 });
                 return;
             }
@@ -546,6 +569,17 @@
                 runSelectEl.value = selectedRunPath;
                 selectRun(selectedRunPath);
                 return;
+            }
+
+            // Pre-select by leaderboard run_id (short folder name, e.g. "56_226781_rose-haze")
+            if (preSelectRunId) {
+                const match = runs.find((r) => r.name === preSelectRunId);
+                if (match) {
+                    selectedRunPath = match.path;
+                    runSelectEl.value = match.path;
+                    selectRun(match.path);
+                    return;
+                }
             }
 
             if (cfgSession && runs.length === 1) {

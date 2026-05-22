@@ -140,6 +140,28 @@
         text-align: right;
         padding: 2px 4px;
     }
+
+    /* ── Clickable row hint ─────────────────────────────────────────────────── */
+    .lb-table tbody tr.lb-clickable {
+        cursor: pointer;
+    }
+
+    .lb-table tbody tr.lb-clickable:hover .lb-run-id {
+        color: var(--theme-title-2);
+    }
+
+    .lb-archive-arrow {
+        margin-left: 6px;
+        font-size: 0.7rem;
+        color: var(--theme-muted);
+        opacity: 0;
+        transition: opacity 0.12s;
+        vertical-align: middle;
+    }
+
+    .lb-table tbody tr.lb-clickable:hover .lb-archive-arrow {
+        opacity: 1;
+    }
 </style>
 {% endblock %}
 
@@ -149,7 +171,8 @@
     <!-- ── TOOLBAR ─────────────────────────────────────────────────────────── -->
     <div class="dark-card toolbar">
         <a id="backBtn" href="/launcher/output?pipeline={{ pipeline }}" class="btn secondary">← Back to Output</a>
-        <span style="flex:1;"></span>
+        <span style="flex:1; font-size:0.72rem; color:var(--theme-muted); text-align:center;">Click a row to open in Archive</span>
+        <a href="/viewer" class="btn secondary">Archive</a>
         <a href="/" class="btn">Done — Home</a>
     </div>
 
@@ -207,12 +230,18 @@
         if (rank === 1) return "🥇 1";
         if (rank === 2) return "🥈 2";
         if (rank === 3) return "🥉 3";
+        if (rank === null || rank === undefined) return "—";
         return String(rank);
     }
 
     function buildRow(entry) {
         var tr = document.createElement("tr");
         if (entry.is_current) tr.classList.add("lb-current");
+        tr.classList.add("lb-clickable");
+        tr.title = "Open in Archive";
+        tr.addEventListener("click", function () {
+            window.location.href = "/viewer?run_id=" + encodeURIComponent(entry.run_id);
+        });
 
         var tdRank = document.createElement("td");
         tdRank.className = "lb-rank " + rankClass(entry.rank);
@@ -232,6 +261,10 @@
             badge.textContent = "YOU";
             span.appendChild(badge);
         }
+        var arrow = document.createElement("span");
+        arrow.className = "lb-archive-arrow";
+        arrow.textContent = "→ Archive";
+        span.appendChild(arrow);
         tdId.appendChild(span);
         tr.appendChild(tdId);
 
@@ -280,8 +313,10 @@
             var divCell = document.createElement("td");
             divCell.colSpan = 5;
             divCell.textContent =
-                "\u00b7\u00b7\u00b7 your run \u2014 rank #" + data.current_entry.rank +
-                " of " + data.total_runs + " \u00b7\u00b7\u00b7";
+                data.current_entry.rank !== null
+                    ? "\u00b7\u00b7\u00b7 your run \u2014 rank #" + data.current_entry.rank +
+                      " of " + data.total_runs + " \u00b7\u00b7\u00b7"
+                    : "\u00b7\u00b7\u00b7 your run \u2014 not yet on leaderboard \u00b7\u00b7\u00b7";
             divRow.appendChild(divCell);
             tbody.appendChild(divRow);
             tbody.appendChild(buildRow(data.current_entry));
