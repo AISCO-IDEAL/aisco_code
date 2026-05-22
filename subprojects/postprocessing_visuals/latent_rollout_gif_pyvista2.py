@@ -659,6 +659,7 @@ def draw_epoch_label_on_frame(
     epoch_num: int | None,
     color: tuple[int, int, int] = (200, 205, 230),
     x_offset_px: int = 0,
+    box_color: tuple[int, int, int] | None = None,
 ) -> np.ndarray:
     """Overlay the epoch label at top-left directly onto an RGB frame.
 
@@ -667,6 +668,7 @@ def draw_epoch_label_on_frame(
         epoch_num: Epoch number to render; if None no text is drawn.
         color: RGB text color.
         x_offset_px: Extra x-offset in pixels for the label anchor.
+        box_color: Optional RGB fill for a background box behind the label.
     """
     if epoch_num is None:
         return frame_rgb
@@ -676,9 +678,20 @@ def draw_epoch_label_on_frame(
     h = frame_rgb.shape[0]
     scale_factor = h / 600.0
     font_epoch = _get_font(max(10, int(15 * scale_factor)))
+    anchor_x = x_offset_px + int(8 * scale_factor)
+    anchor_y = int(8 * scale_factor)
+    label = f"Epoch {epoch_num}"
+    if box_color is not None:
+        left, top, right, bottom = draw.textbbox((anchor_x, anchor_y), label, font=font_epoch)
+        pad_x = int(8 * scale_factor)
+        pad_y = int(4 * scale_factor)
+        draw.rectangle(
+            [(left - pad_x, top - pad_y), (right + pad_x, bottom + pad_y)],
+            fill=box_color,
+        )
     draw.text(
-        (x_offset_px + int(8 * scale_factor), int(8 * scale_factor)),
-        f"Epoch {epoch_num}",
+        (anchor_x, anchor_y),
+        label,
         fill=color,
         font=font_epoch,
     )
@@ -1173,6 +1186,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                                 frame_epoch_num,
                                 color=panel_colors["title"],
                                 x_offset_px=args.width,
+                                box_color=panel_colors["bg"],
                             )
                         )
                 else:
@@ -1252,6 +1266,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 frame_epoch_num,
                 color=panel_colors["title"],
                 x_offset_px=args.width,
+                box_color=panel_colors["bg"],
             )
             last_valid_epoch_base = epoch_base
         else:
