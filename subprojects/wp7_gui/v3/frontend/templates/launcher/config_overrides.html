@@ -193,7 +193,7 @@
     const nameLabelEl = document.createElement("div"); nameLabelEl.className = "param-label";
     nameLabelEl.textContent = "Run name"; nameLabelWrap.appendChild(nameLabelEl);
     const nameMetaEl = document.createElement("span"); nameMetaEl.className = "param-meta";
-    nameMetaEl.textContent = "Renames the session folder to <name>_<timestamp> on save · string";
+    nameMetaEl.textContent = "Renames the session folder · sets the wandb run name · determines the output folder name · string";
     nameLabelWrap.appendChild(nameMetaEl);
     const nameInp = document.createElement("input");
     nameInp.id = "runNameFormInput"; nameInp.className = "param-input";

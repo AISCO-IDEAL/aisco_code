@@ -183,7 +183,6 @@ def launcher_subpage(request: Request, page_key: str, pipeline: str = "live"):
 # ---------------------------------------------------------------------------
 @router.post("/api/run/start")
 def run_start(payload: RunStartRequest) -> JSONResponse:
-    _runtime_state["active_cfg_folder"] = payload.cfg_folder.strip() if payload.cfg_folder else ""
     assembly_id: int | None = None
     if payload.assembly_id not in (None, ""):
         try:
@@ -192,6 +191,8 @@ def run_start(payload: RunStartRequest) -> JSONResponse:
             raise HTTPException(status_code=400, detail={"message": "assembly_id must be an integer"}) from None
         if not _ASSEMBLY_ID_MIN <= assembly_id <= _ASSEMBLY_ID_MAX:
             raise HTTPException(status_code=400, detail={"message": f"assembly_id must be {_ASSEMBLY_ID_MIN}-{_ASSEMBLY_ID_MAX}"})
+
+    _runtime_state["active_cfg_folder"] = payload.cfg_folder.strip() if payload.cfg_folder else ""
 
     extra_args: list[str] = []
     if payload.cfg_folder:
@@ -660,7 +661,22 @@ def cfg_reset(payload: FolderRequest) -> dict[str, Any]:
 
 @router.post("/api/config-overrides/rename")
 def cfg_rename(payload: RenameRequest) -> dict[str, Any]:
-    return _config_manager.rename_session(payload.folder, payload.run_name)
+    result = _config_manager.rename_session(payload.folder, payload.run_name)
+    # Also write the sanitised name into wandb_general.name so WP4 uses it
+    # as the wandb run name (which in turn determines the output folder).
+    gen_cfg_path = Path(result["new_folder"]) / "general_config.yaml"
+    if gen_cfg_path.exists():
+        try:
+            with gen_cfg_path.open(encoding="utf-8") as f:
+                gen_cfg = yaml.safe_load(f) or {}
+            if not isinstance(gen_cfg.get("wandb_general"), dict):
+                gen_cfg["wandb_general"] = {}
+            gen_cfg["wandb_general"]["name"] = result["name"]
+            with gen_cfg_path.open("w", encoding="utf-8") as f:
+                yaml.dump(gen_cfg, f, allow_unicode=True, default_flow_style=False)
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("Could not update wandb_general.name in general_config.yaml: %s", exc)
+    return result
 
 
 @router.get("/api/config-overrides/sessions")
