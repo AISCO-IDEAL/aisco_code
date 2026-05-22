@@ -465,7 +465,8 @@ class ModelLoader:
 
         self._check_watertightness(mesh_verts, mesh_faces)
 
-        wandb.log({"cfd/Aero-resolution": mesh_verts.shape[0]}, step=self.epoch_name)
+        if wandb.run is not None:
+            wandb.log({"cfd/Aero-resolution": mesh_verts.shape[0]}, step=self.epoch_name)
 
         batch = self._reformat_data(mesh_verts, mesh_faces)
 
@@ -523,8 +524,9 @@ class ModelLoader:
             "n_input_faces": int(mesh_faces.shape[0]),
             "normals_flipped_count": int(getattr(self, "_normals_flipped_count", 0)),
         }
-        wandb.log({"cfd/Shearforce:": shearforce}, step=self.epoch_name)
-        wandb.log({"cfd/int_drag_f": int_drag_f}, step=self.epoch_name)
+        if wandb.run is not None:
+            wandb.log({"cfd/Shearforce:": shearforce}, step=self.epoch_name)
+            wandb.log({"cfd/int_drag_f": int_drag_f}, step=self.epoch_name)
         return int_drag_f + shearforce
 
     def _reformat_data(self, mesh_verts: torch.Tensor, mesh_faces: torch.Tensor) -> Batch:
@@ -543,7 +545,8 @@ class ModelLoader:
             sdf_values = self.sdf_model(face_centers + face_normals * 50).squeeze(-1)
         normals_flipped = sdf_values < 0
         self._normals_flipped_count = int(normals_flipped.sum().item())
-        wandb.log({"cfd/unhealthy normals:": self._normals_flipped_count}, step=self.epoch_name)
+        if wandb.run is not None:
+            wandb.log({"cfd/unhealthy normals:": self._normals_flipped_count}, step=self.epoch_name)
 
         num_verts = optim_verts.shape[0]
         all_idx = mesh_faces.reshape(-1)
@@ -580,4 +583,5 @@ class ModelLoader:
         v = verts.shape[0]
         f = faces.shape[0]
         d = v - f / 2
-        wandb.log({"cfd/Mesh Quality (Target:2)": d}, step=self.epoch_name)
+        if wandb.run is not None:
+            wandb.log({"cfd/Mesh Quality (Target:2)": d}, step=self.epoch_name)
