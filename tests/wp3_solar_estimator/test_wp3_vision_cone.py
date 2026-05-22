@@ -121,6 +121,56 @@ def test_vision_cone_mesh_cpu_and_glb_export(tmp_path: Path) -> None:
     assert "vision_cone" in scene.geometry
 
 
+def test_vision_cone_mesh_aligns_with_training_frame() -> None:
+    """Vision cone vertices must be in the training-domain coordinate frame.
+
+    call_assembly() shifts all assembly geometry by -(cx, cy, cz) so the outer
+    bounding box is centred at origin.  get_vision_cone_mesh() must apply the
+    same shift so the cone sits correctly relative to the inner_assembly mesh
+    in the exported GLB.
+
+    The test directly checks that get_vision_cone_mesh() produces vertices that
+    are offset by -(cx, cy, cz) compared to the raw vision_nbz tessellation.
+    """
+    import pytest  # noqa: PLC0415
+
+    from subprojects.wp2_assembler.version4.components.nbz import (  # noqa: PLC0415
+        get_training_frame_offset,
+        vision_nbz,
+    )
+    from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.custom_modes.bounding_box_mode_utils import (  # noqa: PLC0415
+        solid_to_kaolin_mesh,
+    )
+
+    assembly_id = 0
+    cx, cy, _cz = get_training_frame_offset(assembly_id)
+
+    if abs(cx) <= 1.0 and abs(cy) <= 1.0:
+        pytest.skip(f"Training frame offset ~0 for assembly {assembly_id}; test is vacuous.")
+
+    # Raw vision cone vertices: what vision_nbz produces before any frame correction.
+    raw_solid = vision_nbz(assembly_id).toCompound().Solids()[0]
+    raw_verts, _ = solid_to_kaolin_mesh(raw_solid, device="cpu")
+    raw_cx = raw_verts[:, 0].mean().item()
+    raw_cy = raw_verts[:, 1].mean().item()
+
+    # get_vision_cone_mesh must return vertices shifted by -(cx, cy, cz) relative
+    # to the raw tessellation.
+    corrected_verts, _ = get_vision_cone_mesh(assembly_id, device="cpu")
+    got_cx = corrected_verts[:, 0].mean().item()
+    got_cy = corrected_verts[:, 1].mean().item()
+
+    tol = 1.0  # mm
+    assert abs(got_cx - (raw_cx - cx)) < tol, (
+        f"Vision cone centroid x={got_cx:.2f} != expected {raw_cx - cx:.2f} "
+        f"(raw={raw_cx:.2f}, cx={cx:.2f}). "
+        "get_vision_cone_mesh() must subtract get_training_frame_offset()."
+    )
+    assert abs(got_cy - (raw_cy - cy)) < tol, (
+        f"Vision cone centroid y={got_cy:.2f} != expected {raw_cy - cy:.2f} (raw={raw_cy:.2f}, cy={cy:.2f})."
+    )
+
+
 def test_render_intersection_box_box(tmp_path: Path) -> None:
     outer_verts, outer_faces = _box_mesh(center=(0.0, 0.0, 0.0), size=4.0)
     inner_verts, inner_faces = _box_mesh(center=(0.0, 0.0, 0.0), size=1.0)

@@ -11,11 +11,11 @@ layers:
   aeroshell:
     enabled: true
     color: "#5DADE2"
-    alpha: 1.0              
+    alpha: 1.0
 
   inner_assembly:
     enabled: true
-    color: "#D2E0F2"          
+    color: "#D2E0F2"
     alpha: 1.0
     fallback_wp2: true        # load from WP2 cadquery when epoch PLY is absent
     assembly_id: 1            # WP2 assembly_map.yaml key
@@ -30,8 +30,8 @@ layers:
 
   outer_bbox:
     enabled: true
-    color: "#000000"          # red-orange
-    alpha: 1.00               # tube opacity (only used when wireframe: false)
+    color: "#00ff00"
+    alpha: 0.4               # tube opacity (only used when wireframe: false)
     wireframe: true           # true = draw edges as tubes; false = solid transparent faces
     prism_scale: 1.0          # scale factor applied to WP2 prism bounds (1.0 = exact prism)
 
@@ -92,7 +92,7 @@ background_color: "#23283E"   # AISCO dark navy
 # ---------------------------------------------------------------------------
 compute:
   resolution: 128              # marching-cubes grid resolution per axis
-  bbox_padding: 1.25          # expand each prism face by this many mm (Z floor never padded)
+  bbox_padding: 0.0          # expand each prism face by this many mm (Z floor never padded)
   prism_scale: 1.0            # scale WP2 outer-prism bounds before mesh extraction (1.0 = exact)
 
 # ---------------------------------------------------------------------------

@@ -20,7 +20,10 @@ def _resolve_device(device: str | torch.device | None = None) -> torch.device:
 
 
 def get_vision_cone_mesh(id_number: int, device: str | torch.device | None = None) -> tuple[torch.Tensor, torch.Tensor]:
-    from subprojects.wp2_assembler.version4.components.nbz import vision_nbz  # noqa: PLC0415
+    from subprojects.wp2_assembler.version4.components.nbz import (  # noqa: PLC0415
+        get_training_frame_offset,
+        vision_nbz,
+    )
     from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.custom_modes.bounding_box_mode_utils import (  # noqa: PLC0415
         solid_to_kaolin_mesh,
     )
@@ -29,6 +32,16 @@ def get_vision_cone_mesh(id_number: int, device: str | torch.device | None = Non
     vision_cone_solid = vision_cone.toCompound().Solids()[0]
     dev = _resolve_device(device)
     verts, faces = solid_to_kaolin_mesh(vision_cone_solid, device=str(dev))
+
+    # Align with the training-domain coordinate frame.
+    # call_assembly() subtracts (cx, cy, cz) from all assembly geometry so the
+    # outer bounding box is centred at origin.  Apply the same correction here
+    # so the vision cone sits correctly relative to the inner_assembly mesh in
+    # the exported GLB.
+    cx, cy, cz = get_training_frame_offset(id_number)
+    offset = torch.tensor([cx, cy, cz], dtype=verts.dtype, device=verts.device)
+    verts = verts - offset
+
     return verts, faces
 
 
