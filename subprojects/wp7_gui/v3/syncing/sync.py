@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 from pathlib import Path
 from threading import local
 
@@ -13,17 +14,17 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
 class DriveSync:
     SCOPES = ["https://www.googleapis.com/auth/drive"]  # Noqa: RUF012
-    MAX_WORKERS = 4
+    MAX_WORKERS = 25
     SMALL_UPLOAD_LIMIT = 5 * 1024 * 1024
     GOOGLE_APPS_MIME = "application/vnd.google-apps."
     DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder"
 
     def __init__(
         self,
-        local_folder=None,
-        folder_id="0AOQFbhSrPHtWUk9PVA",
-        credentials_file=None,
-        token_file=None,
+        local_folder="/home/aisco/AISCO/sync_test",
+        folder_id="1TczhM1x_W-hG1ezMUPwvoDgPTmrTOVrY",
+        credentials_file="/home/aisco/credentials.json",
+        token_file="/home/aisco/token.json",
     ):
         base = Path(__file__).resolve().parent
         self.local_folder = Path(local_folder or base / "ROLLOUT_data")
@@ -101,7 +102,7 @@ class DriveSync:
         ).execute()
         return f"Uploaded: {path}"
 
-    def collect_transfers(self, local_folder, parent_id, uploads, downloads):
+    def collect_transfers(self, local_folder, parent_id, uploads, downloads): #noqa: PLR0912
         files, folders, skipped = {}, {}, set()
         for path in local_folder.iterdir():
             if path.is_symlink() and path.is_dir():
@@ -164,4 +165,9 @@ class DriveSync:
 
 
 if __name__ == "__main__":
+    start_time = datetime.now()
+    print(f"Sync started at: {start_time}")
     DriveSync().sync()
+    end_time = datetime.now()
+    print(f"Sync finished at: {end_time}")
+    print(f"Total duration: {end_time - start_time}")
