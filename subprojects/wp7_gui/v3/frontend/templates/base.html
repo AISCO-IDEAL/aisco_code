@@ -71,6 +71,55 @@
         {% endif %}
       </aside>
 
+      <script>
+      // ── M4/M5: Sidebar nav lock + step counter + Archive passthrough ──────────
+      (function () {
+        const folder       = localStorage.getItem("aiscoOverrideFolderV3") || "";
+        const activeModeVal = "{{ active_mode | default('') }}";
+        const pipelineVal  = "{{ pipeline | default('') }}";
+        const activePageVal = "{{ active_page | default('') }}";
+
+        // M4: Lock the sub-nav while inside a live wizard session
+        if (folder && activeModeVal === "launcher" && pipelineVal === "live") {
+          const aside = document.querySelector("aside");
+          if (aside) {
+            aside.classList.add("nav-locked");
+
+            // Add step counter (N/4) to the active sub-nav link
+            const stepMap = {
+              "assembly-selection": 1,
+              "config-overrides":   2,
+              "output":             3,
+              "leaderboard":        4,
+            };
+            const stepNum = stepMap[activePageVal];
+            if (stepNum) {
+              const activeLink = aside.querySelector(".sub-nav a.active");
+              if (activeLink) { activeLink.textContent += " (" + stepNum + "/4)"; }
+            }
+
+            // Add session label beneath the sub-nav
+            const sessionLabel = document.createElement("div");
+            sessionLabel.className = "session-label";
+            sessionLabel.textContent = folder.split("/").pop();
+            const subNav = aside.querySelector(".sub-nav");
+            if (subNav) { subNav.after(sessionLabel); }
+          }
+        }
+
+        // M5: Archive link stores return URL so Archive pages can navigate back
+        if (folder) {
+          const archiveLink = document.querySelector("aside a.mode-btn[href='/viewer']");
+          if (archiveLink) {
+            archiveLink.addEventListener("click", () => {
+              localStorage.setItem("aiscoReturnUrlV3", window.location.href);
+              console.info("[AISCO] Return URL stored:", window.location.href);
+            });
+          }
+        }
+      }());
+      </script>
+
       <section class="workspace">
         <header class="workspace-top">
           <h2>{{ page_title or "WP7 GUI" }}</h2>

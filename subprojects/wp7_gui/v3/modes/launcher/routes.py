@@ -6,6 +6,8 @@ import asyncio
 import csv
 import json
 import logging
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -210,6 +212,15 @@ def run_start(payload: RunStartRequest) -> JSONResponse:
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=500, detail={"message": str(exc)}) from exc
+
+    # Spawn a background thread that writes the final epoch CSV when the run
+    # completes, ensuring coverage even when no SSE client is connected.
+    threading.Thread(
+        target=_csv_completion_writer,
+        args=(log_path, _runtime_state["active_cfg_folder"]),
+        daemon=True,
+        name="csv-completion-writer",
+    ).start()
 
     return JSONResponse({"status": "started", "pid": pid, "log": str(log_path)})
 
@@ -479,6 +490,47 @@ def api_leaderboard(current_run_id: str | None = None) -> JSONResponse:
             "effective_run_id": effective_run_id,
         }
     )
+
+
+# ---------------------------------------------------------------------------
+# Background CSV completion writer
+# ---------------------------------------------------------------------------
+
+
+def _csv_completion_writer(log_path: Path, active_cfg_folder: str) -> None:
+    """Background thread: flush final epoch CSV when the run process exits.
+
+    Polls the process manager until the run is no longer active, then performs
+    a final ``include_last=True`` flush so that the per-run and summary CSVs
+    are written even when no SSE client was connected during the run.
+
+    Args:
+        log_path: Path to the run log file being monitored.
+        active_cfg_folder: GUI config override folder path captured at run start.
+    """
+    _poll_interval = 5.0  # seconds between state checks
+    while True:
+        time.sleep(_poll_interval)
+        should_stop = False
+        try:
+            state = _process_manager.get_state()
+            # Keep polling while the current run is still the same log file
+            current_log = state.get("log_path")
+            if current_log != log_path:
+                # A newer run has started — this thread is stale; stop.
+                should_stop = True
+            elif not state["running"]:
+                # Process has exited — do the final flush and stop the thread.
+                if log_path.exists():
+                    final_text = log_path.read_text(encoding="utf-8", errors="replace")
+                    last_written = _sse_init_last_written_epoch(active_cfg_folder)
+                    _sse_flush_epoch_csv(final_text, active_cfg_folder, last_written, include_last=True)
+                should_stop = True
+        except Exception as exc:
+            LOGGER.warning("csv_completion_writer: unexpected error: %s", exc)
+            should_stop = True
+        if should_stop:
+            return
 
 
 # ---------------------------------------------------------------------------

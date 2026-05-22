@@ -89,21 +89,32 @@
     const cfgSession = urlParams.get("cfg_session") || null;
     const preSelectRunId = urlParams.get("run_id") || null;
 
-    // ── Smart back button ───────────────────────────────────────────────────────────────
+    // ── Smart back button ── M5: localStorage return URL takes priority ───────────
     (function () {
-        const backBtn = document.getElementById("archiveBackBtn");
+        const backBtn   = document.getElementById("archiveBackBtn");
+        const returnUrl = localStorage.getItem("aiscoReturnUrlV3") || "";
+        if (returnUrl) {
+            backBtn.textContent = "\u2190 Back to run";
+            backBtn.href = returnUrl;
+            backBtn.addEventListener("click", (e) => {
+                e.preventDefault();
+                localStorage.removeItem("aiscoReturnUrlV3");
+                window.location.href = returnUrl;
+            });
+            return;  // skip referrer logic
+        }
         const ref = document.referrer;
         if (!ref) return;
         try {
             const refPath = new URL(ref).pathname;
             if (refPath.includes("/launcher/leaderboard")) {
-                backBtn.textContent = "← Back to Leaderboard";
+                backBtn.textContent = "\u2190 Back to Leaderboard";
                 backBtn.href = ref;
             } else if (refPath === "/" || refPath === "") {
-                backBtn.textContent = "← Back to Home";
+                backBtn.textContent = "\u2190 Back to Home";
                 backBtn.href = "/";
             } else {
-                backBtn.textContent = "← Back";
+                backBtn.textContent = "\u2190 Back";
                 backBtn.href = ref;
             }
         } catch (_) {

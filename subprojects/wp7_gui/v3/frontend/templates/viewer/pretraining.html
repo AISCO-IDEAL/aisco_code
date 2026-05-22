@@ -5,6 +5,7 @@
 <div style="display:grid; grid-template-rows:auto 1fr; gap:12px; height:100%; min-height:0;">
 
   <div class="dark-card toolbar">
+    <a id="pretBkRunBtn" href="#" class="btn secondary" style="display:none;">&#8592; Back to run</a>
     <button class="btn" id="btnRefresh">Refresh</button>
     <span style="color:var(--muted); font-size:0.82rem;" id="info">—</span>
   </div>
@@ -49,5 +50,20 @@
 
   document.getElementById("btnRefresh").addEventListener("click", load);
   load();
+
+  // M5: Back-to-run passthrough
+  (function () {
+    const returnUrl = localStorage.getItem("aiscoReturnUrlV3") || "";
+    if (!returnUrl) return;
+    const btn = document.getElementById("pretBkRunBtn");
+    if (!btn) return;
+    btn.href = returnUrl;
+    btn.style.display = "";
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      localStorage.removeItem("aiscoReturnUrlV3");
+      window.location.href = returnUrl;
+    });
+  }());
 </script>
 {% endblock %}

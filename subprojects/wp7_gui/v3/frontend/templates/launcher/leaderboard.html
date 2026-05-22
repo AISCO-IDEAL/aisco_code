@@ -173,7 +173,7 @@
         <a id="backBtn" href="/launcher/output?pipeline={{ pipeline }}" class="btn secondary">← Back to Output</a>
         <span style="flex:1; font-size:0.72rem; color:var(--theme-muted); text-align:center;">Click a row to open in Archive</span>
         <a href="/viewer" class="btn secondary">Archive</a>
-        <a href="/" class="btn">Done — Home</a>
+        <a id="doneHomeBtn" href="/" class="btn">Done — Home</a>
     </div>
 
     <!-- ── LEADERBOARD CARD ─────────────────────────────────────────────────── -->
@@ -353,5 +353,21 @@
 
     loadLeaderboard();
     setInterval(loadLeaderboard, 1000);
+
+    // M6: Done — Home clears wizard state and stops any residual run.
+    (function () {
+      function clearWizardState() {
+        ["aiscoOverrideFolderV3", "aiscoAssemblyFrozenV3", "aiscoConfigFrozenV3",
+         "aiscoRunLaunchedV3", "aiscoPendingAssemblyIdV3", "aiscoReturnUrlV3"
+        ].forEach(k => localStorage.removeItem(k));
+        console.info("[AISCO] Wizard state cleared.");
+      }
+      document.getElementById("doneHomeBtn").addEventListener("click", (e) => {
+        e.preventDefault();
+        fetch("/launcher/api/run/stop", { method: "POST" }).catch(() => {});
+        clearWizardState();
+        window.location.href = "/";
+      });
+    }());
 </script>
 {% endblock %}
