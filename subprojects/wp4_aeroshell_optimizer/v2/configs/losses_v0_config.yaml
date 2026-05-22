@@ -14,13 +14,13 @@ general_info:
   ALM_aggressive_capu: 0.2 # has constraint decreased sufficiently threshold, only used when ALM_aggressive=True. # weights.py: self.use_alm_aggressive
 
   # ---------------------------------------------------------------------------
-  # ALM penalty formula (plan 003 — M1).
-  # "quadratic_augmented" (default): λ·c + 0.5μ·c² — standard ALM; μ term loses 1/c
-  #   amplification near convergence.
-  # "linear_augmented"              : (λ + 0.5μ)·c — GINN-style; both multipliers
-  #   retain 1/c amplification. ~25× stronger gradient at c≈0.01 vs quadratic.
-  # Both formulas are numerically equal at c=1.0 (the loss-normalisation calibration point).
-  alm_formula: "linear_augmented"   # activate GINN-style linear penalty formula
+  # ALM penalty formula.
+  # "quadratic_augmented": λ·c + 0.5μ·c² — gradient amplifies as c⁰ (constant near target).
+  # "linear_augmented"   : (λ + 0.5μ)·c  — gradient amplifies as c⁻¹ (1/c blow-up near target).
+  # "power_augmented"    : λ·c + 0.5μ·cᵖ — per-constraint exponent p (see alm_exponent below);
+  #                        gradient amplifies as c^(p-2). p=1 ≡ linear, p=2 ≡ quadratic.
+  # All formulas are numerically equal at c=1.0 (the loss-normalisation calibration point).
+  alm_formula: "quadratic_augmented"   # per-constraint penalty exponent via alm_exponent
 
   # ALM parameter mapping order:
   # - Arrays are supported and can be provided in either format:
@@ -36,8 +36,12 @@ general_info:
   initial_lambda: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial lambda(s)
   initial_mu: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial mu(s)
   initial_nu: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial nu(s)
-  alpha: 0.7  # EMA decay factor for ν update
-  gamma: 0.3  # parameter for ALM penalty update
+  # Per-constraint penalty exponent p for alm_formula="power_augmented": penalty = λ·c + 0.5·μ·cᵖ.
+  # Gradient amplification near target scales as c^(p-2): p=2 constant, p=1.5 ~1/√c, p=1 ~1/c.
+  # Keep each in [1, 2]: raise toward 2.0 if a constraint oscillates, lower toward 1.25 if it stalls.
+  alm_exponent: [1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5]  # per-constraint penalty exponent(s)
+  alpha: 0.9  # EMA decay factor for ν update
+  gamma: 0.01  # parameter for ALM penalty update
   gamma_aggressive: 1.1  # multiplicative increase factor for μ in aggressive CAPU mode
 
   enforce_projection:
@@ -45,7 +49,7 @@ general_info:
     max_iters: 10
     tolerance: 1.0e-3
 
-  cse_weight: 1.0  # Post-normalisation weight on the unified CSE objective (-v_cruise * loss_scale * grad_scale).
+  cse_weight: 3.0  # Post-normalisation weight on the unified CSE objective (-v_cruise * loss_scale * grad_scale).
   cse_prefactors:  # prefactors applied to objectives before feeding into CSE
     drag: 1.0
     solar: 1.0
@@ -115,7 +119,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     _sign: minimize
     _disabled_epochs: []
     null_loss_aero: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]  # weight=50.0 is the drag surrogate constant returned by the null loss; training weight is forced to 0.0 by TotalLossV2 (is_null_loss marker)
-    gaot_loss: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
+    gaot_loss: [0, 5.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
 
   bb_inner:
     _role: constraint
@@ -150,8 +154,8 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
 
   smoothness:
     _role: aux
-    null_loss_smoothness: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
-    smoothness_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/smoothness_loss/smoothness_v0.py"]
+    null_loss_smoothness: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    smoothness_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/smoothness_loss/smoothness_v0.py"]
 
 
   connectedness:
@@ -182,7 +186,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
   surface_area:
     _role: aux
     null_loss_surface_area: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
-    surface_loss_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/surface_area_loss/surface_loss_v0.py"]
+    surface_loss_v0: [0, 5.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/surface_area_loss/surface_loss_v0.py"]
 
   solar:
     _role: objective
@@ -195,7 +199,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     solar_v7: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
     solar_s_r: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SR.py"] # single ray
     solar_s_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SRRT.py"] # single ray ray tracing
-    solar_m_r: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MR.py"]  # multi ray
+    solar_m_r: [0, 10.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MR.py"]  # multi ray
     solar_m_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MRRT.py"]  # multi ray ray tracing
     null_loss_solar: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
 
@@ -280,7 +284,7 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
     dz: 250  #
     rand: 400  #
   random_assembly_id: "False"  # if True
-  assembly_id: 42 # used in wheel_loss and bb loss
+  assembly_id: 107 # used in wheel_loss and bb loss
   seat_type: "regulations" # "regulations" | "occupant_cell"
   render_until_blue: "False"
   sdf_device: cuda  # mesh-backed BB SDF compute device
@@ -379,7 +383,7 @@ developability_config:
   post_opt_output_dir: "postprocessed_meshes"  # Relative to storage_dir from general_config
 
 surface_area_config:
-  min_area_m2: 10   # loss is ~0 below this; penalizes area above (set to 0.0 to always penalize)
+  min_area_m2: 8   # loss is ~0 below this; penalizes area above (set to 0.0 to always penalize)
   softplus_k: 1.0     # sharpness of the softplus; ~1/k is the transition width in m²
 
 wheel_loss_config:

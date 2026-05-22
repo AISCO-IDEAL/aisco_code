@@ -50,6 +50,7 @@ class ALMManager:
             - ALM_aggressive: whether to use aggressive multiplier updates (default False).
             - ALM_aggressive_capu: cap for aggressive multiplier updates (default 0.25).
             - alm_thresholds: optional per-constraint deadzone. In standard mode: if |c_i| < threshold_i, nu/mu/lambda for that constraint are not updated (frozen). Set to null/absent for pure adaptive formula with no deadzone. Ignored in aggressive mode (which uses alm_aggressive_capu instead).
+            - alm_exponent: optional per-constraint penalty exponent p for alm_formula="power_augmented" (penalty = λ·c + 0.5·μ·cᵖ). Scalar or list; absent → 2.0.
         - device: torch.device to store the multipliers on.
         - active_constraint_categories: Comes from the TotalLossV2.constraint_category_order property. This returns which categories are considered active.
         - configured_constraint_categories: List of ALL constraints defined in the loss config. Needs to be provided so the initial ALM Parameter lists can stay set in the same length and order regardless of disabled constraints, the params will be properly remapped to the active constraints based on their categories.
@@ -121,7 +122,7 @@ class ALMManager:
         #                                   amplify at 1/c near convergence.
         # Both formulas are equal at c=1 (calibration point); linear is stronger at c<1.
         _alm_formula: str = gi.get("alm_formula", "quadratic_augmented")
-        _valid_alm_formulas = ("quadratic_augmented", "linear_augmented")
+        _valid_alm_formulas = ("quadratic_augmented", "linear_augmented", "power_augmented")
         if _alm_formula not in _valid_alm_formulas:
             raise ValueError(
                 f"alm_formula '{_alm_formula}' is not recognised. "
@@ -141,6 +142,16 @@ class ALMManager:
                 configured_constraint_categories=self.configured_constraint_categories,
             )
             self.thresholds_tensor = torch.tensor(threshold_list, device=device, dtype=torch.float32)
+
+        # Per-constraint penalty exponent for the "power_augmented" formula (penalty = λ·c + 0.5·μ·cᵖ).
+        # p=1 reproduces linear_augmented, p=2 quadratic_augmented; absent → 2.0 (quadratic-equivalent).
+        exponent_list = self._as_list(
+            gi.get("alm_exponent", 2.0),
+            self.nc,
+            active_constraint_categories=self.active_constraint_categories,
+            configured_constraint_categories=self.configured_constraint_categories,
+        )
+        self.exponents_tensor: torch.Tensor = torch.tensor(exponent_list, device=device, dtype=torch.float32)
 
         self.lamdas: torch.Tensor = torch.tensor(lam_list, device=device, dtype=torch.float32).unsqueeze(1)
         self.mus: torch.Tensor = torch.tensor(mu_list, device=device, dtype=torch.float32).unsqueeze(1)
@@ -194,7 +205,7 @@ class ALMManager:
         """
         Compute the ALM penalty independently per constraint without updating state.
 
-        Two formulas are available, selected at construction via ``alm_formula`` in the
+        Three formulas are available, selected at construction via ``alm_formula`` in the
         losses config ``general_info`` block:
 
         * ``"quadratic_augmented"`` (default, backward-compatible):
@@ -207,7 +218,12 @@ class ALMManager:
             Both λ and μ terms contribute 1/c amplification near zero; 25× stronger
             than quadratic at typical late-training values (c≈0.01, λ≈100, μ≈10000).
 
-        Both formulas are numerically equivalent at c = 1.0 (the calibration point).
+        * ``"power_augmented"``:
+            penalty = λ·c + 0.5·μ·cᵖ, with a per-constraint exponent p from ``alm_exponent``.
+            The μ-term gradient amplifies as c^(p-2): p=2 constant, p=1.5 ~1/√c, p=1 ~1/c.
+            p=1 and p=2 reproduce linear/quadratic exactly.
+
+        All formulas are numerically equivalent at c = 1.0 (the calibration point).
 
         Args:
             constraints: List of Tensors, one tensor per active constraint, in the order of active_indices.
@@ -224,6 +240,10 @@ class ALMManager:
             if self._alm_formula == "linear_augmented":
                 # (λ + 0.5μ)·c — both multipliers amplify near convergence
                 penalties[f"alm_{cname}"] = (lam_i + 0.5 * mu_i) * ci
+            elif self._alm_formula == "power_augmented":
+                # λ·c + 0.5μ·cᵖ — per-constraint exponent p; gradient amplifies as c^(p-2).
+                p_i: torch.Tensor = self.exponents_tensor[i]
+                penalties[f"alm_{cname}"] = lam_i * ci + 0.5 * mu_i * ci.clamp(min=0.0) ** p_i
             else:
                 # λ·c + 0.5μ·c² — standard quadratic ALM (default)
                 penalties[f"alm_{cname}"] = lam_i * ci + 0.5 * mu_i * ci**2
