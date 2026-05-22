@@ -49,7 +49,7 @@ import types
 import warnings
 from dataclasses import replace as dc_replace
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 # MUST be set before any OpenGL / pyrender import.
 os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
@@ -252,7 +252,7 @@ def _ensure_wp4_model_imports() -> None:
         mb_stub = types.ModuleType(mb_key)
 
         class _BaseModel(nn.Module):
-            def __init__(self, *args: Any, **kwargs: Any) -> None:  # noqa: ARG002  # stub absorbs all args
+            def __init__(self, *_args: Any, **_kwargs: Any) -> None:
                 super().__init__()
 
         mb_stub.BaseModel = _BaseModel  # type: ignore[attr-defined]
@@ -515,7 +515,7 @@ def load_inner_assembly(run_dir: Path, epoch_num: int) -> trimesh.Trimesh | None
         )
         return None
 
-    full_mesh: trimesh.Trimesh = trimesh.load(str(slot_path), force="mesh")  # type: ignore[assignment]
+    full_mesh = cast(trimesh.Trimesh, trimesh.load(str(slot_path), force="mesh"))
     components = full_mesh.split(only_watertight=False)
     components_sorted = sorted(components, key=lambda c: -len(c.vertices))
     inner_parts = [c for c in components_sorted[1:] if len(c.vertices) > 12]
@@ -537,63 +537,6 @@ def load_inner_assembly(run_dir: Path, epoch_num: int) -> trimesh.Trimesh | None
 # ---------------------------------------------------------------------------
 
 
-def load_solar_ply_layer(ply_path: Path) -> trimesh.Trimesh | None:
-    """Load a solar PLY artifact (binary_mask or shading).
-
-    Warns and returns None if the file does not exist rather than raising,
-    so callers can skip disabled layers gracefully.
-
-    Args:
-        ply_path: Path to the PLY file.
-
-    Returns:
-        Loaded trimesh.Trimesh, or None if the file is missing.
-    """
-    if not ply_path.exists():
-        warnings.warn(
-            f"[aeroshell_png] solar layer PLY not found — {ply_path}. Skipping this solar layer.",
-            UserWarning,
-            stacklevel=2,
-        )
-        return None
-    mesh = trimesh.load(str(ply_path), force="mesh")
-    if not isinstance(mesh, trimesh.Trimesh):
-        warnings.warn(
-            f"[aeroshell_png] solar PLY at {ply_path} is not a triangle mesh. Skipping.",
-            UserWarning,
-            stacklevel=2,
-        )
-        return None
-    return mesh
-
-
-def _find_solar_ply(run_dir: Path, layer_type: str, epoch_num: int, slot: int = 0) -> Path | None:
-    """Locate a solar PLY artifact for a given epoch/slot.
-
-    Tries slotted path first (epoch_dir/slot_XX_mesh.ply), then flat
-    epoch_XXXXX.ply.
-
-    Args:
-        run_dir: WP4 run directory.
-        layer_type: One of 'binary_mask' or 'shading'.
-        epoch_num: Epoch number.
-        slot: Slot index (default 0).
-
-    Returns:
-        Path to the PLY file if found, else None.
-    """
-    base = run_dir / "solar" / layer_type
-    epoch_str = f"epoch_{epoch_num:05d}"
-
-    slotted = base / epoch_str / f"slot_{slot:02d}_mesh.ply"
-    if slotted.exists():
-        return slotted
-
-    flat = base / f"{epoch_str}.ply"
-    if flat.exists():
-        return flat
-
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -606,79 +549,59 @@ def compute_solar_fields(
     faces: Tensor,
     sun_dir: Tensor,
     area_budget_mm2: float,
-    effective_irradiance_W_m2: float = 250.0,
+    cone_face_mask: Tensor | None = None,
     sigmoid_sharpness: float = 10.0,
     soft_mask_selection_threshold: float = 0.5,
 ) -> tuple[Tensor, Tensor]:
-    """Compute solar binary mask and illumination-quality (shading) for a mesh.
+    """Compute solar binary mask and illumination quality (shading) for a mesh.
 
-    Calls ``solar_loss_sr`` with a NullVisManager so no PLY files are written.
-    Both outputs are per-face float32 tensors in the original face order.
+    Mirrors the SR_SolarLoss area-budget selection.  When ``cone_face_mask`` is
+    provided, those faces receive quality=-1 before sorting so they are never
+    included in the area-budget selection (matching the training-time behaviour).
 
     Args:
         vertices: (V, 3) mesh vertices in mm, float32.
         faces: (F, 3) triangle face indices, int64 or int32.
         sun_dir: (3,) sun direction vector (normalised internally).
         area_budget_mm2: Maximum selectable solar area in mm².
-        effective_irradiance_W_m2: Electrical output per m² of aligned area.
+        cone_face_mask: (F,) bool tensor marking windshield faces to exclude.
         sigmoid_sharpness: Steepness of the soft budget boundary sigmoid.
         soft_mask_selection_threshold: Threshold for binary mask binarisation.
 
     Returns:
-        (binary_mask, shading) — both shape (F,), float32, values in [0, 1].
+        (binary_mask, shading) — both shape (F,), float32.
         binary_mask: 1.0 for faces inside the solar budget, 0.0 outside.
-        shading: cos(sun_angle) clamped to [0, 1] (face illumination quality).
+        shading: illumination quality; -1.0 for windshield faces.
     """
-    from subprojects.wp3_solar_estimator.rollout_losses.SR_SolarLoss import solar_loss_sr  # noqa: PLC0415
     from subprojects.wp3_solar_estimator.utils.rollout_utils.mesh_area_normals import (  # noqa: PLC0415
         compute_face_areas_and_normals,
     )
-    from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_vis_manager_null import (  # noqa: PLC0415
-        NullVisManager,
-    )
 
+    epsilon = 1e-12
     verts_f32 = vertices.float()
     faces_i64 = faces.long()
 
-    _, _, face_normals_unit = compute_face_areas_and_normals(verts_f32, faces_i64)
+    _, face_area_m2, face_normals_unit = compute_face_areas_and_normals(verts_f32, faces_i64)
     sun_dir_unit = sun_dir.float().to(verts_f32.device)
-    sun_dir_unit = sun_dir_unit / torch.linalg.norm(sun_dir_unit).clamp_min(1e-12)
-    illumination = (face_normals_unit * sun_dir_unit).sum(-1).clamp(0.0, 1.0)
+    sun_dir_unit = sun_dir_unit / torch.linalg.norm(sun_dir_unit).clamp_min(epsilon)
+    illumination = (face_normals_unit * sun_dir_unit).sum(-1)
 
-    # Run full SR pipeline to get soft mask (handles area budget constraint)
-    _power, _diag = solar_loss_sr(
-        verts_f32,
-        faces_i64,
-        sun_dir_unit,
-        area_budget_mm2=area_budget_mm2,
-        effective_irradiance_W_m2=effective_irradiance_W_m2,
-        sigmoid_sharpness=sigmoid_sharpness,
-        soft_mask_selection_threshold=soft_mask_selection_threshold,
-        vis_manager=NullVisManager(),
-        epoch_name=None,
-    )
+    # Windshield faces get quality=-1: sorted last, never selected (matches SR_SolarLoss)
+    if cone_face_mask is not None:
+        illumination = illumination.masked_fill(cone_face_mask.to(illumination.device), -1.0)
 
-    # Recompute soft mask locally (solar_loss_sr doesn't return it directly)
-    from subprojects.wp3_solar_estimator.utils.rollout_utils.mesh_area_normals import (  # noqa: PLC0415
-        compute_face_areas_and_normals,
-    )
-
-    _, face_area_m2, _ = compute_face_areas_and_normals(verts_f32, faces_i64)
     quality_order = torch.argsort(illumination, descending=True)
     sorted_areas = face_area_m2[quality_order]
     cumulative_area = torch.cumsum(sorted_areas.cpu(), dim=0).to(sorted_areas.device)
     area_budget_m2 = area_budget_mm2 * 1e-6
-    distance_to_budget = (area_budget_m2 - cumulative_area) / max(area_budget_m2, 1e-12)
+    distance_to_budget = (area_budget_m2 - cumulative_area) / max(area_budget_m2, epsilon)
     soft_mask_sorted = torch.sigmoid(sigmoid_sharpness * distance_to_budget)
 
-    # Restore original face order
     original_order = torch.argsort(quality_order)
     soft_mask = soft_mask_sorted[original_order]
 
     binary_mask = (soft_mask > soft_mask_selection_threshold).float()
-    shading = illumination.detach()
-
-    return binary_mask.detach(), shading
+    return binary_mask.detach(), illumination.detach()
 
 
 # ---------------------------------------------------------------------------
@@ -948,7 +871,7 @@ def _build_render_list(
         color = _get(cfg, "layers", layer_name, "color", default=default_hex)
         alpha = float(_get(cfg, "layers", layer_name, "alpha", default=default_alpha))
         return _parse_color_rgba_float(color, alpha=alpha)
-        
+
 
     # --- Outer bbox: solid face or wireframe depending on config ---
     if _layer_enabled("outer_bbox") and outer_bbox is not None:
@@ -1050,15 +973,12 @@ def _bake_solar_into_aeroshell(
         r_on, g_on, b_on = _parse_color_rgb(color_on_hex)
         color_on = np.array([r_on, g_on, b_on, int(mask_alpha * 255)], dtype=np.uint8)
         mask_np = binary_mask.detach().cpu().numpy().reshape(-1)
-        sel = mask_np > 0.5
-        if cone_np is not None:
-            sel = sel & ~cone_np  # never gold inside the windshield zone
-        face_colors[sel] = color_on
+        face_colors[mask_np > 0.5] = color_on
 
-    # Layer 3: shading colormap alpha-blended over ALL non-windshield faces.
-    # Placed on top of the gold selection so the illumination gradient is visible
-    # everywhere — including on the selected gold area.
-    # Windshield faces are excluded — they will be overridden in layer 4.
+    # Layer 3: shading colormap alpha-blended over ALL faces.
+    # Windshield faces already carry quality=-1 (set by compute_solar_fields), which
+    # the colormap renders as the minimum shade; Layer 4 overrides them with the
+    # windshield color regardless.
     shading_enabled = bool(_get(cfg, "layers", "solar_shading", "enabled", default=True))
     if shading is not None and shading_enabled and len(shading) == F:
         colormap = str(_get(cfg, "layers", "solar_shading", "colormap", default="Greys_r"))
@@ -1066,10 +986,6 @@ def _bake_solar_into_aeroshell(
         vmin = float(_get(cfg, "layers", "solar_shading", "vmin", default=0.0))
         vmax = float(_get(cfg, "layers", "solar_shading", "vmax", default=1.0))
         shading_np = shading.detach().cpu().numpy().reshape(-1).astype(np.float32)
-        # Zero out illumination on windshield faces so shading doesn't compete with layer 4
-        if cone_np is not None:
-            shading_np = shading_np.copy()
-            shading_np[cone_np] = 0.0
         rgb_map = _scalar_to_rgb_mpl(shading_np, colormap, vmin, vmax).astype(np.float32) / 255.0
         existing_rgb = face_colors[:, :3].astype(np.float32) / 255.0
         blended = rgb_map * sh_alpha + existing_rgb * (1.0 - sh_alpha)
@@ -1322,7 +1238,7 @@ def _build_offset_layer_mesh(
     return m
 
 
-def _export_glb_layers(  # noqa: PLR0912, PLR0915  # layer-builder — many branches and statements by design
+def _export_glb_layers(  # noqa: PLR0912, PLR0915
     aeroshell_mesh: trimesh.Trimesh,
     binary_mask: Tensor | None,
     shading: Tensor | None,
@@ -1396,9 +1312,6 @@ def _export_glb_layers(  # noqa: PLR0912, PLR0915  # layer-builder — many bran
         vmin = float(_get(cfg, "layers", "solar_shading", "vmin", default=0.0))
         vmax = float(_get(cfg, "layers", "solar_shading", "vmax", default=1.0))
         sh_np = shading.detach().cpu().numpy().reshape(-1).astype(np.float32)
-        if cone_np_glb is not None:
-            sh_np = sh_np.copy()
-            sh_np[cone_np_glb] = 0.0
         rgb_map = _scalar_to_rgb_mpl(sh_np, colormap, vmin, vmax)
         sh_fc = np.concatenate([rgb_map, np.full((F, 1), int(sh_alpha * 255), dtype=np.uint8)], axis=1)
         shading_mask = ~cone_np_glb if cone_np_glb is not None else None
@@ -1411,10 +1324,8 @@ def _export_glb_layers(  # noqa: PLR0912, PLR0915  # layer-builder — many bran
         color_on_hex = str(_get(cfg, "layers", "solar_binary_mask", "color_on", default="#FFD700"))
         mask_alpha = float(_get(cfg, "layers", "solar_binary_mask", "alpha", default=1.0))
         r_on, g_on, b_on = _parse_color_rgb(color_on_hex)
-        sel_fc = np.full((F, 4), [r_on, g_on, b_on, int(mask_alpha * 255)], dtype=np.uint8)
         sel_mask = binary_mask.detach().cpu().numpy().reshape(-1) > 0.5
-        if cone_np_glb is not None:
-            sel_mask = sel_mask & ~cone_np_glb
+        sel_fc = np.full((F, 4), [r_on, g_on, b_on, int(mask_alpha * 255)], dtype=np.uint8)
         glb_sel = _build_offset_layer_mesh(aeroshell_mesh, sel_mask, sel_fc, 1.0)
         if glb_sel is not None:
             scene.add_geometry(glb_sel, node_name="solar_selection")
@@ -1498,7 +1409,7 @@ def _add_legend(
 # ---------------------------------------------------------------------------
 
 
-def main() -> None:  # noqa: PLR0912, PLR0915  # orchestrator — large by design; refactoring would lose clarity
+def main() -> None:  # noqa: PLR0912, PLR0915
     """CLI entry point for aeroshell PNG rendering."""
     # ------------------------------------------------------------------
     # Step 1: pre-parse --config so YAML can supply defaults
@@ -1581,8 +1492,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # orchestrator — large by desig
     # ------------------------------------------------------------------
     aeroshell_mesh: trimesh.Trimesh | None = None
     inner_assembly: trimesh.Trimesh | None = None
-    binary_mask_tensor: Tensor | None = None
-    shading_tensor: Tensor | None = None
     run_dir_resolved: Path | None = None
     epoch_num: int | None = None
 
@@ -1627,31 +1536,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # orchestrator — large by desig
             if inner_assembly is not None and bool(_get(cfg, "layers", "inner_assembly", "full_wheels", default=True)):
                 inner_assembly = _apply_full_wheels(inner_assembly)
 
-        # Compute solar fields if any solar layer is enabled
-        solar_mask_enabled = bool(_get(cfg, "layers", "solar_binary_mask", "enabled", default=True))
-        solar_shading_enabled = bool(_get(cfg, "layers", "solar_shading", "enabled", default=True))
-        if solar_mask_enabled or solar_shading_enabled:
-            print("[aeroshell_png] computing solar fields (compute mode)…")
-            verts_t = torch.tensor(aeroshell_mesh.vertices, dtype=torch.float32, device=device)
-            faces_t = torch.tensor(aeroshell_mesh.faces, dtype=torch.long, device=device)
-            sun_dir_list = _c("solar", "sun_dir", default=[0.0, -0.5, 1.0])
-            sun_dir = torch.tensor(sun_dir_list, dtype=torch.float32, device=device)
-            area_budget = float(_c("solar", "area_budget_mm2", default=4_200_000.0))
-            irradiance = float(_c("solar", "effective_irradiance_W_m2", default=250.0))
-            sharpness = float(_c("solar", "sigmoid_sharpness", default=10.0))
-            threshold = float(_c("solar", "soft_mask_selection_threshold", default=0.5))
-
-            binary_mask_tensor, shading_tensor = compute_solar_fields(
-                vertices=verts_t,
-                faces=faces_t,
-                sun_dir=sun_dir,
-                area_budget_mm2=area_budget,
-                effective_irradiance_W_m2=irradiance,
-                sigmoid_sharpness=sharpness,
-                soft_mask_selection_threshold=threshold,
-            )
-            print(f"[aeroshell_png] solar: {int(binary_mask_tensor.sum().item())} / {len(aeroshell_mesh.faces)} faces selected")
-
     # ------------------------------------------------------------------
     # Mode B: artifact — load everything from PLYs
     # ------------------------------------------------------------------
@@ -1675,7 +1559,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # orchestrator — large by desig
                 f"ERROR: aeroshell PLY not found at {slot_path}\n"
                 "Check --run_dir and --epoch, or use --checkpoint for compute mode."
             )
-        full_mesh: trimesh.Trimesh = trimesh.load(str(slot_path), force="mesh")  # type: ignore[assignment]
+        full_mesh = cast(trimesh.Trimesh, trimesh.load(str(slot_path), force="mesh"))
         components = full_mesh.split(only_watertight=False)
         components_sorted = sorted(components, key=lambda c: -len(c.vertices))
         aeroshell_mesh = components_sorted[0] if components_sorted else None
@@ -1700,36 +1584,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # orchestrator — large by desig
         if inner_assembly is not None and bool(_get(cfg, "layers", "inner_assembly", "full_wheels", default=True)):
             inner_assembly = _apply_full_wheels(inner_assembly)
 
-        # Solar layers from pre-built PLYs
-        if bool(_get(cfg, "layers", "solar_binary_mask", "enabled", default=True)):
-            ply_path = _find_solar_ply(run_dir_resolved, "binary_mask", epoch_num, slot=args.slot)
-            if ply_path is None:
-                warnings.warn(
-                    f"[aeroshell_png] solar/binary_mask PLY not found for epoch {epoch_num}. Skipping.",
-                    UserWarning,
-                    stacklevel=1,
-                )
-            else:
-                bm_mesh = load_solar_ply_layer(ply_path)
-                if bm_mesh is not None:
-                    # Extract face scalars from vertex colors
-                    vc = np.array(bm_mesh.visual.vertex_colors)[:, 0].astype(np.float32) / 255.0
-                    binary_mask_tensor = torch.tensor(vc[bm_mesh.faces[:, 0]])
-
-        if bool(_get(cfg, "layers", "solar_shading", "enabled", default=True)):
-            ply_path = _find_solar_ply(run_dir_resolved, "shading", epoch_num, slot=args.slot)
-            if ply_path is None:
-                warnings.warn(
-                    f"[aeroshell_png] solar/shading PLY not found for epoch {epoch_num}. Skipping.",
-                    UserWarning,
-                    stacklevel=1,
-                )
-            else:
-                sh_mesh = load_solar_ply_layer(ply_path)
-                if sh_mesh is not None:
-                    vc = np.array(sh_mesh.visual.vertex_colors)[:, 0].astype(np.float32) / 255.0
-                    shading_tensor = torch.tensor(vc[sh_mesh.faces[:, 0]])
-
     assert aeroshell_mesh is not None  # guaranteed by both branches above
 
     # ------------------------------------------------------------------
@@ -1742,17 +1596,46 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # orchestrator — large by desig
         cone_mask = _compute_windshield_face_mask(aeroshell_mesh, _ws_id, device)
 
     # ------------------------------------------------------------------
+    # Solar (checkpoint mode only — artifact mode references a different mesh).
+    # cone_mask is passed so windshield faces are excluded from the area-budget
+    # selection at source, matching the training-time SR_SolarLoss behaviour.
+    # ------------------------------------------------------------------
+    binary_mask_tensor: Tensor | None = None
+    shading_tensor: Tensor | None = None
+    if args.checkpoint is not None:
+        solar_mask_enabled = bool(_get(cfg, "layers", "solar_binary_mask", "enabled", default=True))
+        solar_shading_enabled = bool(_get(cfg, "layers", "solar_shading", "enabled", default=True))
+        if solar_mask_enabled or solar_shading_enabled:
+            print("[aeroshell_png] computing solar fields…")
+            verts_t = torch.tensor(aeroshell_mesh.vertices, dtype=torch.float32, device=device)
+            faces_t = torch.tensor(aeroshell_mesh.faces, dtype=torch.long, device=device)
+            sun_dir_list = _c("solar", "sun_dir", default=[0.0, -0.5, 1.0])
+            sun_dir = torch.tensor(sun_dir_list, dtype=torch.float32, device=device)
+            area_budget = float(_c("solar", "area_budget_mm2", default=4_200_000.0))
+            sharpness = float(_c("solar", "sigmoid_sharpness", default=10.0))
+            threshold = float(_c("solar", "soft_mask_selection_threshold", default=0.5))
+            binary_mask_tensor, shading_tensor = compute_solar_fields(
+                vertices=verts_t,
+                faces=faces_t,
+                sun_dir=sun_dir,
+                area_budget_mm2=area_budget,
+                cone_face_mask=cone_mask,
+                sigmoid_sharpness=sharpness,
+                soft_mask_selection_threshold=threshold,
+            )
+            print(f"[aeroshell_png] solar: {int(binary_mask_tensor.sum().item())} / {len(aeroshell_mesh.faces)} faces selected")
+
+    # ------------------------------------------------------------------
     # Bake solar data + windshield zone into aeroshell face colors
     # ------------------------------------------------------------------
     solar_any = bool(_get(cfg, "layers", "solar_binary_mask", "enabled", default=True)) or bool(
         _get(cfg, "layers", "solar_shading", "enabled", default=True)
     )
+    aeroshell_for_render: trimesh.Trimesh = aeroshell_mesh
     if (solar_any and (binary_mask_tensor is not None or shading_tensor is not None)) or cone_mask is not None:
         aeroshell_for_render = _bake_solar_into_aeroshell(
             aeroshell_mesh, binary_mask_tensor, shading_tensor, cone_mask, cfg
         )
-    else:
-        aeroshell_for_render: trimesh.Trimesh | None = aeroshell_mesh  # type: ignore[assignment]
 
     # ------------------------------------------------------------------
     # Build outer bbox mesh from WP2 prism (shared by both modes)
