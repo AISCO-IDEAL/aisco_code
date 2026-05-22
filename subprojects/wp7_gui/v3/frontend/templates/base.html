@@ -48,8 +48,8 @@
             <a href="/launcher/optimization?pipeline=live"
               class="{% if active_page == 'optimization' %}active{% endif %}">Live Run</a>
             <a href="/launcher/output?pipeline=live"
-              class="{% if active_page == 'output' %}active{% endif %}">Output</a>
-          </nav>
+              class="{% if active_page == 'output' %}active{% endif %}">Output</a>            <a href="/launcher/leaderboard?pipeline=live"
+              class="{% if active_page == 'leaderboard' %}active{% endif %}">Leaderboard</a>          </nav>
           {% elif active_mode == 'launcher' and _pl == 'completed' %}
           <a href="/viewer/latent-explorer" class="mode-btn mode-btn--active">Completed</a>
           <nav class="sub-nav" aria-label="Completed sub-navigation">

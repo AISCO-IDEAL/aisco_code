@@ -159,6 +159,7 @@
         <span id="runNameDisplay">—</span>
 
         <button class="btn secondary" id="btnEditPanels">Edit Panels</button>
+        <a href="/launcher/leaderboard?pipeline={{ pipeline }}" id="leaderboardBtn" class="btn secondary">Leaderboard</a>
         <a href="/" class="btn">Done — Home</a>
 
         <!-- Panel editor dropdown -->
@@ -328,6 +329,7 @@
     const btnEditPanels = document.getElementById("btnEditPanels");
     const panelEditorCard = document.getElementById("panelEditorCard");
     const btnClosePanelEditor = document.getElementById("btnClosePanelEditor");
+    const leaderboardBtn = document.getElementById("leaderboardBtn");
     const priorityListPreview = document.getElementById("priorityListPreview");
     const statusLabel = document.getElementById("statusLabel");
 
@@ -810,6 +812,13 @@
         panelEditorCard.style.display = "none";
     });
 
+    // ── Leaderboard link helper ────────────────────────────────────────────────
+    function updateLeaderboardLink(runName) {
+        if (!leaderboardBtn || !runName) return;
+        leaderboardBtn.href = "/launcher/leaderboard?pipeline=" +
+            encodeURIComponent(pipeline) + "&run_id=" + encodeURIComponent(runName);
+    }
+
     // ── Artifact processing ────────────────────────────────────────────────────
     function processArtifacts(data) {
         latestArtifactData = data;
@@ -817,7 +826,10 @@
         if (data.run_dir && runNameDisplay.textContent === "\u2014") {
             var parts = String(data.run_dir).replace(/\\/g, "/").split("/");
             var name = parts.filter(Boolean).pop();
-            if (name) runNameDisplay.textContent = name;
+            if (name) {
+                runNameDisplay.textContent = name;
+                updateLeaderboardLink(name);
+            }
         }
 
         updatePrimaryGlb(data.meshes_glb || []);
@@ -856,7 +868,9 @@
             }
 
             var run = runs[0];
-            runNameDisplay.textContent = run.name || run.run_id || "\u2014";
+            var resolvedName = run.name || run.run_id || "\u2014";
+            runNameDisplay.textContent = resolvedName;
+            updateLeaderboardLink(resolvedName);
 
             var runId = run.run_id || (run.model_hash + "/" + run.name);
             var artResp = await fetch(VIEWER_API + "/runs/" + encodeURIComponent(runId) + "/artifacts");

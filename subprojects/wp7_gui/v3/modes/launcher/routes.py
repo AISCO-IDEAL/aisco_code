@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import csv
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +28,7 @@ from subprojects.wp7_gui.v3.shared.theme import build_template_theme_context
 
 router = APIRouter(prefix="/launcher", tags=["launcher"])
 _templates = Jinja2Templates(directory=str(SETTINGS.templates_dir))
+LOGGER = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Singletons shared across requests
@@ -61,6 +64,7 @@ _SUBPAGES = {
     "assembly-selection": ("Launcher — Assembly Selection", "launcher/assembly_selection.html"),
     "optimization": ("Launcher — Live Run", "launcher/optimization.html"),
     "output": ("Launcher — Output", "launcher/output.html"),
+    "leaderboard": ("Launcher — Leaderboard", "launcher/leaderboard.html"),
 }
 
 
@@ -367,6 +371,101 @@ def run_artifacts() -> dict[str, Any]:
             "message": "No run directory found yet.",
         }
     return {**list_artifacts(run_dir, storage_root), "message": "Artifacts loaded"}
+
+
+# ---------------------------------------------------------------------------
+# Leaderboard API
+# ---------------------------------------------------------------------------
+
+
+def _parse_float_cell(raw: str) -> float | None:
+    """Parse a CSV cell string to float; returns None for missing/invalid values."""
+    stripped = raw.strip()
+    if not stripped:
+        return None
+    try:
+        return float(stripped)
+    except ValueError:
+        return None
+
+
+@router.get("/api/leaderboard")
+def api_leaderboard(current_run_id: str | None = None) -> JSONResponse:
+    """Return leaderboard data from gui_runs_summary.csv.
+
+    Reads all rows, sorts by cruising_speed_ms descending, returns the top 10
+    plus the current run's entry and rank when it falls outside the top 10.
+    When no current_run_id is supplied the most recently updated run (by
+    timestamp) is used so the leaderboard always has a highlighted row.
+
+    Args:
+        current_run_id: Optional run_id to mark as the current run.  When
+            omitted the latest run by timestamp is highlighted instead.
+
+    Returns:
+        JSON with:
+        - ``entries``: list of up to 10 ranked dicts (rank, run_id, cruising_speed_ms,
+          drag_value, solar_power_w, is_current).
+        - ``current_entry``: the current run's dict with its actual rank, or null when
+          the current run is already in the top 10.
+        - ``effective_run_id``: the run_id that was ultimately highlighted.
+        - ``total_runs``: total number of runs in the CSV.
+    """
+    summary_path = SETTINGS.logs_dir / "gui_runs_summary.csv"
+    rows: list[dict[str, str]] = []
+    if summary_path.exists():
+        try:
+            with summary_path.open(newline="", encoding="utf-8") as fh:
+                rows = list(csv.DictReader(fh))
+        except OSError as exc:
+            LOGGER.warning("Could not read summary CSV %s: %s", summary_path, exc)
+
+    # Resolve which run to highlight: explicit param takes priority, otherwise
+    # fall back to the most recently updated run by timestamp.
+    effective_run_id = current_run_id
+    if not effective_run_id and rows:
+        latest = max(rows, key=lambda r: r.get("timestamp", ""))
+        effective_run_id = latest.get("run_id") or None
+
+    def _speed(row: dict[str, str]) -> float:
+        return _parse_float_cell(row.get("cruising_speed_ms", "")) or 0.0
+
+    sorted_rows = sorted(rows, key=_speed, reverse=True)
+
+    def _make_entry(rank: int, row: dict[str, str], is_current: bool) -> dict[str, Any]:
+        return {
+            "rank": rank,
+            "run_id": row.get("run_id", ""),
+            "cruising_speed_ms": _parse_float_cell(row.get("cruising_speed_ms", "")),
+            "drag_value": _parse_float_cell(row.get("drag_value", "")),
+            "solar_power_w": _parse_float_cell(row.get("solar_power_w", "")),
+            "is_current": is_current,
+        }
+
+    top10 = sorted_rows[:10]
+    current_in_top10 = False
+    entries: list[dict[str, Any]] = []
+    for idx, row in enumerate(top10):
+        is_current = effective_run_id is not None and row.get("run_id") == effective_run_id
+        if is_current:
+            current_in_top10 = True
+        entries.append(_make_entry(idx + 1, row, is_current))
+
+    current_entry: dict[str, Any] | None = None
+    if effective_run_id and not current_in_top10:
+        for idx, row in enumerate(sorted_rows):
+            if row.get("run_id") == effective_run_id:
+                current_entry = _make_entry(idx + 1, row, True)
+                break
+
+    return JSONResponse(
+        content={
+            "entries": entries,
+            "current_entry": current_entry,
+            "total_runs": len(rows),
+            "effective_run_id": effective_run_id,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
