@@ -929,7 +929,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         global_bounds[4] -= padding; global_bounds[5] += padding
 
     frames: list[Any] = []
-    last_valid: np.ndarray | None = None
+    last_valid_rgb: np.ndarray | None = None
     locked_camera_position: np.ndarray | None = None
     locked_camera_focal_point: np.ndarray | None = None
     locked_camera_view_up: np.ndarray | None = None
@@ -941,8 +941,23 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         mesh = extract_mesh(model, extractor, z0, z1, z_dim, device)
         if mesh is None or len(mesh.vertices) == 0:
             print("  → SKIP (no mesh)")
-            if last_valid is not None:
-                frames.append(last_valid)
+            if last_valid_rgb is not None:
+                panel = draw_latent_panel(
+                    args.panel_width,
+                    args.height,
+                    z_radius,
+                    Z_np,
+                    z0,
+                    z1,
+                    i,
+                    args.n_frames,
+                    colors=panel_colors,
+                    trajectory_coords=z_coords,
+                    mode=args.mode,
+                    panel_scale_radius=panel_scale_radius,
+                    show_anchors=args.show_anchors,
+                )
+                frames.append(np.concatenate([last_valid_rgb, panel], axis=1))
             continue
 
         if locked_camera_position is None:
@@ -989,7 +1004,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             Image.fromarray(composite).save("/cluster/work/fuge/AISCO/wp9/ginn_gif/DEBUG_FRAME_3.png")
             print(f"  → DEBUG_FRAME_2.png saved")
         frames.append(composite)
-        last_valid = composite
+        last_valid_rgb = rgb
         print(f"  → {len(mesh.vertices):,} verts")
 
     if not frames:
