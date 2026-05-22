@@ -150,8 +150,8 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
 
   smoothness:
     _role: aux
-    null_loss_smoothness: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
-    smoothness_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/smoothness_loss/smoothness_v0.py"]
+    null_loss_smoothness: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    smoothness_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/smoothness_loss/smoothness_v0.py"]
 
 
   connectedness:
@@ -207,7 +207,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     # Constraint-aware variants — flip compute=1 on exactly one of these to activate.
     # See field_diversity_{masked,surface,hybrid}_v0_config blocks below for cutoffs (mm) and knobs.
     field_diversity_masked_v0:  [0, 0.03, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_masked_v0.py"]
-    field_diversity_surface_v0: [1, 0.06, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_surface_v0.py"]
+    field_diversity_surface_v0: [1, 0.03, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_surface_v0.py"]
     field_diversity_hybrid_v0:  [0, 0.001, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/diversity_loss/field_diversity_hybrid_v0.py"]
 
   total: # Unused with the implementation of TotalLossV2 and main_v2.py? To Be Confirmed
@@ -224,6 +224,11 @@ domain_pts_sampling: # used in eikonal and smoothness loss  #  parent_loss.py: c
   eikonal_near_surface_fraction: 0.4
 
 
+# warmup_epochs: diversity stays inactive (no Phase-2 backward) for this many epochs of the
+# training loop, so constraints shape the population first. GINN uses start_div: 500.
+field_diversity_v0_config:
+  warmup_epochs: 0
+
 # Constraint-aware diversity variants. Cutoffs are in SDF coordinates (mm).
 # Tag convention used by the visualizer: 1=wheel, 2=bb_inner.
 field_diversity_masked_v0_config:
@@ -231,27 +236,32 @@ field_diversity_masked_v0_config:
   bb_inner_cutoff_mm: 350.0    # keep diversity samples this far from inner-prism (seat + bb-inner components) surface (mm). Inner-bb is inequality — tighter is fine.
   wheel_sampling_density: 10  # matches wheel_loss_config.sampling_density
   bb_inner_target_point_count: 20000
-  max_div: -190              # null = disabled. Set negative (e.g. -0.1) for GINN-style clamp.
+  max_div: null             # null = disabled. Set negative (e.g. -0.1) for GINN-style clamp.
   max_resample_iters: 8       # safety cap on rejection-sampling top-up loop
+  warmup_epochs: 0
 
 field_diversity_surface_v0_config:
-  wheel_cutoff_mm: 350.0
-  bb_inner_cutoff_mm: 350.0
+  wheel_cutoff_mm: 150.0
+  bb_inner_cutoff_mm: 150.0
   wheel_sampling_density: 10
-  bb_inner_target_point_count: 10000
+  bb_inner_target_point_count: 8000
   surface_resample_cadence: 1  # re-extract per-shape surface via marching cubes every N get_loss calls
-  surface_subsample_n: 4096     # max retained vertices per shape after subsample
-  mc_resolution: 50             # marching-cubes grid resolution
+  surface_subsample_n: 3500     # max retained vertices per shape after subsample
+  mc_resolution: 40           # marching-cubes grid resolution
   mc_bbox_scale: 1.0            # outer-prism bbox multiplier for the extractor
-  max_div: -60
+  # null while calibrating: with the new Leinster aggregation the loss scale changes
+  # entirely, so re-measure D on a Leinster run before setting max_div (= -D). GINN uses -0.1.
+  max_div: null
+  warmup_epochs: 0         # constraints-only warmup before diversity engages (tune; GINN start_div=500)
 
 field_diversity_hybrid_v0_config:
   w_vol: 0.1                 # weight on the masked-volumetric sub-loss
   w_surf: 0.9                # weight on the masked-surface sub-loss
   max_div: null              # clamp applied once on the weighted sum
+  warmup_epochs: 0
 
 connectedness_config:
-  eval_period: 6  # evaluate PH loss every N epochs (expensive persistent homology computation)
+  eval_period: 10  # evaluate PH loss every N epochs (expensive persistent homology computation)
   return_cached_on_skip: "False"  # if True, reuse last computed scalar on skipped epochs
   grid_dim: 3
   grid_resolution: 64
@@ -280,7 +290,7 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
     dz: 250  #
     rand: 400  #
   random_assembly_id: "False"  # if True
-  assembly_id: 42 # used in wheel_loss and bb loss
+  assembly_id: 107 # used in wheel_loss and bb loss
   seat_type: "regulations" # "regulations" | "occupant_cell"
   render_until_blue: "False"
   sdf_device: cuda  # mesh-backed BB SDF compute device
@@ -379,7 +389,7 @@ developability_config:
   post_opt_output_dir: "postprocessed_meshes"  # Relative to storage_dir from general_config
 
 surface_area_config:
-  min_area_m2: 10   # loss is ~0 below this; penalizes area above (set to 0.0 to always penalize)
+  min_area_m2: 20   # loss is ~0 below this; penalizes area above (set to 0.0 to always penalize)
   softplus_k: 1.0     # sharpness of the softplus; ~1/k is the transition width in m²
 
 wheel_loss_config:

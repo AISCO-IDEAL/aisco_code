@@ -53,17 +53,21 @@ class FieldDiversityHybridV0:
         self._w_surf: float = float(cfg.get("w_surf", 1.0))
         self._max_div: float | None = cfg.get("max_div", None)
         self._max_div = None if self._max_div is None else float(self._max_div)
+        self._warmup_epochs: int = int(cfg.get("warmup_epochs", 0))
 
-        # Build sub-losses with their max_div suppressed — clamp is applied here on the sum.
+        # Build sub-losses with their max_div and warmup suppressed — the clamp and the
+        # warmup gate are both applied here, at the hybrid level, on the combined loss.
         vol_cfg = dict(self.losses_config)
         vol_cfg["field_diversity_masked_v0_config"] = {
             **(self.losses_config.get("field_diversity_masked_v0_config", {}) or {}),
             "max_div": None,
+            "warmup_epochs": 0,
         }
         surf_cfg = dict(self.losses_config)
         surf_cfg["field_diversity_surface_v0_config"] = {
             **(self.losses_config.get("field_diversity_surface_v0_config", {}) or {}),
             "max_div": None,
+            "warmup_epochs": 0,
         }
         self._vol = FieldDiversityMaskedV0(device=self._device, loss_name=f"{loss_name}__vol", losses_config=vol_cfg)
         self._surf = FieldDiversitySurfaceV0(device=self._device, loss_name=f"{loss_name}__surf", losses_config=surf_cfg)
@@ -77,17 +81,26 @@ class FieldDiversityHybridV0:
         bbox_hi: list[float] | None = None,
         norm_order: int = 2,
         neighbor_agg_fn: str = "min",
-    ) -> Tensor:
+        epoch: int = -1,
+        leinster_temp: float | None = None,
+        leinster_q: float | None = None,
+    ) -> Tensor | None:
+        if 0 <= epoch < self._warmup_epochs:
+            return None
         if not isinstance(model, SupportsLatentConcat) or Z is None or Z.shape[0] <= 1:
             return torch.zeros((), device=self._device, dtype=torch.float32)
 
         vol = (
-            self._vol.get_loss(model, Z, num_points, bbox_lo, bbox_hi, norm_order, neighbor_agg_fn)
+            self._vol.get_loss(
+                model, Z, num_points, bbox_lo, bbox_hi, norm_order, neighbor_agg_fn, epoch, leinster_temp, leinster_q
+            )
             if self._w_vol != 0.0
             else torch.zeros((), device=Z.device, dtype=torch.float32)
         )
         surf = (
-            self._surf.get_loss(model, Z, num_points, bbox_lo, bbox_hi, norm_order, neighbor_agg_fn)
+            self._surf.get_loss(
+                model, Z, num_points, bbox_lo, bbox_hi, norm_order, neighbor_agg_fn, epoch, leinster_temp, leinster_q
+            )
             if self._w_surf != 0.0
             else torch.zeros((), device=Z.device, dtype=torch.float32)
         )

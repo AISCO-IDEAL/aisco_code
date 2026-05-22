@@ -72,6 +72,8 @@ class DiversityTrainer:
         diversity_bbox_scale_factor: float = 1.0,
         diversity_norm_order: int = 2,
         diversity_neighbor_agg_fn: str = "min",
+        diversity_leinster_temp: float = 1.0,
+        diversity_leinster_q: float = 2.0,
         force_z0_to_origin: bool = True,
         z_resample_cadence: int = 0,  # so the original pretrained spots remain
         initial_Z: Tensor | None = None,
@@ -163,6 +165,8 @@ class DiversityTrainer:
         self._diversity_bbox_hi: list[float] = [_prism["x"][1], _prism["y"][1], _prism["z"][1]]
         self._diversity_norm_order: int = diversity_norm_order
         self._diversity_neighbor_agg_fn: str = diversity_neighbor_agg_fn
+        self._diversity_leinster_temp: float = diversity_leinster_temp
+        self._diversity_leinster_q: float = diversity_leinster_q
 
         self._force_z0_to_origin: bool = force_z0_to_origin
         self._z_resample_cadence: int = max(0, int(z_resample_cadence))
@@ -1123,9 +1127,13 @@ class DiversityTrainer:
                         bbox_hi=self._diversity_bbox_hi,
                         norm_order=self._diversity_norm_order,
                         neighbor_agg_fn=self._diversity_neighbor_agg_fn,
+                        epoch=epoch,
+                        leinster_temp=self._diversity_leinster_temp,
+                        leinster_q=self._diversity_leinster_q,
                     )
-                    diversity_result.weighted.backward(retain_graph=False)
-                    _captured["diversity"] = diversity_result
+                    if diversity_result.active:
+                        diversity_result.weighted.backward(retain_graph=False)
+                        _captured["diversity"] = diversity_result
 
                 if not math.isinf(self._autoclip.get_clip_value()):
                     raw_norm = torch.nn.utils.clip_grad_norm_(self._model.parameters(), self._autoclip.get_clip_value())
@@ -1179,25 +1187,36 @@ class DiversityTrainer:
                     bbox_hi=self._diversity_bbox_hi,
                     norm_order=self._diversity_norm_order,
                     neighbor_agg_fn=self._diversity_neighbor_agg_fn,
+                    epoch=epoch,
+                    leinster_temp=self._diversity_leinster_temp,
+                    leinster_q=self._diversity_leinster_q,
                 )
-
-                trainable_params = [p for p in self._model.parameters() if p.requires_grad]
-                prev_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
-                diversity_result.weighted.backward(retain_graph=False)
-                curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
-                delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
                 diversity_grad_key = f"optimizer_gradients/{self._diversity_manager.loss_name}"
-                per_loss_gradient_log_data[diversity_grad_key] = delta_norm
 
-                if capture_conflict and self._conflict_tracker is not None:
-                    diversity_delta = torch.cat(
-                        [(c - pv).detach().cpu().flatten() for c, pv in zip(curr_grad, prev_grad, strict=False)]
-                    )
-                    conflict_vectors[self._diversity_manager.loss_name] = diversity_delta.numpy()
+                if diversity_result.active:
+                    trainable_params = [p for p in self._model.parameters() if p.requires_grad]
+                    prev_grad = [
+                        p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params
+                    ]
+                    diversity_result.weighted.backward(retain_graph=False)
+                    curr_grad = [
+                        p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params
+                    ]
+                    delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
+                    per_loss_gradient_log_data[diversity_grad_key] = delta_norm
 
-                diversity_loss_val = float(diversity_result.raw.detach().item())
-                diversity_weighted_loss_val = float(diversity_result.weighted.detach().item())
-                diversity_log_data = self._diversity_manager.build_log_data(diversity_loss_val)
+                    if capture_conflict and self._conflict_tracker is not None:
+                        diversity_delta = torch.cat(
+                            [(c - pv).detach().cpu().flatten() for c, pv in zip(curr_grad, prev_grad, strict=False)]
+                        )
+                        conflict_vectors[self._diversity_manager.loss_name] = diversity_delta.numpy()
+
+                    diversity_loss_val = float(diversity_result.raw.detach().item())
+                    diversity_weighted_loss_val = float(diversity_result.weighted.detach().item())
+                    diversity_log_data = self._diversity_manager.build_log_data(diversity_loss_val)
+                else:
+                    # Inside the diversity warmup window — no Phase-2 backward this epoch.
+                    per_loss_gradient_log_data[diversity_grad_key] = 0.0
             elif self._diversity_manager is not None and self._diversity_manager.enabled:
                 per_loss_gradient_log_data[f"optimizer_gradients/{self._diversity_manager.loss_name}"] = 0.0
 

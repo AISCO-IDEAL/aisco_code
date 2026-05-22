@@ -68,6 +68,7 @@ class FieldDiversitySurfaceV0:
         self._mc_bbox_scale: float = float(cfg.get("mc_bbox_scale", 1.0))
         self._max_div: float | None = cfg.get("max_div", None)
         self._max_div = None if self._max_div is None else float(self._max_div)
+        self._warmup_epochs: int = int(cfg.get("warmup_epochs", 0))
 
         assembly_id = int(self.losses_config.get("bb_config", {}).get("assembly_id", 1))
         wheel_cfg = self.losses_config.get("wheel_loss_config", {}) or {}
@@ -136,7 +137,14 @@ class FieldDiversitySurfaceV0:
         bbox_hi: list[float] | None = None,  # noqa: ARG002
         norm_order: int = 2,
         neighbor_agg_fn: str = "min",
-    ) -> Tensor:
+        epoch: int = -1,
+        leinster_temp: float | None = None,
+        leinster_q: float | None = None,
+    ) -> Tensor | None:
+        # Warmup: while inside the warmup window, return None so the manager skips the
+        # diversity backward entirely (constraints shape the population first).
+        if 0 <= epoch < self._warmup_epochs:
+            return None
         if not isinstance(model, SupportsLatentConcat):
             return torch.zeros((), device=self._device, dtype=torch.float32)
         if Z is None:
@@ -174,7 +182,14 @@ class FieldDiversitySurfaceV0:
             field_values.append(y_i.squeeze(-1))
 
         Y = torch.stack(field_values, dim=0)
-        return field_diversity_loss(Y, norm_order=norm_order, neighbor_agg_fn=neighbor_agg_fn, max_div=self._max_div)
+        return field_diversity_loss(
+            Y,
+            norm_order=norm_order,
+            neighbor_agg_fn=neighbor_agg_fn,
+            max_div=self._max_div,
+            leinster_temp=leinster_temp,
+            leinster_q=leinster_q,
+        )
 
     def debug_surface_points(self, model: SupportsLatentConcat, Z: Tensor) -> list[Tensor]:
         """Force-refresh and return the per-shape masked surface point clouds (for visualizer)."""

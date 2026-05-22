@@ -27,6 +27,9 @@ class FieldDiversityV0:
         self.loss_name = loss_name
         self.losses_config = losses_config or {}
 
+        cfg = self.losses_config.get("field_diversity_v0_config", {}) or {}
+        self._warmup_epochs: int = int(cfg.get("warmup_epochs", 0))
+
     def get_loss(
         self,
         model: SupportsModelContract,
@@ -36,7 +39,10 @@ class FieldDiversityV0:
         bbox_hi: list[float] | None = None,
         norm_order: int = 2,
         neighbor_agg_fn: str = "min",
-    ) -> Tensor:
+        epoch: int = -1,
+        leinster_temp: float | None = None,
+        leinster_q: float | None = None,
+    ) -> Tensor | None:
         """Compute field-diversity loss over the given latent population.
 
         Args:
@@ -53,6 +59,8 @@ class FieldDiversityV0:
         Returns:
             Scalar diversity loss tensor.
         """
+        if 0 <= epoch < self._warmup_epochs:
+            return None
         if not isinstance(model, SupportsLatentConcat):
             return torch.zeros((), device=self._device, dtype=torch.float32)
         if Z is None:
@@ -81,4 +89,10 @@ class FieldDiversityV0:
             field_values.append(y_i.squeeze(-1))
 
         Y = torch.stack(field_values, dim=0)
-        return field_diversity_loss(Y, norm_order=norm_order, neighbor_agg_fn=neighbor_agg_fn)
+        return field_diversity_loss(
+            Y,
+            norm_order=norm_order,
+            neighbor_agg_fn=neighbor_agg_fn,
+            leinster_temp=leinster_temp,
+            leinster_q=leinster_q,
+        )

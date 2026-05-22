@@ -15,6 +15,7 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.dynamic_loading import loa
 class DiversityLossComputeResult:
     raw: Tensor
     weighted: Tensor
+    active: bool = True  # False while the diversity loss is inside its warmup window
 
 
 class DiversityLossManager:
@@ -124,9 +125,12 @@ class DiversityLossManager:
         bbox_hi: list[float] | None = None,
         norm_order: int = 2,
         neighbor_agg_fn: str = "min",
+        epoch: int = -1,
+        leinster_temp: float | None = None,
+        leinster_q: float | None = None,
     ) -> DiversityLossComputeResult:
+        zero = torch.zeros((), device=Z.device, dtype=torch.float32)
         if self._loss_instance is None:
-            zero = torch.zeros((), device=Z.device, dtype=torch.float32)
             return DiversityLossComputeResult(raw=zero, weighted=zero)
 
         raw_loss = self._loss_instance.get_loss(
@@ -137,7 +141,14 @@ class DiversityLossManager:
             bbox_hi=bbox_hi,
             norm_order=norm_order,
             neighbor_agg_fn=neighbor_agg_fn,
+            epoch=epoch,
+            leinster_temp=leinster_temp,
+            leinster_q=leinster_q,
         )
+        # get_loss returns None while inside its warmup window — diversity is inactive
+        # this epoch, so the caller skips the Phase-2 backward.
+        if raw_loss is None:
+            return DiversityLossComputeResult(raw=zero, weighted=zero, active=False)
         weighted_loss = self._weight * raw_loss
         return DiversityLossComputeResult(raw=raw_loss, weighted=weighted_loss)
 
