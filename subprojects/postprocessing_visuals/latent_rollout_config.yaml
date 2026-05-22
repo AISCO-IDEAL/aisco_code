@@ -6,7 +6,7 @@
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-checkpoint: /cluster/work/fuge/AISCO/temp_/6166b4e953/39_26423_feasible-monkey/models/39_26423_feasible-monkey_epoch1400.pth
+checkpoint: /cluster/work/fuge/AISCO/wp9/for_victor/6166b4e953/93_362262_stellar-energy/models/93_362262_stellar-energy_epoch2680.pth
 output_dir: /cluster/work/fuge/AISCO/wp9/ginn_gif
 # out: null   # uncomment to override the auto-generated filename entirely
 
@@ -16,7 +16,7 @@ output_dir: /cluster/work/fuge/AISCO/wp9/ginn_gif
 n_frames: 240     # frames per traversal
 fps: 24           # GIF playback speed in frames-per-second
 radius: null      # traversal radius; null = infer from checkpoint
-mode: cross       # traversal mode: circle | spiral | line | cross
+mode: spiral       # traversal mode: circle | spiral | line | cross
 
 # ---------------------------------------------------------------------------
 # Spiral mode  (only active when mode: spiral)
@@ -55,7 +55,7 @@ panel_width: 320  # latent-map side panel width in pixels
 # Camera
 # ---------------------------------------------------------------------------
 azim: -60.0       # azimuth angle in degrees
-elev: 25.0        # elevation angle in degrees
+elev: 45.0        # elevation angle in degrees
 
 # ---------------------------------------------------------------------------
 # Colors  (hex "#RRGGBB" or integer list [R, G, B])

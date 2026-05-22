@@ -3,7 +3,7 @@ general_info:
   device: "cuda"  #  main_v2
   run_locally: "False" # automatically detected, don't touch
   verbose: "True"  #  basic_MLP_v1.py: general_config["general_info"].get("verbose", False)
-  latent_space: false  # true = use pretraining_latent.py pipeline; model must be SupportsLatentConcat (e.g. ConcatWIREV2)
+  latent_space: true  # true = use pretraining_latent.py pipeline; model must be SupportsLatentConcat (e.g. ConcatWIREV2)
 
 profiler:
   profile_mode: False
@@ -36,12 +36,12 @@ wandb_general:
   use_neural_renderer: True  # total_loss.py, main_v1_1_one_model.py: general_config["wandb_general"].get("use_neural_renderer", False)
   rendering_frequency: 1  # total_loss.py: general_config["wandb_general"].get("rendering_frequency")
   wandb_mode: online # online: syncs immediately, offline: saves locally when you run `wandb sync` in the command line
-  wandb_dir: "/tmp" # local directory for wandb run files; /tmp cleans up automatically after runs
+  wandb_dir: "/cluster/scratch/aalthaus/wandb/" # local directory for wandb run files; /tmp cleans up automatically after runs
 
 vis_manager: "v2"
 
 storage_paths: # Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
-  storage_dir: "/cluster/work/fuge/AISCO/temp_"  # DEFAULT: /cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage, used in main_v1_1_one_model.py, basic_MLP_v1.py, storage_utils.py
+  storage_dir: "/cluster/work/fuge/AISCO/wp9/for_victor"  # DEFAULT: /cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage, used in main_v1_1_one_model.py, basic_MLP_v1.py, storage_utils.py
   local_storage_dir: "./local_storage_dir" # only used for testing on local machine, not on cluster  #  main_v1_1_one_model.py, storage_utils.py (when run_locally=True)
   beast_storage_dir: "/home/aisco/Documents/alex_testing" # only used for testing on local machine, not on cluster, used when run_locally=True  # main_v1_1_one_model.py, storage_utils.py (when run_locally=True)
 
