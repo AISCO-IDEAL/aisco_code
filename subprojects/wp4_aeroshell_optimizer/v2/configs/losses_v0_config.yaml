@@ -32,14 +32,14 @@ general_info:
 
   # Again, the ooder here corresponds to the order of the constraints in this config further below
   # Constraint order: [bb_inner, bb_outer, eikonal, connectedness, developability, wheel_loss, wheel_alignment]
-  alm_thresholds: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]  # per-constraint deadzone: if |c_i| < threshold_i, nu/mu/lambda are frozen. Set to null to disable (pure adaptive formula). Ignored in aggressive mode.
-  initial_lambda: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial lambda(s)
-  initial_mu: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial mu(s)
-  initial_nu: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial nu(s)
+  alm_thresholds: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]  # per-constraint deadzone: if |c_i| < threshold_i, nu/mu/lambda are frozen. Set to null to disable (pure adaptive formula). Ignored in aggressive mode.
+  initial_lambda: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial lambda(s)
+  initial_mu: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial mu(s)
+  initial_nu: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]  # per-constraint initial nu(s)
   # Per-constraint penalty exponent p for alm_formula="power_augmented": penalty = λ·c + 0.5·μ·cᵖ.
   # Gradient amplification near target scales as c^(p-2): p=2 constant, p=1.5 ~1/√c, p=1 ~1/c.
   # Keep each in [1, 2]: raise toward 2.0 if a constraint oscillates, lower toward 1.25 if it stalls.
-  alm_exponent: [1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5]  # per-constraint penalty exponent(s)
+  alm_exponent: [1.5, 1.5, 1.5, 1.5, 1.5, 1.5]  # per-constraint penalty exponent(s)
   alpha: 0.9  # EMA decay factor for ν update
   gamma: 0.01  # parameter for ALM penalty update
   gamma_aggressive: 1.1  # multiplicative increase factor for μ in aggressive CAPU mode
@@ -97,7 +97,8 @@ general_info:
         #experimental values by aalthaus
         fixed_grad_scale: 0.1
         fixed_loss_scale: 1.0
-
+      eikonal_v1:
+        warmup_epochs: 3
 
       #wheel_loss_enforce_v2:
       #  fixed_grad_scale: 0.1
@@ -146,7 +147,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     bb_outer_v1: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/bb_loss/bb_outer_v1.py"]  # v0 + inward normal offset with separate bottom-face control (geometric safety buffer)
 
   eikonal:
-    _role: constraint
+    _role: aux
     _disabled_epochs: []
     null_loss_eikonal: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     eikonal_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/eikonal_loss/eikonal_v0.py"]
@@ -180,7 +181,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
 
   wheel_alignment:
     _role: constraint
-    _disabled_epochs: []
+    _disabled_epochs: []  # disable for first 50 epochs to let the shape find a good initial position before enforcing tangency
     wheel_alignment_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_alignment_v0.py"] # GINN-style L2-norm wheel ground-tangency constraint, independent ALM slot
 
   surface_area:
@@ -311,10 +312,10 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
   analytic_options:
     penalty: "softplus"  # "relu" (default) or "softplus"
     softplus_beta: 2.0  # only used when penalty="softplus"
-    inner_margin: 0.0  # tighten upper bound: sdf_model <= sdf_inner - inner_margin
-    outer_margin: 0.0  # tighten lower bound: sdf_outer + outer_margin <= sdf_model
-    inner_tolerance: 0.0  # GINN-style "satisfied" deadband on aggregated bb_inner L2 loss: clamp(loss - tol, 0). Stops λ from drifting once practically satisfied. 0 = disabled.
-    outer_tolerance: 50.0  # same for bb_outer
+    inner_margin: 25.0  # tighten upper bound: sdf_model <= sdf_inner - inner_margin
+    outer_margin: 25.0  # tighten lower bound: sdf_outer + outer_margin <= sdf_model
+    inner_tolerance: 10.0  # GINN-style "satisfied" deadband on aggregated bb_inner L2 loss: clamp(loss - tol, 0). Stops λ from drifting once practically satisfied. 0 = disabled.
+    outer_tolerance: 10.0  # same for bb_outer
     topk_fraction: 0.6  # (BbV5/BbV6) fraction of worst-violating points to include in loss reduction; 0.1 = top 10%
   # v4.sel nbz selection:
   nbz_selection: "both"  # "outer", or "both"
@@ -390,8 +391,8 @@ wheel_loss_config:
   sampling_density: 10 # points per edge of the rectangle
   weight_position: 0.33  # weight for position vs. gradient in the loss calculation
   threshold_huber: 10.0  # Huber loss threshold for wheel loss v3
-  threshold_relu: -0.0 # z-gradient threshold for wheel loss v3; gradients above this value are penalized linearly, while gradients below are not penalized (should be negative, e.g. -0.3 means z gradients above -0.3 are penalized, while z gradients of -0.3 or smaller are not penalized)
-  manual_z_shift: 0.0 # manual shift applied to z-coordinate of wheel loss sample points, to give more room for the SDF to find a solution
+  threshold_relu: -0. # z-gradient threshold for wheel loss v3; gradients above this value are penalized linearly, while gradients below are not penalized (should be negative, e.g. -0.3 means z gradients above -0.3 are penalized, while z gradients of -0.3 or smaller are not penalized)
+  manual_z_shift: -15.0 # manual shift applied to z-coordinate of wheel loss sample points, to give more room for the SDF to find a solution
   enforce_alignment_weight: 0.4 # wheel_loss_enforce_v2 only: weight on the ∇sdf ∥ ẑ ground-tangency aux relative to the primary projection-as-target loss
-  interface_tolerance: 10.0  # GINN-style "satisfied" deadband on aggregated wheel_interface L2 loss: clamp(loss - tol, 0). Stops λ from drifting once practically satisfied. 0 = disabled.
+  interface_tolerance: 50.0  # GINN-style "satisfied" deadband on aggregated wheel_interface L2 loss: clamp(loss - tol, 0). Stops λ from drifting once practically satisfied. 0 = disabled.
   alignment_tolerance: 0.3 # same for wheel_alignment
