@@ -45,11 +45,16 @@ ts "Launching latent_rollout_gif.py..."
 
 # Execute script with defaults 
 "$PYTHON_BIN" /cluster/home/kdiehl/AISCO_code/subprojects/postprocessing_visuals/latent_rollout_gif_pyvista2.py \
-    --checkpoint "/cluster/work/fuge/AISCO/pretraining/latent_pretraining/005000_ConcatWIREV5_b08f8ced4e/pretrained_latent_b08f8ced4e.pth" \
+    --checkpoint "/cluster/work/fuge/AISCO/wp9/for_victor/6166b4e953/109_398564_good-paper/models/109_398564_good-paper_epoch2000.pth" \
     --n_frames 240 \
-    --resolution 40 \
+    --resolution 60 \
     --fps 24 \
-    --mode circle \
-    --show_assembly
+    --mode spiral \
+    --show_assembly \
+    --height 2160 \
+    --width 2560 \
+    --panel_width 1280 \
+    --no-show-anchors \
+    --out /cluster/work/fuge/AISCO/wp9/4k/good-paper_epoch2000.gif 
 
 ts "Job finished successfully."

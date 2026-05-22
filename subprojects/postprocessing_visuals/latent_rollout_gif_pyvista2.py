@@ -351,15 +351,18 @@ def render_mesh(
     azim_deg: float = -60.0,
     elev_deg: float = 25.0,
     look_at_bounds: list[float] | None = None,
+    camera_position: np.ndarray | None = None,
+    camera_focal_point: np.ndarray | None = None,
+    camera_view_up: np.ndarray | None = None,
 ) -> np.ndarray:
     """Render mesh and inner assembly using PyVista with Order-Independent Transparency."""
-    
+    print("!!!!width", width, "height", height, "!!!!")
     # 1. Initialize offscreen plotter (removing the multi_samples keyword argument)
     plotter = pv.Plotter(off_screen=True, window_size=[width, height])
     plotter.background_color = bg_color[:3]
 
     # Configure Anti-Aliasing explicitly via its method instead of the constructor
-    plotter.enable_anti_aliasing(aa_type='msaa', multi_samples=8)
+    plotter.enable_anti_aliasing(aa_type='fxaa')
 
     # 2. Enable Depth Peeling to fix transparency artifacts & Z-fighting
     plotter.enable_depth_peeling(number_of_peels=4, occlusion_ratio=0.0)
@@ -372,7 +375,9 @@ def render_mesh(
             color=assembly_color[:3], 
             ambient=0.3, 
             diffuse=0.7, 
-            smooth_shading=True
+            smooth_shading=True, 
+            specular=0.2,          # Slightly raise specular reflection highlight
+            specular_power=50,     # Tighten shine focus to accentuate smooth curvature
         )
 
     # 4. Add Aeroshell (Semi-Transparent)
@@ -387,24 +392,57 @@ def render_mesh(
         smooth_shading=True
     )
 
-    # 5. Position Camera (PyVista simplifies this vs Pyrender's 4x4 matrix)
-    # PyVista uses: [camera_position, camera_focus/centroid, view_up]
-    centroid = mesh.vertices.mean(axis=0)
-    plotter.camera_position = 'iso' # Initial isometric view orientation
-    plotter.camera.azimuth = azim_deg
-    plotter.camera.elevation = elev_deg
-
-    # LOCK VIEWPOINT POSITION:
-    if look_at_bounds is not None:
-        # Reset camera using a persistent space volume instead of the changing mesh size
-        plotter.reset_camera(bounds=look_at_bounds)
+    # 5. Position camera
+    if camera_position is not None and camera_focal_point is not None and camera_view_up is not None:
+        # Match camera lock behavior in latent_rollout_gif.py by reusing one fixed pose.
+        plotter.camera.position = tuple(float(v) for v in camera_position)
+        plotter.camera.focal_point = tuple(float(v) for v in camera_focal_point)
+        plotter.camera.up = tuple(float(v) for v in camera_view_up)
+        plotter.reset_camera_clipping_range()
     else:
-        plotter.reset_camera()
+        plotter.camera_position = 'iso'  # Initial isometric view orientation
+        plotter.camera.azimuth = azim_deg
+        plotter.camera.elevation = elev_deg
+
+        if look_at_bounds is not None:
+            plotter.reset_camera(bounds=look_at_bounds)
+        else:
+            plotter.reset_camera()
 
     img = plotter.screenshot(return_img=True)
     plotter.close()
-    
-    return img[:, :, :3] # (H, W, 3) uint8 RGB
+
+    return img[:, :, :3]  # (H, W, 3) uint8 RGB
+
+
+def compute_camera_pose(
+    mesh: trimesh.Trimesh,
+    azim_deg: float = -60.0,
+    elev_deg: float = 25.0,
+    distance_mult: float = 1.6,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Compute camera position/focus/up using the same logic as latent_rollout_gif.py."""
+    vertices = mesh.vertices
+    centroid = vertices.mean(axis=0)
+    diag = float(np.linalg.norm(vertices.max(axis=0) - vertices.min(axis=0)))
+    dist = diag * distance_mult
+
+    azim = np.radians(azim_deg)
+    elev = np.radians(elev_deg)
+    cam_pos = centroid + dist * np.array([np.cos(elev) * np.cos(azim), np.cos(elev) * np.sin(azim), np.sin(elev)])
+
+    forward = centroid - cam_pos
+    forward /= np.linalg.norm(forward)
+    world_up = np.array([0.0, 0.0, 1.0])
+    right = np.cross(forward, world_up)
+    if np.linalg.norm(right) < 1e-6:
+        world_up = np.array([0.0, 1.0, 0.0])
+        right = np.cross(forward, world_up)
+    right /= np.linalg.norm(right)
+    up = np.cross(right, forward)
+    up /= np.linalg.norm(up)
+
+    return cam_pos, centroid, up
 
 # ---------------------------------------------------------------------------
 # 2D latent space panel
@@ -414,14 +452,17 @@ _FONT_PATHS = [
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    "/etc/X11/fonts/TTF/DejaVuSans.ttf", 
 ]
 
 
 def _get_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     for fp in _FONT_PATHS:
         try:
+            print(f"!!!Trying font: {fp}")
             return ImageFont.truetype(fp, size)
         except Exception:
+            print(f"!!!Trying font failed: {fp}")
             pass
     return ImageFont.load_default()
 
@@ -439,6 +480,7 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
     trajectory_coords: list[tuple[float, float]] | None = None,
     mode: str = "circle",
     panel_scale_radius: float | None = None,
+    show_anchors: bool = True,
 ) -> np.ndarray:
     """Return (H, W, 3) uint8 side panel showing the 2D latent map."""
     _C = colors or {}
@@ -459,6 +501,15 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
     draw = ImageDraw.Draw(img)
 
     cx, cy = w // 2, h // 2
+
+    # --- NEW: Compute dynamic scaling factor relative to baseline height of 600px ---
+    scale_factor = h / 600.0
+    
+    # Scale line widths
+    lw_grid = max(1, int(1 * scale_factor))
+    lw_axis = max(1, int(1 * scale_factor))
+    lw_thick = max(1, int(2 * scale_factor))
+
     # Map the reference radius x 1.5 to 40% of the panel's half-width
     _scale_ref = panel_scale_radius if panel_scale_radius is not None else z_radius
     scale = (min(w, h) * 0.40) / max(_scale_ref * 1.5, 1e-6)
@@ -467,8 +518,8 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
         return cx + int(z0v * scale), cy - int(z1v * scale)
 
     # Axis lines
-    draw.line([(12, cy), (w - 12, cy)], fill=axis_col, width=1)
-    draw.line([(cx, 12), (cx, h - 12)], fill=axis_col, width=1)
+    draw.line([(12, cy), (w - 12, cy)], fill=axis_col, width=lw_axis)
+    draw.line([(cx, 12), (cx, h - 12)], fill=axis_col, width=lw_axis)
 
     # Training manifold circle (shown as reference boundary in circle/spiral modes)
     r_px = int(z_radius * scale)
@@ -476,18 +527,19 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
         draw.ellipse(
             [(cx - r_px, cy - r_px), (cx + r_px, cy + r_px)],
             outline=circle_col,
-            width=1,
+            width=lw_axis,
         )
 
     # Pretrained anchor dots
-    if Z_pretrained is not None:
-        font_sm = _get_font(11)
+    # Pretrained anchor dots (Proportionally Scaled)
+    if show_anchors and Z_pretrained is not None:
+        font_sm = _get_font(max(8, int(11 * scale_factor)))
         for i, (z0a, z1a) in enumerate(Z_pretrained):
             px, py = z2px(float(z0a), float(z1a))
-            r = 4
+            r = max(2, int(4 * scale_factor))
+            offset = max(3, int(7 * scale_factor))
             draw.ellipse([(px - r, py - r), (px + r, py + r)], fill=anchor_col)
-            draw.text((px + 7, py - 7), str(i), fill=anchor_lbl_col, font=font_sm)
-
+            draw.text((px + offset, py - offset), str(i), fill=anchor_lbl_col, font=font_sm)
     # Trajectory / progress visualization
     if mode == "circle":
         # Progress arc for circle traversal
@@ -499,52 +551,53 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
                     start=-90,
                     end=arc_end_deg,
                     fill=progress_col,
-                    width=2,
+                    width=lw_thick,
                 )
     elif trajectory_coords is not None and len(trajectory_coords) > 1:
         full_pts = [z2px(zc0, zc1) for zc0, zc1 in trajectory_coords]
         # Full path in dim color
-        draw.line(full_pts, fill=circle_col, width=1)
+        draw.line(full_pts, fill=circle_col, width=lw_grid)
         # Traversed portion in highlight color
         traversed = full_pts[: frame_idx + 1]
         if len(traversed) >= 2:
-            draw.line(traversed, fill=progress_col, width=2)
+            draw.line(traversed, fill=progress_col, width=lw_thick)
         # Endpoint markers for line mode
         if mode == "line":
-            ep_r = 5
+            ep_r = max(2, int(5 * scale_factor))
             for ep_z0, ep_z1 in (trajectory_coords[0], trajectory_coords[-1]):
                 ex, ey = z2px(ep_z0, ep_z1)
-                draw.ellipse([(ex - ep_r, ey - ep_r), (ex + ep_r, ey + ep_r)], outline=circle_col, width=2)
+                draw.ellipse([(ex - ep_r, ey - ep_r), (ex + ep_r, ey + ep_r)], outline=circle_col, width=lw_thick)
         # Corner markers for cross mode
         if mode == "cross":
-            ep_r = 5
+            ep_r = max(2, int(5 * scale_factor))
             # Draw dots at the 4 unique corners only (skip center and duplicate start/end)
             seen: set[tuple[int, int]] = set()
             for ep_z0, ep_z1 in trajectory_coords:
                 ep = z2px(ep_z0, ep_z1)
                 if ep not in seen and abs(ep_z0) > 1e-6 and abs(ep_z1) > 1e-6:
-                    draw.ellipse([(ep[0] - ep_r, ep[1] - ep_r), (ep[0] + ep_r, ep[1] + ep_r)], outline=circle_col, width=2)
+                    draw.ellipse([(ep[0] - ep_r, ep[1] - ep_r), (ep[0] + ep_r, ep[1] + ep_r)], outline=circle_col, width=lw_thick)
                     seen.add(ep)
 
-    # Current cursor (bright dot)
+    # Current cursor (bright dot - Proportionally Scaled)
     px, py = z2px(z0, z1)
-    r = 7
-    draw.ellipse([(px - r, py - r), (px + r, py + r)], fill=cursor_col, outline=cursor_out_col, width=2)
+    r = max(3, int(7 * scale_factor))
+    draw.ellipse([(px - r, py - r), (px + r, py + r)], fill=cursor_col, outline=cursor_out_col, width=lw_thick)
 
-    # Axis labels
-    font_label = _get_font(13)
-    font_info = _get_font(11)
-    draw.text((w - 26, cy - 16), "z₀", fill=axis_lbl_col, font=font_label)
-    draw.text((cx + 5, 8), "z₁", fill=axis_lbl_col, font=font_label)
+    # Axis labels & Info Text (Proportionally Scaled Positions & Sizes)
+    font_label = ImageFont.truetype("DejaVuSans-Bold.ttf", max(9, int(13 * scale_factor)), layout_engine=ImageFont.Layout.BASIC)    
+    font_info = _get_font(max(8, int(11 * scale_factor)))
+    font_title = _get_font(max(9, int(12 * scale_factor)))
+
+    draw.text((w - int(26 * scale_factor), cy - int(16 * scale_factor)), "z₀", fill=axis_lbl_col, font=font_label)
+    draw.text((cx + int(5 * scale_factor), int(8 * scale_factor)), "z₁", fill=axis_lbl_col, font=font_label)
 
     # Coordinates + frame counter
-    draw.text((8, h - 36), f"z = [{z0:+.3f}, {z1:+.3f}]", fill=coord_text_col, font=font_info)
-    draw.text((8, h - 20), f"frame {frame_idx + 1} / {n_frames}", fill=frame_text_col, font=font_info)
+    draw.text((int(8 * scale_factor), h - int(36 * scale_factor)), f"z = [{z0:+.3f}, {z1:+.3f}]", fill=coord_text_col, font=font_info)
+    draw.text((int(8 * scale_factor), h - int(20 * scale_factor)), f"frame {frame_idx + 1} / {n_frames}", fill=frame_text_col, font=font_info)
 
     # Panel title
-    font_title = _get_font(12)
     _mode_label = {"circle": "Circle", "spiral": "Spiral", "line": "Line", "cross": "Cross"}.get(mode, mode.capitalize())
-    draw.text((8, 8), f"Latent Space · {_mode_label}", fill=title_col, font=font_title)
+    draw.text((int(8 * scale_factor), int(8 * scale_factor)), f"Latent Space · {_mode_label}", fill=title_col, font=font_title)
 
     return np.asarray(img)
 
@@ -590,6 +643,7 @@ def _build_trajectory(  # noqa: PLR0912  # supports 4 traversal modes; branches 
         return coords, z_radius
 
     if mode == "spiral":
+        print(f"!!!Building spiral trajectory with {n_frames} frames, radius {z_radius}, turns {spiral_turns}")
         r_end = spiral_radius_end if spiral_radius_end is not None else z_radius
         coords = []
         for i in range(n_frames):
@@ -706,8 +760,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     parser.add_argument("--radius", type=float, default=_c("radius"), help="Traversal radius (default: infer from checkpoint)")
     parser.add_argument("--fps", type=int, default=_c("fps", 24), help="GIF playback speed")
     parser.add_argument("--device", default=_dev_default, help="Compute device: cuda | cpu | auto")
-    parser.add_argument("--width", type=int, default=_c("width", 960), help="3D render width in px")
-    parser.add_argument("--height", type=int, default=_c("height", 600), help="3D render height in px")
+    parser.add_argument("--width", type=int, default=_c("width", 4096), help="3D render width in px")
+    parser.add_argument("--height", type=int, default=_c("height", 2160), help="3D render height in px")
     parser.add_argument("--panel_width", type=int, default=_c("panel_width", 320), help="Latent-map panel width in px")
     parser.add_argument("--azim", type=float, default=_c("azim", -60.0), help="Camera azimuth in degrees")
     parser.add_argument("--elev", type=float, default=_c("elev", 25.0), help="Camera elevation in degrees")
@@ -729,6 +783,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         help="Render inner assembly inside the aeroshell",
     )
     parser.add_argument("--assembly_color", default=_c("assembly_color", "#F39C12"), help="Inner assembly color (hex)")
+    parser.add_argument(
+        "--show-anchors",
+        dest="show_anchors",
+        action=argparse.BooleanOptionalAction,
+        default=bool(_c("show_anchors", True)),
+        help="Show/hide pretrained anchor dots in the latent-space panel",
+    )
     # Traversal mode
     parser.add_argument(
         "--mode",
@@ -856,20 +917,22 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
 
     global_bounds = None
     if inner_assembly is not None and len(inner_assembly.vertices) > 0:
-        # trimesh bounds format: [[min_x, min_y, min_z], [max_x, max_y, max_z]]
         b = inner_assembly.bounds
-        # Convert to PyVista expected flat bounds structure: [minx, maxx, miny, maxy, minz, maxz]
         global_bounds = [b[0][0], b[1][0], b[0][1], b[1][1], b[0][2], b[1][2]]
 
-        # Optional: Add a 20% spatial padding margin so the outer shell 
-        # doesn't clip through screen borders when expanding
-        padding = max(global_bounds[1]-global_bounds[0], global_bounds[3]-global_bounds[2]) * 0.2
+        # INCREASE MARGIN PAD TO 25% TO COMPENSATE FOR CORNER CLIPPING AT ULTRA-HD WIDESCREEN RENDER DISTANCES
+        padding = (
+            max(global_bounds[1] - global_bounds[0], global_bounds[3] - global_bounds[2]) * 0.25
+        )
         global_bounds[0] -= padding; global_bounds[1] += padding
         global_bounds[2] -= padding; global_bounds[3] += padding
         global_bounds[4] -= padding; global_bounds[5] += padding
 
     frames: list[Any] = []
     last_valid: np.ndarray | None = None
+    locked_camera_position: np.ndarray | None = None
+    locked_camera_focal_point: np.ndarray | None = None
+    locked_camera_view_up: np.ndarray | None = None
 
     print("\nGenerating frames...")
     for i, (z0, z1) in enumerate(z_coords):
@@ -882,6 +945,14 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 frames.append(last_valid)
             continue
 
+        if locked_camera_position is None:
+            locked_camera_position, locked_camera_focal_point, locked_camera_view_up = compute_camera_pose(
+                mesh,
+                azim_deg=args.azim,
+                elev_deg=args.elev,
+            )
+            print("  [camera locked]", end="")
+
         rgb = render_mesh(
             mesh=mesh,
             bg_color=render_bg_rgba,
@@ -893,7 +964,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             height=args.height,
             azim_deg=args.azim,
             elev_deg=args.elev,
-            look_at_bounds=global_bounds
+            look_at_bounds=global_bounds,
+            camera_position=locked_camera_position,
+            camera_focal_point=locked_camera_focal_point,
+            camera_view_up=locked_camera_view_up,
         )
         panel = draw_latent_panel(
             args.panel_width,
@@ -908,8 +982,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             trajectory_coords=z_coords,
             mode=args.mode,
             panel_scale_radius=panel_scale_radius,
+            show_anchors=args.show_anchors,
         )
         composite = np.concatenate([rgb, panel], axis=1)  # (H, W+panel, 3)
+        if i == 0:
+            Image.fromarray(composite).save("/cluster/work/fuge/AISCO/wp9/ginn_gif/DEBUG_FRAME_3.png")
+            print(f"  → DEBUG_FRAME_2.png saved")
         frames.append(composite)
         last_valid = composite
         print(f"  → {len(mesh.vertices):,} verts")
@@ -919,9 +997,25 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
 
     out_path = Path(args.out)
     print(f"\nWriting {len(frames)} frames \u2192 {out_path}  (fps={args.fps})")
-    imageio.mimsave(str(out_path), frames, fps=args.fps, loop=0)
-    print(f"Done.  GIF saved to: {out_path}")
-
+    if out_path.suffix.lower() == ".mp4":
+        # Uses standard system video codecs for pixel-perfect compression
+        imageio.mimsave(out_path, frames, fps=args.fps, quality=9, macro_block_size=16)
+        print(f"Done.  MP4 saved to: {out_path}")
+    else:
+        # Forces a dedicated local palette optimization per frame instead of a global blur
+        out_path = Path(args.out)
+        print(f"\nWriting {len(frames)} frames → {out_path}  (fps={args.fps})")
+        
+        # Force imageio to calculate an optimized palette per frame rather than a single blurry global palette
+        imageio.mimsave(
+            out_path, 
+            frames, 
+            fps=args.fps, 
+            loop=0,
+            quantizer='nq',  # NeuQuant high-quality neural network quantizer
+            palettesize=256
+        )
+        print(f"Done.  GIF saved to: {out_path}")
 
 if __name__ == "__main__":
     main()
