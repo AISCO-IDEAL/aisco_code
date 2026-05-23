@@ -1541,17 +1541,16 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             cone_face_mask = _compute_windshield_face_mask(mesh, args.windshield_assembly_id, device)
         if args.show_windshield and cone_face_mask is not None:
             cone_np = cone_face_mask.detach().cpu().numpy()
-            if float(args.windshield_alpha) <= 0.0:
-                cutout_mesh = _cutout_faces_from_mesh(mesh, cone_np)
-                if cutout_mesh is not None:
-                    mesh_for_render = cutout_mesh
-                else:
-                    warnings.warn(
-                        "[latent_rollout] windshield cutout produced empty mesh; using original aeroshell.",
-                        UserWarning,
-                        stacklevel=2,
-                    )
+            cutout_mesh = _cutout_faces_from_mesh(mesh, cone_np)
+            if cutout_mesh is not None:
+                mesh_for_render = cutout_mesh
             else:
+                warnings.warn(
+                    "[latent_rollout] windshield cutout produced empty mesh; using original aeroshell.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            if float(args.windshield_alpha) > 0.0:
                 windshield_mesh = _build_face_overlay_mesh(
                     mesh,
                     cone_np,
