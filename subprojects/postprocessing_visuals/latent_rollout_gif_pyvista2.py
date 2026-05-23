@@ -44,7 +44,6 @@ import csv
 
 import imageio
 import numpy as np
-import pyrender
 import pyvista as pv
 import torch
 import trimesh
@@ -76,6 +75,9 @@ def _parse_color_rgba_float(c: str | list, alpha: float = 1.0) -> tuple[float, f
 # ---------------------------------------------------------------------------
 
 _DEFAULT_OUTER_PRISM_SCALE = 1.3
+_PRISM_X: tuple[float, float] = (-2900.0, 2900.0)
+_PRISM_Y: tuple[float, float] = (-1150.0, 1150.0)
+_PRISM_Z: tuple[float, float] = (0.0, 1650.0)
 
 # ---------------------------------------------------------------------------
 # Model loading
@@ -267,10 +269,7 @@ def _find_epoch_checkpoints(ckpt_path: Path) -> list[tuple[int, Path]]:
             parsed.append((epoch, candidate))
 
     if not parsed:
-        sys.exit(
-            f"ERROR: no epoch checkpoints found next to {ckpt_path}. "
-            f"Expected files matching pattern '{pattern}'."
-        )
+        sys.exit(f"ERROR: no epoch checkpoints found next to {ckpt_path}. Expected files matching pattern '{pattern}'.")
 
     parsed.sort(key=lambda x: x[0])
     print(f"[epoch_gif] discovered {len(parsed)} checkpoints: epoch {parsed[0][0]} -> {parsed[-1][0]}")
@@ -329,9 +328,7 @@ def load_inner_assembly(ckpt_path: Path, epoch_num: int) -> trimesh.Trimesh | No
 # Optional visual layers (wheels, windshield, solar selection)
 # ---------------------------------------------------------------------------
 
-_ADD_WHEELS_PATH = (
-    Path(__file__).parents[1] / "wp2_assembler" / "version4" / "3D_printing_helpers" / "add_wheels.py"
-)
+_ADD_WHEELS_PATH = Path(__file__).parents[1] / "wp2_assembler" / "version4" / "3D_printing_helpers" / "add_wheels.py"
 
 
 def _apply_full_wheels(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
@@ -431,6 +428,88 @@ def _compute_windshield_face_mask(
         return mask
 
 
+def _contour_postprocess_solar_mask(
+    binary_mask: Tensor,
+    valid_mask: Tensor,
+    aeroshell_mesh: trimesh.Trimesh,
+    contour_postprocess_iters: int,
+    contour_hole_fill_iters: int,
+    area_np: np.ndarray,
+    illum_np: np.ndarray,
+    area_budget_mm2: float,
+    device: torch.device,
+    adjacency: np.ndarray,
+) -> Tensor:
+    """Apply contour smoothing and hole-fill passes to a binary solar mask."""
+    valid_np = valid_mask.detach().cpu().numpy().astype(bool)
+    if contour_postprocess_iters > 0:
+        base_np = binary_mask.detach().cpu().numpy().astype(np.float32)
+        contour_scores = _smooth_binary_contour_scores(
+            mesh=aeroshell_mesh,
+            base_scores=base_np,
+            valid_mask=valid_np,
+            iterations=contour_postprocess_iters,
+            adjacency=adjacency,
+        )
+        valid_idx = np.flatnonzero(valid_np)
+        if valid_idx.size > 0:
+            target_area_m2_np = min(max(area_budget_mm2 * 1e-6, 0.0), float(area_np[valid_idx].sum()))
+            order = valid_idx[np.lexsort((-illum_np[valid_idx], -contour_scores[valid_idx]))]
+            cumulative = np.cumsum(area_np[order])
+            if target_area_m2_np <= 0.0:
+                keep_count = 0
+            else:
+                keep_count = int(np.searchsorted(cumulative, target_area_m2_np, side="left")) + 1
+                keep_count = min(keep_count, int(order.size))
+            selected_np = np.zeros(len(area_np), dtype=bool)
+            if keep_count > 0:
+                selected_np[order[:keep_count]] = True
+            binary_mask = torch.tensor(selected_np, dtype=torch.bool, device=device)
+    if contour_hole_fill_iters > 0:
+        filled_np = _fill_binary_contour_holes(
+            mesh=aeroshell_mesh,
+            binary_mask=binary_mask.detach().cpu().numpy().astype(bool),
+            valid_mask=valid_np,
+            iterations=contour_hole_fill_iters,
+            adjacency=adjacency,
+        )
+        binary_mask = torch.tensor(filled_np, dtype=torch.bool, device=device)
+    return binary_mask
+
+
+def _postop_reallocate_solar_budget_np(
+    selected_np: np.ndarray,
+    valid_np: np.ndarray,
+    area_np: np.ndarray,
+    illum_np: np.ndarray,
+    target_area_m2_np: float,
+) -> np.ndarray:
+    """Vectorised trim/refill to align selected solar area with target budget."""
+    selected_area_m2_np = float(area_np[selected_np].sum())
+    if selected_area_m2_np > target_area_m2_np:
+        selected_idx = np.flatnonzero(selected_np & valid_np)
+        if selected_idx.size > 0:
+            remove_order = selected_idx[np.argsort(illum_np[selected_idx], kind="stable")]
+            excess = selected_area_m2_np - target_area_m2_np
+            remove_cumulative = np.cumsum(area_np[remove_order])
+            remove_count = int(np.searchsorted(remove_cumulative, excess, side="left")) + 1
+            remove_count = min(remove_count, int(remove_order.size))
+            if remove_count > 0:
+                selected_np[remove_order[:remove_count]] = False
+                selected_area_m2_np = float(area_np[selected_np].sum())
+    if selected_area_m2_np < target_area_m2_np:
+        candidate_idx = np.flatnonzero((~selected_np) & valid_np)
+        if candidate_idx.size > 0:
+            add_order = candidate_idx[np.argsort(-illum_np[candidate_idx], kind="stable")]
+            needed = target_area_m2_np - selected_area_m2_np
+            add_cumulative = np.cumsum(area_np[add_order])
+            add_count = int(np.searchsorted(add_cumulative, needed, side="left")) + 1
+            add_count = min(add_count, int(add_order.size))
+            if add_count > 0:
+                selected_np[add_order[:add_count]] = True
+    return selected_np
+
+
 def _compute_solar_selection_mask(
     aeroshell_mesh: trimesh.Trimesh,
     device: torch.device,
@@ -463,7 +542,6 @@ def _compute_solar_selection_mask(
             valid_mask = ~cone_face_mask
             illumination = illumination.masked_fill(cone_face_mask, -1.0)
 
-        # Reuse CPU views and adjacency across all post-processing passes in this frame.
         illum_np = illumination.detach().cpu().numpy()
         area_np = face_area_m2.detach().cpu().numpy()
         valid_np = valid_mask.detach().cpu().numpy().astype(bool)
@@ -491,70 +569,28 @@ def _compute_solar_selection_mask(
             binary_mask = torch.tensor(smoothed_scores > 0.5, dtype=torch.bool, device=device)
         binary_mask = binary_mask & valid_mask
 
-        if contour_postprocess_iters > 0:
-            base_np = binary_mask.detach().cpu().numpy().astype(np.float32)
-            contour_scores = _smooth_binary_contour_scores(
-                mesh=aeroshell_mesh,
-                base_scores=base_np,
-                valid_mask=valid_np,
-                iterations=contour_postprocess_iters,
-                adjacency=cached_adjacency,
-            )
+        binary_mask = _contour_postprocess_solar_mask(
+            binary_mask=binary_mask,
+            valid_mask=valid_mask,
+            aeroshell_mesh=aeroshell_mesh,
+            contour_postprocess_iters=contour_postprocess_iters,
+            contour_hole_fill_iters=contour_hole_fill_iters,
+            area_np=area_np,
+            illum_np=illum_np,
+            area_budget_mm2=area_budget_mm2,
+            device=device,
+            adjacency=cached_adjacency,
+        )
 
-            valid_idx = np.flatnonzero(valid_np)
-            if valid_idx.size > 0:
-                target_area_m2_np = min(max(area_budget_mm2 * 1e-6, 0.0), float(area_np[valid_idx].sum()))
-                order = valid_idx[np.lexsort((-illum_np[valid_idx], -contour_scores[valid_idx]))]
-                cumulative = np.cumsum(area_np[order])
-                if target_area_m2_np <= 0.0:
-                    keep_count = 0
-                else:
-                    keep_count = int(np.searchsorted(cumulative, target_area_m2_np, side="left")) + 1
-                    keep_count = min(keep_count, int(order.size))
-
-                selected_np = np.zeros(len(area_np), dtype=bool)
-                if keep_count > 0:
-                    selected_np[order[:keep_count]] = True
-                binary_mask = torch.tensor(selected_np, dtype=torch.bool, device=device)
-
-        if contour_hole_fill_iters > 0:
-            filled_np = _fill_binary_contour_holes(
-                mesh=aeroshell_mesh,
-                binary_mask=binary_mask.detach().cpu().numpy().astype(bool),
-                valid_mask=valid_np,
-                iterations=contour_hole_fill_iters,
-                adjacency=cached_adjacency,
-            )
-            binary_mask = torch.tensor(filled_np, dtype=torch.bool, device=device)
-
-        # Post-op reallocation: vectorized trim/refill to avoid slow Python tensor loops.
         target_area_m2_np = min(max(area_budget_mm2 * 1e-6, 0.0), float(area_np[valid_np].sum()))
         selected_np = binary_mask.detach().cpu().numpy().astype(bool)
-        selected_area_m2_np = float(area_np[selected_np].sum())
-
-        if selected_area_m2_np > target_area_m2_np:
-            selected_idx = np.flatnonzero(selected_np & valid_np)
-            if selected_idx.size > 0:
-                remove_order = selected_idx[np.argsort(illum_np[selected_idx], kind="stable")]
-                excess = selected_area_m2_np - target_area_m2_np
-                remove_cumulative = np.cumsum(area_np[remove_order])
-                remove_count = int(np.searchsorted(remove_cumulative, excess, side="left")) + 1
-                remove_count = min(remove_count, int(remove_order.size))
-                if remove_count > 0:
-                    selected_np[remove_order[:remove_count]] = False
-                    selected_area_m2_np = float(area_np[selected_np].sum())
-
-        if selected_area_m2_np < target_area_m2_np:
-            candidate_idx = np.flatnonzero((~selected_np) & valid_np)
-            if candidate_idx.size > 0:
-                add_order = candidate_idx[np.argsort(-illum_np[candidate_idx], kind="stable")]
-                needed = target_area_m2_np - selected_area_m2_np
-                add_cumulative = np.cumsum(area_np[add_order])
-                add_count = int(np.searchsorted(add_cumulative, needed, side="left")) + 1
-                add_count = min(add_count, int(add_order.size))
-                if add_count > 0:
-                    selected_np[add_order[:add_count]] = True
-
+        selected_np = _postop_reallocate_solar_budget_np(
+            selected_np=selected_np,
+            valid_np=valid_np,
+            area_np=area_np,
+            illum_np=illum_np,
+            target_area_m2_np=target_area_m2_np,
+        )
         binary_mask = torch.tensor(selected_np, dtype=torch.bool, device=device)
     except Exception as exc:
         warnings.warn(f"[latent_rollout] solar selection failed: {exc}. Skipping.", UserWarning, stacklevel=2)
@@ -736,10 +772,7 @@ def _fill_binary_contour_holes(
             pos_ratio = np.divide(pos_counts, np.clip(nbr_counts, 1.0, None))
 
         fill_candidates = (
-            (~filled)
-            & valid_mask
-            & (nbr_counts >= float(min_neighbor_count))
-            & (pos_ratio >= float(min_positive_ratio))
+            (~filled) & valid_mask & (nbr_counts >= float(min_neighbor_count)) & (pos_ratio >= float(min_positive_ratio))
         )
         if not np.any(fill_candidates):
             break
@@ -868,10 +901,7 @@ def build_extractor_with_wp2_prism(
         prism_x = scaled["x"]
         prism_y = scaled["y"]
         prism_z = scaled["z"]
-        print(
-            f"[extractor] WP2 outer prism scale={prism_scale:.3f} "
-            f"x={prism_x} y={prism_y} z={prism_z}"
-        )
+        print(f"[extractor] WP2 outer prism scale={prism_scale:.3f} x={prism_x} y={prism_y} z={prism_z}")
     except Exception as exc:
         warnings.warn(
             f"[extractor] WP2 prism import failed ({exc}); using legacy hardcoded bounds.",
@@ -959,7 +989,7 @@ def render_mesh(
     plotter.background_color = bg_color[:3]
 
     # Configure Anti-Aliasing explicitly via its method instead of the constructor
-    plotter.enable_anti_aliasing(aa_type='fxaa')
+    plotter.enable_anti_aliasing(aa_type="fxaa")
 
     # 2. Enable Depth Peeling to fix transparency artifacts & Z-fighting
     plotter.enable_depth_peeling(number_of_peels=4, occlusion_ratio=0.0)
@@ -993,13 +1023,7 @@ def render_mesh(
         )
     else:
         plotter.add_mesh(
-            pv_mesh,
-            color=mesh_color[:3],
-            opacity=mesh_alpha,
-            ambient=0.3,
-            diffuse=0.7,
-            specular=0.1,
-            smooth_shading=True
+            pv_mesh, color=mesh_color[:3], opacity=mesh_alpha, ambient=0.3, diffuse=0.7, specular=0.1, smooth_shading=True
         )
 
     if solar_selection_mesh is not None:
@@ -1051,7 +1075,7 @@ def render_mesh(
         plotter.camera.up = tuple(float(v) for v in camera_view_up)
         plotter.reset_camera_clipping_range()
     else:
-        plotter.camera_position = 'iso'  # Initial isometric view orientation
+        plotter.camera_position = "iso"  # Initial isometric view orientation
         plotter.camera.azimuth = azim_deg
         plotter.camera.elevation = elev_deg
 
@@ -1101,6 +1125,7 @@ def _get_prism_center_diag(
             get_outer_prism_bounds_mm,
             scale_outer_prism,
         )
+
         outer = get_outer_prism_bounds_mm()
         scaled = scale_outer_prism(outer, prism_scale)
         prism_x, prism_y, prism_z = scaled["x"], scaled["y"], scaled["z"]
@@ -1124,6 +1149,7 @@ def compute_camera_pose(
     center = 0.5 * (vmin + vmax)
     diag = float(np.linalg.norm(vmax - vmin))
     return _compute_camera_from_center(center, diag, azim_deg, elev_deg, distance_mult)
+
 
 # ---------------------------------------------------------------------------
 # 2D latent space panel
@@ -1179,10 +1205,10 @@ def _build_solar_cell_texture(
 
     for row in range(cells_y):
         for col in range(cells_x):
-            left = int(round(panel_left + col * (cell_w + gap)))
-            top = int(round(panel_top + row * (cell_h + gap)))
-            right = int(round(left + cell_w))
-            bottom = int(round(top + cell_h))
+            left = round(panel_left + col * (cell_w + gap))
+            top = round(panel_top + row * (cell_h + gap))
+            right = round(left + cell_w)
+            bottom = round(top + cell_h)
             fill = cell_a if (row + col) % 2 == 0 else cell_b
             draw.rectangle(
                 [(left, top), (right, bottom)],
@@ -1198,7 +1224,7 @@ def _build_solar_cell_texture(
             if inner_right > inner_left and inner_bottom > inner_top:
                 for k in range(1, fingers_per_cell + 1):
                     frac = k / float(fingers_per_cell + 1.0)
-                    x = int(round(inner_left + frac * (inner_right - inner_left)))
+                    x = round(inner_left + frac * (inner_right - inner_left))
                     draw.line(
                         [(x, inner_top), (x, inner_bottom)],
                         fill=finger_color,
@@ -1206,14 +1232,14 @@ def _build_solar_cell_texture(
                     )
                 for k in range(1, horizontal_lines + 1):
                     frac = k / float(horizontal_lines + 1.0)
-                    y = int(round(inner_top + frac * (inner_bottom - inner_top)))
+                    y = round(inner_top + frac * (inner_bottom - inner_top))
                     draw.line(
                         [(inner_left, y), (inner_right, y)],
                         fill=(84, 112, 142),
                         width=1,
                     )
-                y_top = int(round(inner_top + 0.18 * (inner_bottom - inner_top)))
-                y_bottom = int(round(inner_top + 0.82 * (inner_bottom - inner_top)))
+                y_top = round(inner_top + 0.18 * (inner_bottom - inner_top))
+                y_bottom = round(inner_top + 0.82 * (inner_bottom - inner_top))
                 draw.line([(inner_left, y_top), (inner_right, y_top)], fill=busbar_color, width=busbar_width)
                 draw.line([(inner_left, y_bottom), (inner_right, y_bottom)], fill=busbar_color, width=busbar_width)
 
@@ -1298,9 +1324,7 @@ def box_builder(
         draw.line([(1, gy), (box_w - 2, gy)], fill=_CARD_GRID_COL, width=1)
     # Clip alpha channel to rounded rect so grid lines don't bleed into sharp corners
     clip_mask = Image.new("L", (box_w, box_h), 0)
-    ImageDraw.Draw(clip_mask).rounded_rectangle(
-        [(0, 0), (box_w - 1, box_h - 1)], radius=radius, fill=255
-    )
+    ImageDraw.Draw(clip_mask).rounded_rectangle([(0, 0), (box_w - 1, box_h - 1)], radius=radius, fill=255)
     cur_alpha = np.asarray(img.split()[3], dtype=np.uint16)
     mask_np = np.asarray(clip_mask, dtype=np.uint16)
     new_alpha = ((cur_alpha * mask_np) // 255).astype(np.uint8)
@@ -1459,8 +1483,7 @@ def draw_right_box(  # noqa: PLR0915
             r_a = max(2, int(4 * scale))
             off = max(3, int(7 * scale))
             draw.ellipse([(apx - r_a, apy - r_a), (apx + r_a, apy + r_a)], fill=anchor_col)
-            draw.text((apx + off, apy - off), str(k), fill=anchor_lbl_col,
-                      font=_get_font(max(8, int(11 * scale))))
+            draw.text((apx + off, apy - off), str(k), fill=anchor_lbl_col, font=_get_font(max(8, int(11 * scale))))
 
     # Trajectory / progress.
     if mode == "circle":
@@ -1477,24 +1500,21 @@ def draw_right_box(  # noqa: PLR0915
     elif trajectory_coords is not None and len(trajectory_coords) > 1:
         full_pts = [z2px(zc0, zc1) for zc0, zc1 in trajectory_coords]
         draw.line(full_pts, fill=circle_col, width=lw_axis)
-        traversed = full_pts[:frame_idx + 1]
+        traversed = full_pts[: frame_idx + 1]
         if len(traversed) >= 2:
             draw.line(traversed, fill=progress_col, width=lw_thick)
         if mode == "line":
             ep_r = max(2, int(5 * scale))
             for ep_z0, ep_z1 in (trajectory_coords[0], trajectory_coords[-1]):
                 ex, ey = z2px(ep_z0, ep_z1)
-                draw.ellipse([(ex - ep_r, ey - ep_r), (ex + ep_r, ey + ep_r)],
-                              outline=circle_col, width=lw_thick)
+                draw.ellipse([(ex - ep_r, ey - ep_r), (ex + ep_r, ey + ep_r)], outline=circle_col, width=lw_thick)
         if mode == "cross":
             ep_r = max(2, int(5 * scale))
             seen: set[tuple[int, int]] = set()
             for ep_z0, ep_z1 in trajectory_coords:
                 ep = z2px(ep_z0, ep_z1)
                 if ep not in seen and abs(ep_z0) > 1e-6 and abs(ep_z1) > 1e-6:
-                    draw.ellipse([(ep[0] - ep_r, ep[1] - ep_r),
-                                  (ep[0] + ep_r, ep[1] + ep_r)],
-                                 outline=circle_col, width=lw_thick)
+                    draw.ellipse([(ep[0] - ep_r, ep[1] - ep_r), (ep[0] + ep_r, ep[1] + ep_r)], outline=circle_col, width=lw_thick)
                     seen.add(ep)
 
     # Current cursor.
@@ -1509,10 +1529,8 @@ def draw_right_box(  # noqa: PLR0915
 
     # Axis labels.
     font_label = _get_font(max(9, int(13 * scale)))
-    draw.text((inner_x1 - int(26 * scale), icy - int(16 * scale)),
-              "z\u2080", fill=axis_lbl_col, font=font_label)
-    draw.text((icx + int(5 * scale), inner_y0 + int(8 * scale)),
-              "z\u2081", fill=axis_lbl_col, font=font_label)
+    draw.text((inner_x1 - int(26 * scale), icy - int(16 * scale)), "z\u2080", fill=axis_lbl_col, font=font_label)
+    draw.text((icx + int(5 * scale), inner_y0 + int(8 * scale)), "z\u2081", fill=axis_lbl_col, font=font_label)
 
     # Coordinate readout at bottom of box.
     coord_text = f"z = [{z0:+.3f}, {z1:+.3f}]"
@@ -1559,6 +1577,12 @@ def draw_epoch_label_on_frame(
     margin_bottom = max(8, int(12 * scale_factor))
     anchor_x = (w - text_w) // 2 + x_offset_px
     anchor_y = h - text_h - margin_bottom
+    if box_color is not None:
+        pad = max(4, int(4 * scale_factor))
+        draw.rectangle(
+            [(anchor_x - pad, anchor_y - pad), (anchor_x + text_w + pad, anchor_y + text_h + pad)],
+            fill=box_color,
+        )
     draw.text(
         (anchor_x, anchor_y),
         label,
@@ -1611,7 +1635,7 @@ def _mesh_has_valid_face_indices(mesh: trimesh.Trimesh) -> bool:
     """Return True when all triangle indices are within vertex bounds."""
     try:
         faces = np.asarray(mesh.faces)
-        n_verts = int(len(mesh.vertices))
+        n_verts = len(mesh.vertices)
     except Exception:
         return False
 
@@ -1640,7 +1664,12 @@ def _init_gaot_drag_estimator(
         elif gaot_version == 2:
             from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.model_loader import ModelLoader as _GaotLoader  # noqa: PLC0415
         else:
-            raise ValueError(f"Unsupported GAOT version: {gaot_version}")
+            warnings.warn(
+                f"[latent_rollout] unsupported GAOT version: {gaot_version}",
+                UserWarning,
+                stacklevel=2,
+            )
+            return None
         return _GaotLoader(cfd_config=cfd_config, device=str(device))
     except Exception as exc:
         warnings.warn(
@@ -1680,8 +1709,8 @@ def _estimate_drag_newtons(
         # GAOT3 uses the read-only postprocessing inference path to avoid SDF-model
         # coupling and prevent CSE overlay failures from poisoning the render CUDA context.
         if gaot_version == 3 and hasattr(gaot_loader, "_preprocess") and hasattr(gaot_loader, "_latent_tokens"):
-            from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.pressure_integration import cp_field_to_drag  # noqa: PLC0415
             from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.shear_force import ShearForce  # noqa: PLC0415
+            from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.pressure_integration import cp_field_to_drag  # noqa: PLC0415
 
             with torch.no_grad(), _suppress_wandb_logging():
                 batch = gaot_loader._preprocess(verts_t, faces_t)
@@ -1742,7 +1771,6 @@ def _estimate_drag_newtons(
                 stacklevel=2,
             )
             drag_val = abs(drag_val)
-        return drag_val
     except Exception as exc:
         warnings.warn(
             f"[latent_rollout] GAOT drag estimate failed: {exc}",
@@ -1750,6 +1778,8 @@ def _estimate_drag_newtons(
             stacklevel=2,
         )
         return None
+    else:
+        return drag_val
 
 
 def _estimate_pressure_field_cp(
@@ -1773,7 +1803,6 @@ def _estimate_pressure_field_cp(
             batch = gaot_loader._preprocess(verts_t, faces_t)
             output = gaot_loader.gaot.forward(batch=batch, tokens_pos=gaot_loader._latent_tokens)
             pressure_field = output["field"]
-        return pressure_field
     except Exception as exc:
         warnings.warn(
             f"[latent_rollout] pressure-field estimate failed: {exc}",
@@ -1781,6 +1810,8 @@ def _estimate_pressure_field_cp(
             stacklevel=2,
         )
         return None
+    else:
+        return pressure_field
 
 
 def _estimate_solar_power_watts(
@@ -1822,7 +1853,6 @@ def _estimate_solar_power_watts(
         power_val = float(power_w.detach().cpu().item())
         if not np.isfinite(power_val):
             return None, diagnostics
-        return power_val, diagnostics
     except Exception as exc:
         warnings.warn(
             f"[latent_rollout] solar estimate failed: {exc}",
@@ -1830,6 +1860,8 @@ def _estimate_solar_power_watts(
             stacklevel=2,
         )
         return None, {}
+    else:
+        return power_val, diagnostics
 
 
 def _compute_cse_speed_ms(
@@ -1954,7 +1986,9 @@ def draw_left_box(  # noqa: PLR0915
         cap_w = cap_box[2] - cap_box[0]
         draw.text(
             ((box_w - cap_w) // 2, tacho_top + max(4, int(6 * scale))),
-            caption, fill=text_color, font=caption_font,
+            caption,
+            fill=text_color,
+            font=caption_font,
         )
         cx = box_w // 2
         cy = tacho_top + max(20, int(26 * scale)) + tacho_radius
@@ -2243,7 +2277,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     # ------------------------------------------------------------------
     # Step 1: pre-parse --config so YAML can supply defaults for everything
     # ------------------------------------------------------------------
-    pv.set_jupyter_backend('static')
+    pv.set_jupyter_backend("static")
     _default_config = Path(__file__).parent / "latent_rollout_config.yaml"
 
     pre = argparse.ArgumentParser(add_help=False)
@@ -2309,7 +2343,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     parser.add_argument("--azim", type=float, default=_c("azim", -60.0), help="Camera azimuth in degrees")
     parser.add_argument("--elev", type=float, default=_c("elev", 25.0), help="Camera elevation in degrees")
     parser.add_argument(
-        "--mesh_zoom", type=float, default=_c("mesh_zoom", 1.0),
+        "--mesh_zoom",
+        type=float,
+        default=_c("mesh_zoom", 1.0),
         help="Mesh zoom factor: >1 brings camera closer (larger mesh), <1 zooms out. Default 1.0.",
     )
     parser.add_argument("--mesh_color", default=_c("mesh_color", "#000000"), help="Aeroshell color (hex)")
@@ -2384,7 +2420,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         default=int(_c("windshield_assembly_id", 1)),
         help="WP2 assembly id used for windshield face-mask computation",
     )
-    parser.add_argument("--solar_selection_color", default=_c("solar_selection_color", "#F0D33E"), help="Solar selection color (hex)")
+    parser.add_argument(
+        "--solar_selection_color", default=_c("solar_selection_color", "#F0D33E"), help="Solar selection color (hex)"
+    )
     parser.add_argument("--windshield_color", default=_c("windshield_color", "#BAE9F1"), help="Windshield overlay color (hex)")
     parser.add_argument(
         "--windshield-alpha",
@@ -2859,12 +2897,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         global_bounds = [b[0][0], b[1][0], b[0][1], b[1][1], b[0][2], b[1][2]]
 
         # INCREASE MARGIN PAD TO 25% TO COMPENSATE FOR CORNER CLIPPING AT ULTRA-HD WIDESCREEN RENDER DISTANCES
-        padding = (
-            max(global_bounds[1] - global_bounds[0], global_bounds[3] - global_bounds[2]) * 0.25
-        )
-        global_bounds[0] -= padding; global_bounds[1] += padding
-        global_bounds[2] -= padding; global_bounds[3] += padding
-        global_bounds[4] -= padding; global_bounds[5] += padding
+        padding = max(global_bounds[1] - global_bounds[0], global_bounds[3] - global_bounds[2]) * 0.25
+        global_bounds[0] -= padding
+        global_bounds[1] += padding
+        global_bounds[2] -= padding
+        global_bounds[3] += padding
+        global_bounds[4] -= padding
+        global_bounds[5] += padding
 
     frames: list[Any] = []
     cse_samples: list[dict[str, Any]] = []
@@ -2882,7 +2921,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     # Lock camera once from WP2 prism bounds — identical scale across all modes.
     _prism_center, _prism_diag = _get_prism_center_diag(float(args.outer_prism_scale), args.bbox_padding)
     locked_camera_position, locked_camera_focal_point, locked_camera_view_up = _compute_camera_from_center(
-        _prism_center, _prism_diag, args.azim, args.elev,
+        _prism_center,
+        _prism_diag,
+        args.azim,
+        args.elev,
         distance_mult=1.6 / max(0.1, float(args.mesh_zoom)),
     )
     if global_bounds is not None:
@@ -2901,9 +2943,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     # Pre-compute the vision cone mesh once — loading it per-frame dominates runtime.
     _cached_cone_mesh: tuple[Tensor, Tensor] | None = None
     if args.show_windshield or args.show_solar_selection:
-        _cached_cone_mesh = _precompute_vision_cone_mesh(
-            int(args.windshield_assembly_id), device
-        )
+        _cached_cone_mesh = _precompute_vision_cone_mesh(int(args.windshield_assembly_id), device)
 
     print("\nGenerating frames...")
     outer_margin_x = max(4, int(0.02 * args.width))
@@ -2944,23 +2984,38 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 composite_skip = np.array(last_valid_rgb, copy=True)
                 if bool(args.show_latent_panel):
                     right_img, right_draw = box_builder(
-                        box_w, box_h, frame_scale,
-                        box_color=cse_box_rgb, box_alpha=float(args.latent_box_alpha),
+                        box_w,
+                        box_h,
+                        frame_scale,
+                        box_color=cse_box_rgb,
+                        box_alpha=float(args.latent_box_alpha),
                     )
                     draw_right_box(
-                        right_draw, box_w, box_h, frame_scale,
-                        z0, z1, z_radius, Z_np, i, total_frames,
-                        active_mode, panel_trajectory, panel_scale_radius,
-                        bool(args.show_anchors), panel_colors,
+                        right_draw,
+                        box_w,
+                        box_h,
+                        frame_scale,
+                        z0,
+                        z1,
+                        z_radius,
+                        Z_np,
+                        i,
+                        total_frames,
+                        active_mode,
+                        panel_trajectory,
+                        panel_scale_radius,
+                        bool(args.show_anchors),
+                        panel_colors,
                     )
                     _, skip_box_y, right_x, _ = box_position(
-                        composite_skip.shape[1], composite_skip.shape[0],
-                        box_w, box_h, outer_margin_x,
+                        composite_skip.shape[1],
+                        composite_skip.shape[0],
+                        box_w,
+                        box_h,
+                        outer_margin_x,
                     )
                     composite_skip = _composite_box_on_frame(composite_skip, right_img, right_x, skip_box_y)
-                composite_skip = draw_epoch_label_on_frame(
-                    composite_skip, frame_epoch_num, box_color=(20, 24, 30)
-                )
+                composite_skip = draw_epoch_label_on_frame(composite_skip, frame_epoch_num, box_color=(20, 24, 30))
                 frames.append(composite_skip)
             continue
 
@@ -3031,9 +3086,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                     int(args.solar_overlay_smooth_iters),
                 )
 
-        need_best_cse_frame = (
-            bool(args.final_frame_use_best_cse)
-            and (float(args.final_hold_seconds) > 0.0 or bool(args.export_final_png))
+        need_best_cse_frame = bool(args.final_frame_use_best_cse) and (
+            float(args.final_hold_seconds) > 0.0 or bool(args.export_final_png)
         )
         need_cse_metrics = bool(args.show_cse_overlay) or bool(args.save_cse_samples) or need_best_cse_frame
         if need_cse_metrics:
@@ -3108,37 +3162,63 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         )
         composite = np.array(rgb, copy=True)
         lbox_x, box_y, rbox_x, _ = box_position(
-            composite.shape[1], composite.shape[0], box_w, box_h, outer_margin_x,
+            composite.shape[1],
+            composite.shape[0],
+            box_w,
+            box_h,
+            outer_margin_x,
         )
         if bool(args.show_latent_panel):
             right_img, right_draw = box_builder(
-                box_w, box_h, frame_scale,
-                box_color=cse_box_rgb, box_alpha=float(args.latent_box_alpha),
+                box_w,
+                box_h,
+                frame_scale,
+                box_color=cse_box_rgb,
+                box_alpha=float(args.latent_box_alpha),
             )
             draw_right_box(
-                right_draw, box_w, box_h, frame_scale,
-                z0, z1, z_radius, Z_np, i, total_frames,
-                active_mode, panel_trajectory, panel_scale_radius,
-                bool(args.show_anchors), panel_colors,
+                right_draw,
+                box_w,
+                box_h,
+                frame_scale,
+                z0,
+                z1,
+                z_radius,
+                Z_np,
+                i,
+                total_frames,
+                active_mode,
+                panel_trajectory,
+                panel_scale_radius,
+                bool(args.show_anchors),
+                panel_colors,
             )
             composite = _composite_box_on_frame(composite, right_img, rbox_x, box_y)
         if args.show_cse_overlay:
             left_img, left_draw = box_builder(
-                box_w, box_h, frame_scale,
-                box_color=cse_box_rgb, box_alpha=float(args.latent_box_alpha),
+                box_w,
+                box_h,
+                frame_scale,
+                box_color=cse_box_rgb,
+                box_alpha=float(args.latent_box_alpha),
             )
             draw_left_box(
-                left_draw, box_w, box_h, frame_scale, cse_box_rgb,
-                drag_n, solar_w, cse_ms,
-                bool(args.show_cse_tacho), cse_text_rgb,
+                left_draw,
+                box_w,
+                box_h,
+                frame_scale,
+                cse_box_rgb,
+                drag_n,
+                solar_w,
+                cse_ms,
+                bool(args.show_cse_tacho),
+                cse_text_rgb,
                 show_kmh=bool(args.show_cse_kmh),
                 tacho_max_kmh=float(args.cse_tacho_max_kmh),
             )
             composite = _composite_box_on_frame(composite, left_img, lbox_x, box_y)
 
-        composite = draw_epoch_label_on_frame(
-            composite, frame_epoch_num, box_color=(20, 24, 30)
-        )
+        composite = draw_epoch_label_on_frame(composite, frame_epoch_num, box_color=(20, 24, 30))
         frames.append(composite)
         last_valid_rgb = rgb
         last_aeroshell_rgb = rgb
@@ -3192,12 +3272,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             stacklevel=2,
         )
 
-    hold_frames = max(0, int(round(float(args.final_hold_seconds) * max(int(args.fps), 1))))
+    hold_frames = max(0, round(float(args.final_hold_seconds) * max(int(args.fps), 1)))
     if hold_frames > 0:
         frames.extend([hold_source_frame] * hold_frames)
-        print(
-            f"Appended final hold: {hold_frames} frame(s) ({float(args.final_hold_seconds):.2f}s) from {hold_source_label}"
-        )
+        print(f"Appended final hold: {hold_frames} frame(s) ({float(args.final_hold_seconds):.2f}s) from {hold_source_label}")
 
     if bool(args.export_final_png):
         png_out = Path(args.final_png_out)
@@ -3205,9 +3283,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             if png_source_composite is not None:
                 if bool(args.transparent_background):
                     bg_rgb = np.array(_parse_color_rgb(args.render_bg), dtype=np.uint8)
-                    alpha_mask = np.where(
-                        np.all(png_source_composite == bg_rgb[None, None, :], axis=-1), 0, 255
-                    ).astype(np.uint8)
+                    alpha_mask = np.where(np.all(png_source_composite == bg_rgb[None, None, :], axis=-1), 0, 255).astype(np.uint8)
                     png_rgba = np.dstack([png_source_composite, alpha_mask])
                     imageio.imwrite(png_out, png_rgba)
                     print(f"Saved transparent composite PNG ({hold_source_label}): {png_out}")
@@ -3254,10 +3330,11 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             frames,
             fps=args.fps,
             loop=0,
-            quantizer='nq',  # NeuQuant high-quality neural network quantizer
-            palettesize=256
+            quantizer="nq",  # NeuQuant high-quality neural network quantizer
+            palettesize=256,
         )
         print(f"Done.  GIF saved to: {out_path}")
+
 
 if __name__ == "__main__":
     main()

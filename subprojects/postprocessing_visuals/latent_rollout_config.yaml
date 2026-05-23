@@ -17,14 +17,14 @@ final_png_out: null
 n_frames: 360
 resolution: 96
 radius: null
-fps: 24
+fps: 5
 device: auto
 width: 3840
 height: 2160
 panel_width: 1280
 azim: -60.0
 elev: 25.0
-mesh_zoom: 1.4
+mesh_zoom: 1.3
 mode: spiral
 
 show_anchors: false
@@ -59,7 +59,7 @@ windshield_color: "#86A9BD"
 windshield_alpha: 0.32
 show_pressure_field: false
 
-show_solar_selection: true
+show_solar_selection: false
 solar_sun_dir: [-1.0, 0.0, 1.0]
 solar_area_budget_mm2: 4200000.0
 solar_selection_color: "#F0D33E"
@@ -105,7 +105,7 @@ solar_mask_refine_subdivisions: 0
 # Spiral mode  (only active when mode: spiral)
 # ---------------------------------------------------------------------------
 spiral_turns: 3.0
-spiral_equal_distance: false
+spiral_equal_distance: true
 spiral_radius_start: 0.0
 spiral_radius_end: null
 

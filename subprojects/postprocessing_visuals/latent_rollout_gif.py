@@ -378,17 +378,6 @@ def render_mesh(
     assembly_mesh: trimesh.Trimesh | None = None,
     assembly_color: tuple[float, float, float, float] = (0.953, 0.612, 0.071, 1.0),
 ) -> np.ndarray:
-    
-    # 1. Initialize offscreen plotter (removing the multi_samples keyword argument)
-    plotter = pv.Plotter(off_screen=True, window_size=[width, height])
-    plotter.background_color = bg_color[:3]
-
-    # Configure Anti-Aliasing explicitly via its method instead of the constructor
-    plotter.enable_anti_aliasing(aa_type='msaa', multi_samples=8)
-
-    # 2. Enable Depth Peeling to fix transparency artifacts & Z-fighting
-    plotter.enable_depth_peeling(number_of_peels=4, occlusion_ratio=0.0)
-    
     """Render mesh (and optional inner assembly) to (H, W, 3) uint8 RGB."""
     scene = pyrender.Scene(bg_color=list(bg_color), ambient_light=[0.35, 0.35, 0.35, 1.0])
 

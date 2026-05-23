@@ -225,9 +225,7 @@ def _ensure_wp4_model_imports() -> None:
     _src_dir = _MODELS_DIR.parent  # subprojects/wp4_aeroshell_optimizer/v2/src
     _real_paths: dict[str, str] = {
         "subprojects.wp4_aeroshell_optimizer.v2.src": str(_src_dir),
-        "subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization": str(
-            _src_dir / "sampling_visualization"
-        ),
+        "subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization": str(_src_dir / "sampling_visualization"),
     }
     for pkg in [
         "subprojects.wp4_aeroshell_optimizer",
@@ -537,8 +535,6 @@ def load_inner_assembly(run_dir: Path, epoch_num: int) -> trimesh.Trimesh | None
 # ---------------------------------------------------------------------------
 
 
-
-
 # ---------------------------------------------------------------------------
 # Solar computation — checkpoint (compute) mode
 # ---------------------------------------------------------------------------
@@ -603,7 +599,7 @@ def compute_solar_fields(
     soft_mask_sorted = torch.sigmoid(sigmoid_sharpness * distance_to_budget)
     original_order = torch.argsort(quality_order)
     soft_mask = soft_mask_sorted[original_order]
-    binary_mask = (soft_mask > soft_mask_selection_threshold)
+    binary_mask = soft_mask > soft_mask_selection_threshold
 
     if binary_postprocess_iters > 0:
         mesh = trimesh.Trimesh(vertices=verts_f32.detach().cpu().numpy(), faces=faces_i64.detach().cpu().numpy(), process=False)
@@ -612,8 +608,7 @@ def compute_solar_fields(
             valid_np = valid_mask.detach().cpu().numpy().astype(bool)
             scores = binary_mask.detach().cpu().numpy().astype(np.float32)
             valid_f32 = valid_np.astype(np.float32)
-            left = adjacency[:, 0]
-            right = adjacency[:, 1]
+            left, right = adjacency[:, 0], adjacency[:, 1]
             for _ in range(int(binary_postprocess_iters)):
                 accum = scores.copy()
                 counts = np.ones_like(scores, dtype=np.float32)
@@ -915,7 +910,6 @@ def _build_render_list(
         alpha = float(_get(cfg, "layers", layer_name, "alpha", default=default_alpha))
         return _parse_color_rgba_float(color, alpha=alpha)
 
-
     # --- Outer bbox: solid face or wireframe depending on config ---
     if _layer_enabled("outer_bbox") and outer_bbox is not None:
         rgba = _layer_rgba("outer_bbox", "#FF504D", 0.12)
@@ -1202,9 +1196,7 @@ def _compute_windshield_face_mask(
 # Full-wheel replacement (imports add_wheels.py in-process)
 # ---------------------------------------------------------------------------
 
-_ADD_WHEELS_PATH = (
-    Path(__file__).parents[1] / "wp2_assembler" / "version4" / "3D_printing_helpers" / "add_wheels.py"
-)
+_ADD_WHEELS_PATH = Path(__file__).parents[1] / "wp2_assembler" / "version4" / "3D_printing_helpers" / "add_wheels.py"
 
 
 def _apply_full_wheels(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
@@ -1226,7 +1218,9 @@ def _apply_full_wheels(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
 
         centers = mod.infer_wheel_centers(mesh)
         if not centers:
-            warnings.warn("[aeroshell_png] No wheel-like components found — skipping full-wheel replacement.", UserWarning, stacklevel=2)
+            warnings.warn(
+                "[aeroshell_png] No wheel-like components found — skipping full-wheel replacement.", UserWarning, stacklevel=2
+            )
             return mesh
         base = mod.remove_cut_wheel_components(mesh, centers)
         wheels = mod.make_full_wheels(centers)
@@ -1574,7 +1568,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 _asm_id = int(_get(cfg, "layers", "inner_assembly", "assembly_id", default=args.assembly_id))
                 inner_assembly = _load_assembly_from_wp2(_asm_id)
                 if inner_assembly is not None:
-                    print(f"[aeroshell_png] inner_assembly: {len(inner_assembly.vertices):,} verts loaded from WP2 (id={_asm_id})")
+                    print(
+                        f"[aeroshell_png] inner_assembly: {len(inner_assembly.vertices):,} verts loaded from WP2 (id={_asm_id})"
+                    )
             # Replace cut-off wheel geometry with full cylinders
             if inner_assembly is not None and bool(_get(cfg, "layers", "inner_assembly", "full_wheels", default=True)):
                 inner_assembly = _apply_full_wheels(inner_assembly)
@@ -1616,8 +1612,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             # GLB fallback
             inner_assembly = _load_inner_assembly_from_glb(run_dir_resolved)
             # WP2 cadquery fallback
-            if inner_assembly is None and bool(_get(cfg, "layers", "inner_assembly", "fallback_wp2", default=False)) and bool(
-                _get(cfg, "layers", "inner_assembly", "enabled", default=True)
+            if (
+                inner_assembly is None
+                and bool(_get(cfg, "layers", "inner_assembly", "fallback_wp2", default=False))
+                and bool(_get(cfg, "layers", "inner_assembly", "enabled", default=True))
             ):
                 _asm_id = int(_get(cfg, "layers", "inner_assembly", "assembly_id", default=args.assembly_id))
                 inner_assembly = _load_assembly_from_wp2(_asm_id)
@@ -1678,9 +1676,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     )
     aeroshell_for_render: trimesh.Trimesh = aeroshell_mesh
     if (solar_any and (binary_mask_tensor is not None or shading_tensor is not None)) or cone_mask is not None:
-        aeroshell_for_render = _bake_solar_into_aeroshell(
-            aeroshell_mesh, binary_mask_tensor, shading_tensor, cone_mask, cfg
-        )
+        aeroshell_for_render = _bake_solar_into_aeroshell(aeroshell_mesh, binary_mask_tensor, shading_tensor, cone_mask, cfg)
 
     # ------------------------------------------------------------------
     # Build outer bbox mesh from WP2 prism (shared by both modes)
@@ -1694,9 +1690,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             bp["y"][1] - bp["y"][0],
             bp["z"][1] - bp["z"][0],
         ]
-        centre = np.array(
-            [(bp["x"][0] + bp["x"][1]) / 2.0, (bp["y"][0] + bp["y"][1]) / 2.0, (bp["z"][0] + bp["z"][1]) / 2.0]
-        )
+        centre = np.array([(bp["x"][0] + bp["x"][1]) / 2.0, (bp["y"][0] + bp["y"][1]) / 2.0, (bp["z"][0] + bp["z"][1]) / 2.0])
         outer_bbox = trimesh.creation.box(extents=extents)
         outer_bbox.apply_translation(centre)
         print(f"[aeroshell_png] outer_bbox: extents={extents}  centre={centre}  (scale={bbox_prism_scale})")
@@ -1727,6 +1721,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     legend_enabled = bool(_get(cfg, "legend", "enabled", default=False))
     legend_entries: list[tuple[str, tuple[int, int, int, int]]] = []
     if legend_enabled:
+
         def _le(name: str, default_hex: str, default_alpha: float) -> tuple[int, int, int, int]:
             c = _get(cfg, "layers", name, "color", default=default_hex)
             a = float(_get(cfg, "layers", name, "alpha", default=default_alpha))
