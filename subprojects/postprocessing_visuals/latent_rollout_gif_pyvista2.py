@@ -624,6 +624,7 @@ def render_mesh(
     camera_view_up: np.ndarray | None = None,
     solar_selection_mesh: trimesh.Trimesh | None = None,
     solar_selection_color: tuple[float, float, float, float] = (1.0, 0.843, 0.0, 1.0),
+    solar_selection_texture: pv.Texture | None = None,
     windshield_mesh: trimesh.Trimesh | None = None,
     windshield_color: tuple[float, float, float, float] = (0.31, 0.76, 0.97, 0.65),
     assembly_smooth_shading: bool = True,
@@ -666,14 +667,33 @@ def render_mesh(
 
     if solar_selection_mesh is not None:
         pv_sol = pv.wrap(solar_selection_mesh)
-        plotter.add_mesh(
-            pv_sol,
-            color=solar_selection_color[:3],
-            opacity=solar_selection_color[3],
-            ambient=0.3,
-            diffuse=0.7,
-            smooth_shading=True,
-        )
+        if solar_selection_texture is not None:
+            xmin, xmax, ymin, ymax, zmin, _zmax = pv_sol.bounds
+            pv_sol = pv_sol.texture_map_to_plane(
+                origin=(xmin, ymin, zmin),
+                point_u=(xmax, ymin, zmin),
+                point_v=(xmin, ymax, zmin),
+                inplace=False,
+            )
+            plotter.add_mesh(
+                pv_sol,
+                texture=solar_selection_texture,
+                color=(1.0, 1.0, 1.0),
+                opacity=solar_selection_color[3],
+                ambient=1.0,
+                diffuse=0.0,
+                specular=0.0,
+                smooth_shading=True,
+            )
+        else:
+            plotter.add_mesh(
+                pv_sol,
+                color=solar_selection_color[:3],
+                opacity=solar_selection_color[3],
+                ambient=0.3,
+                diffuse=0.7,
+                smooth_shading=True,
+            )
 
     if windshield_mesh is not None:
         pv_ws = pv.wrap(windshield_mesh)
@@ -757,6 +777,62 @@ def _get_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
         except Exception:
             continue
     return ImageFont.load_default()
+
+
+def _build_solar_cell_texture(
+    texture_size: int = 1024,
+    cells_x: int = 48,
+    cells_y: int = 32,
+) -> pv.Texture:
+    """Create a procedural texture resembling monocrystalline solar cells."""
+    bg_color = (6, 14, 34)
+    cell_a = (18, 52, 132)
+    cell_b = (14, 44, 118)
+    grid_color = (222, 232, 255)
+    finger_color = (196, 214, 255)
+
+    image = Image.new("RGB", (texture_size, texture_size), color=bg_color)
+    draw = ImageDraw.Draw(image)
+
+    cell_w = texture_size / float(cells_x)
+    cell_h = texture_size / float(cells_y)
+    margin = max(2, int(min(cell_w, cell_h) * 0.07))
+    radius = max(3, int(min(cell_w, cell_h) * 0.16))
+    outline_width = max(1, texture_size // 256)
+    finger_width = max(1, texture_size // 320)
+    fingers_per_cell = 5
+
+    for row in range(cells_y):
+        for col in range(cells_x):
+            left = int(round(col * cell_w + margin))
+            top = int(round(row * cell_h + margin))
+            right = int(round((col + 1) * cell_w - margin))
+            bottom = int(round((row + 1) * cell_h - margin))
+            fill = cell_a if (row + col) % 2 == 0 else cell_b
+            draw.rounded_rectangle(
+                [(left, top), (right, bottom)],
+                radius=radius,
+                fill=fill,
+                outline=grid_color,
+                width=outline_width,
+            )
+            inner_left = left + outline_width
+            inner_right = right - outline_width
+            inner_top = top + outline_width
+            inner_bottom = bottom - outline_width
+            if inner_right > inner_left and inner_bottom > inner_top:
+                for k in range(1, fingers_per_cell + 1):
+                    frac = k / float(fingers_per_cell + 1)
+                    y = int(round(inner_top + frac * (inner_bottom - inner_top)))
+                    draw.line(
+                        [(inner_left, y), (inner_right, y)],
+                        fill=finger_color,
+                        width=finger_width,
+                    )
+
+    texture = pv.Texture(np.asarray(image))
+    texture.repeat = True
+    return texture
 
 
 def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statement count reflects supported traversal modes
@@ -1173,7 +1249,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     parser.add_argument("--panel_width", type=int, default=_c("panel_width", 320), help="Latent-map panel width in px")
     parser.add_argument("--azim", type=float, default=_c("azim", -60.0), help="Camera azimuth in degrees")
     parser.add_argument("--elev", type=float, default=_c("elev", 25.0), help="Camera elevation in degrees")
-    parser.add_argument("--mesh_color", default=_c("mesh_color", "#33ffff"), help="Aeroshell color (hex)")
+    parser.add_argument("--mesh_color", default=_c("mesh_color", "#000000"), help="Aeroshell color (hex)")
     parser.add_argument("--render_bg", default=_c("render_bg", "#ffffff"), help="3D render background color (hex)")
     parser.add_argument(
         "--mesh_alpha", type=float, default=_c("mesh_alpha", 0.75), help="Aeroshell opacity 0.0-1.0 (1.0 = fully opaque)"
@@ -1196,7 +1272,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         default=bool(_c("show_assembly", False)),
         help="Render inner assembly inside the aeroshell",
     )
-    parser.add_argument("--assembly_color", default=_c("assembly_color", "#F39C12"), help="Inner assembly color (hex)")
+    parser.add_argument("--assembly_color", default=_c("assembly_color", "#F32804"), help="Inner assembly color (hex)")
     parser.add_argument(
         "--show-solar-selection",
         dest="show_solar_selection",
@@ -1231,8 +1307,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         default=int(_c("windshield_assembly_id", 1)),
         help="WP2 assembly id used for windshield face-mask computation",
     )
-    parser.add_argument("--solar_selection_color", default=_c("solar_selection_color", "#D2E0F2"), help="Solar selection color (hex)")
-    parser.add_argument("--windshield_color", default=_c("windshield_color", "#979797"), help="Windshield overlay color (hex)")
+    parser.add_argument("--solar_selection_color", default=_c("solar_selection_color", "#F0D33E"), help="Solar selection color (hex)")
+    parser.add_argument("--windshield_color", default=_c("windshield_color", "#BAE9F1"), help="Windshield overlay color (hex)")
     parser.add_argument(
         "--windshield-alpha",
         type=float,
@@ -1461,6 +1537,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     locked_camera_view_up: np.ndarray | None = None
     render_width = args.width + args.panel_width if active_mode == "epoch_gif" else args.width
     assembly_smooth_shading = not args.full_wheels
+    solar_selection_texture = _build_solar_cell_texture() if args.show_solar_selection else None
 
     if active_mode == "epoch_gif" and frame_checkpoints:
         # Lock camera from the user-selected checkpoint (not earliest epoch), so
@@ -1596,6 +1673,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             camera_view_up=locked_camera_view_up,
             solar_selection_mesh=solar_selection_mesh,
             solar_selection_color=solar_selection_color_rgba,
+            solar_selection_texture=solar_selection_texture,
             windshield_mesh=windshield_mesh,
             windshield_color=windshield_color_rgba,
             assembly_smooth_shading=assembly_smooth_shading,
@@ -1618,6 +1696,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 camera_view_up=locked_camera_view_up,
                 solar_selection_mesh=solar_selection_mesh,
                 solar_selection_color=solar_selection_color_rgba,
+                solar_selection_texture=solar_selection_texture,
                 windshield_mesh=windshield_mesh,
                 windshield_color=windshield_color_rgba,
                 assembly_smooth_shading=assembly_smooth_shading,
@@ -1658,10 +1737,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 show_anchors=args.show_anchors,
                 epoch_num=frame_epoch_num,
             )
-            composite = np.concatenate([rgb, panel], axis=1)  # (H, W+panel, 3)
-        # if i == 0:
-        #     Image.fromarray(composite).save("/cluster/work/fuge/AISCO/wp9/ginn_gif/DEBUG_FRAME_3.png")
-        #     print(f"  → DEBUG_FRAME_2.png saved")
+            composite = np.concatenate([rgb, panel], axis=1) 
+
         frames.append(composite)
         last_valid_rgb = rgb
         print(f"  → {len(mesh.vertices):,} verts")
