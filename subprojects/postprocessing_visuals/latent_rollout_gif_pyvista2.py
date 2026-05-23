@@ -363,19 +363,45 @@ def _apply_full_wheels(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
         return result
 
 
+def _precompute_vision_cone_mesh(
+    assembly_id: int,
+    device: torch.device,
+) -> tuple[Tensor, Tensor] | None:
+    """Load and tessellate the vision cone mesh once; cache result for all frames."""
+    try:
+        from subprojects.wp3_solar_estimator.utils.wp3_vision_cone import get_vision_cone_mesh  # noqa: PLC0415
+
+        cone_verts, cone_faces = get_vision_cone_mesh(assembly_id, device=device)
+        print(f"[latent_rollout] vision cone mesh precomputed: {cone_verts.shape[0]} verts")
+        return cone_verts, cone_faces
+    except Exception as exc:
+        warnings.warn(
+            f"[latent_rollout] vision cone precompute failed: {exc}. Will skip per-frame.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+
+
 def _compute_windshield_face_mask(
     aeroshell_mesh: trimesh.Trimesh,
     assembly_id: int,
     device: torch.device,
+    precomputed_cone: tuple[Tensor, Tensor] | None = None,
 ) -> Tensor | None:
     """Return a bool tensor (F,) marking aeroshell faces inside the vision cone."""
     try:
         from subprojects.wp3_solar_estimator.utils.wp3_vision_cone import (  # noqa: PLC0415
             get_vision_cone_face_mask,
-            get_vision_cone_mesh,
         )
 
-        cone_verts, cone_faces = get_vision_cone_mesh(assembly_id, device=device)
+        if precomputed_cone is not None:
+            cone_verts, cone_faces = precomputed_cone
+            cone_verts = cone_verts.to(device=device)
+            cone_faces = cone_faces.to(device=device)
+        else:
+            from subprojects.wp3_solar_estimator.utils.wp3_vision_cone import get_vision_cone_mesh  # noqa: PLC0415
+            cone_verts, cone_faces = get_vision_cone_mesh(assembly_id, device=device)
         aero_verts = torch.tensor(aeroshell_mesh.vertices, dtype=torch.float32, device=device)
         aero_faces = torch.tensor(aeroshell_mesh.faces, dtype=torch.long, device=device)
         mask = get_vision_cone_face_mask(cone_verts, cone_faces, aero_verts, aero_faces)
@@ -450,6 +476,12 @@ def _compute_solar_selection_mask(
             valid_mask = ~cone_face_mask
             illumination = illumination.masked_fill(cone_face_mask, -1.0)
 
+        # Reuse CPU views and adjacency across all post-processing passes in this frame.
+        illum_np = illumination.detach().cpu().numpy()
+        area_np = face_area_m2.detach().cpu().numpy()
+        valid_np = valid_mask.detach().cpu().numpy().astype(bool)
+        cached_adjacency = _get_face_adjacency_indices(aeroshell_mesh)
+
         quality_order = torch.argsort(illumination, descending=True)
         sorted_areas = face_area_m2[quality_order]
         cumulative_area = torch.cumsum(sorted_areas.cpu(), dim=0).to(sorted_areas.device)
@@ -462,30 +494,28 @@ def _compute_solar_selection_mask(
 
         if binary_postprocess_iters > 0:
             binary_np = binary_mask.detach().cpu().numpy().astype(np.float32)
-            valid_np = valid_mask.detach().cpu().numpy().astype(bool)
             smoothed_scores = _smooth_binary_face_scores(
                 mesh=aeroshell_mesh,
                 base_scores=binary_np,
                 valid_mask=valid_np,
                 iterations=binary_postprocess_iters,
+                adjacency=cached_adjacency,
             )
             binary_mask = torch.tensor(smoothed_scores > 0.5, dtype=torch.bool, device=device)
         binary_mask = binary_mask & valid_mask
 
         if contour_postprocess_iters > 0:
-            valid_np = valid_mask.detach().cpu().numpy().astype(bool)
             base_np = binary_mask.detach().cpu().numpy().astype(np.float32)
             contour_scores = _smooth_binary_contour_scores(
                 mesh=aeroshell_mesh,
                 base_scores=base_np,
                 valid_mask=valid_np,
                 iterations=contour_postprocess_iters,
+                adjacency=cached_adjacency,
             )
 
             valid_idx = np.flatnonzero(valid_np)
             if valid_idx.size > 0:
-                illum_np = illumination.detach().cpu().numpy()
-                area_np = face_area_m2.detach().cpu().numpy()
                 target_area_m2_np = min(max(area_budget_mm2 * 1e-6, 0.0), float(area_np[valid_idx].sum()))
                 order = valid_idx[np.lexsort((-illum_np[valid_idx], -contour_scores[valid_idx]))]
                 cumulative = np.cumsum(area_np[order])
@@ -501,43 +531,44 @@ def _compute_solar_selection_mask(
                 binary_mask = torch.tensor(selected_np, dtype=torch.bool, device=device)
 
         if contour_hole_fill_iters > 0:
-            valid_np = valid_mask.detach().cpu().numpy().astype(bool)
             filled_np = _fill_binary_contour_holes(
                 mesh=aeroshell_mesh,
                 binary_mask=binary_mask.detach().cpu().numpy().astype(bool),
                 valid_mask=valid_np,
                 iterations=contour_hole_fill_iters,
+                adjacency=cached_adjacency,
             )
             binary_mask = torch.tensor(filled_np, dtype=torch.bool, device=device)
 
-        # Post-op reallocation: if windshield exclusion removed selected area,
-        # refill from best remaining valid faces to reach the max allowed area.
-        target_area_m2 = torch.minimum(
-            torch.tensor(area_budget_mm2 * 1e-6, device=device),
-            face_area_m2[valid_mask].sum(),
-        )
-        selected_area_m2 = face_area_m2[binary_mask].sum()
-        if float(selected_area_m2.item()) > float(target_area_m2.item()):
-            selected_idx = torch.where(binary_mask & valid_mask)[0]
-            if selected_idx.numel() > 0:
-                order = selected_idx[torch.argsort(illumination[selected_idx], descending=False)]
-                running = selected_area_m2
-                for idx in order:
-                    if float(running.item()) <= float(target_area_m2.item()):
-                        break
-                    binary_mask[idx] = False
-                    running = running - face_area_m2[idx]
-                selected_area_m2 = running
-        if float(selected_area_m2.item()) < float(target_area_m2.item()):
-            candidates = torch.where(valid_mask & (~binary_mask))[0]
-            if candidates.numel() > 0:
-                order = candidates[torch.argsort(illumination[candidates], descending=True)]
-                running = selected_area_m2
-                for idx in order:
-                    if float(running.item()) >= float(target_area_m2.item()):
-                        break
-                    binary_mask[idx] = True
-                    running = running + face_area_m2[idx]
+        # Post-op reallocation: vectorized trim/refill to avoid slow Python tensor loops.
+        target_area_m2_np = min(max(area_budget_mm2 * 1e-6, 0.0), float(area_np[valid_np].sum()))
+        selected_np = binary_mask.detach().cpu().numpy().astype(bool)
+        selected_area_m2_np = float(area_np[selected_np].sum())
+
+        if selected_area_m2_np > target_area_m2_np:
+            selected_idx = np.flatnonzero(selected_np & valid_np)
+            if selected_idx.size > 0:
+                remove_order = selected_idx[np.argsort(illum_np[selected_idx], kind="stable")]
+                excess = selected_area_m2_np - target_area_m2_np
+                remove_cumulative = np.cumsum(area_np[remove_order])
+                remove_count = int(np.searchsorted(remove_cumulative, excess, side="left")) + 1
+                remove_count = min(remove_count, int(remove_order.size))
+                if remove_count > 0:
+                    selected_np[remove_order[:remove_count]] = False
+                    selected_area_m2_np = float(area_np[selected_np].sum())
+
+        if selected_area_m2_np < target_area_m2_np:
+            candidate_idx = np.flatnonzero((~selected_np) & valid_np)
+            if candidate_idx.size > 0:
+                add_order = candidate_idx[np.argsort(-illum_np[candidate_idx], kind="stable")]
+                needed = target_area_m2_np - selected_area_m2_np
+                add_cumulative = np.cumsum(area_np[add_order])
+                add_count = int(np.searchsorted(add_cumulative, needed, side="left")) + 1
+                add_count = min(add_count, int(add_order.size))
+                if add_count > 0:
+                    selected_np[add_order[:add_count]] = True
+
+        binary_mask = torch.tensor(selected_np, dtype=torch.bool, device=device)
     except Exception as exc:
         warnings.warn(f"[latent_rollout] solar selection failed: {exc}. Skipping.", UserWarning, stacklevel=2)
         return None
@@ -606,12 +637,13 @@ def _smooth_binary_face_scores(
     base_scores: np.ndarray,
     valid_mask: np.ndarray,
     iterations: int,
+    adjacency: np.ndarray | None = None,
 ) -> np.ndarray:
     """Diffuse binary face scores across face adjacency while keeping a hard final mask possible."""
     if iterations <= 0:
         return base_scores
 
-    adjacency = np.asarray(mesh.face_adjacency, dtype=np.int64)
+    adjacency = _get_face_adjacency_indices(mesh) if adjacency is None else np.asarray(adjacency, dtype=np.int64)
     if adjacency.size == 0:
         return base_scores
 
@@ -638,12 +670,13 @@ def _smooth_binary_contour_scores(
     base_scores: np.ndarray,
     valid_mask: np.ndarray,
     iterations: int,
+    adjacency: np.ndarray | None = None,
 ) -> np.ndarray:
     """Smooth only boundary faces so contour gets cleaner while interior stays stable."""
     if iterations <= 0:
         return base_scores
 
-    adjacency = np.asarray(mesh.face_adjacency, dtype=np.int64)
+    adjacency = _get_face_adjacency_indices(mesh) if adjacency is None else np.asarray(adjacency, dtype=np.int64)
     if adjacency.size == 0:
         return base_scores
 
@@ -686,12 +719,13 @@ def _fill_binary_contour_holes(
     iterations: int,
     min_positive_ratio: float = 0.7,
     min_neighbor_count: int = 3,
+    adjacency: np.ndarray | None = None,
 ) -> np.ndarray:
     """Fill small holes inside selected regions without blurring the outer contour."""
     if iterations <= 0:
         return binary_mask
 
-    adjacency = np.asarray(mesh.face_adjacency, dtype=np.int64)
+    adjacency = _get_face_adjacency_indices(mesh) if adjacency is None else np.asarray(adjacency, dtype=np.int64)
     if adjacency.size == 0:
         return binary_mask
 
@@ -725,6 +759,21 @@ def _fill_binary_contour_holes(
         filled[fill_candidates] = True
 
     return filled
+
+
+def _get_face_adjacency_indices(mesh: trimesh.Trimesh) -> np.ndarray:
+    """Return face adjacency as (E, 2) int64 array with a stable empty fallback."""
+    adjacency = np.asarray(mesh.face_adjacency, dtype=np.int64)
+    if adjacency.size == 0:
+        return np.empty((0, 2), dtype=np.int64)
+    if adjacency.ndim != 2 or adjacency.shape[1] != 2:
+        warnings.warn(
+            "[latent_rollout] unexpected face_adjacency shape; skipping adjacency-based smoothing.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return np.empty((0, 2), dtype=np.int64)
+    return adjacency
 
 
 def _allocate_area_budget_binary_mask(
@@ -2453,6 +2502,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 )
                 print(f"[camera lock] using reference checkpoint: {ref_ckpt.name}")
 
+    # Pre-compute the vision cone mesh once — loading it per-frame dominates runtime.
+    _cached_cone_mesh: tuple[Tensor, Tensor] | None = None
+    if args.show_windshield or args.show_solar_selection:
+        _cached_cone_mesh = _precompute_vision_cone_mesh(
+            int(args.windshield_assembly_id), device
+        )
+
     print("\nGenerating frames...")
     for i, (z0, z1) in enumerate(z_coords):
         frame_ckpt = frame_checkpoints[i]
@@ -2512,7 +2568,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             if args.show_solar_selection:
                 refine_subdiv = max(refine_subdiv, args.solar_mask_refine_subdivisions)
             mask_mesh = _subdivide_mesh_for_masks(mesh, refine_subdiv)
-            cone_face_mask = _compute_windshield_face_mask(mask_mesh, args.windshield_assembly_id, device)
+            cone_face_mask = _compute_windshield_face_mask(
+                mask_mesh, args.windshield_assembly_id, device, precomputed_cone=_cached_cone_mesh
+            )
         if args.show_windshield and cone_face_mask is not None:
             cone_np = cone_face_mask.detach().cpu().numpy()
             cutout_mesh = _cutout_faces_from_mesh(mask_mesh, cone_np)
