@@ -1470,7 +1470,11 @@ def _estimate_drag_newtons(
     mesh: trimesh.Trimesh,
     frame_step: int,
 ) -> float | None:
-    """Estimate drag (N) from an already-extracted mesh via GAOT loss internals."""
+    """Estimate drag (N) from an extracted mesh via GAOT internals.
+
+    For GAOT3 inference, mirror the training-time composition:
+    pressure-drag integration + shear-force estimate.
+    """
     try:
         if not _mesh_has_valid_face_indices(mesh):
             warnings.warn(
@@ -1488,23 +1492,41 @@ def _estimate_drag_newtons(
         # coupling and prevent CSE overlay failures from poisoning the render CUDA context.
         if gaot_version == 3 and hasattr(gaot_loader, "_preprocess") and hasattr(gaot_loader, "_latent_tokens"):
             from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.pressure_integration import cp_field_to_drag  # noqa: PLC0415
+            from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.shear_force import ShearForce  # noqa: PLC0415
 
             with torch.no_grad(), _suppress_wandb_logging():
                 batch = gaot_loader._preprocess(verts_t, faces_t)
                 output = gaot_loader.gaot.forward(batch=batch, tokens_pos=gaot_loader._latent_tokens)
                 pressure_field = output["field"]
-                integration_normals = batch.c_raw if hasattr(batch, "c_raw") and batch.c_raw is not None else batch.c
-                drag_tensor = cp_field_to_drag(
+
+                # Match GAOT3 ModelLoader: integrate with model-space geometry (x-flipped).
+                integration_normals = batch.c if hasattr(batch, "c") and batch.c is not None else batch.c_raw
+                integration_pos = batch.pos_raw if hasattr(batch, "pos_raw") and batch.pos_raw is not None else (verts_t * 1e-3)
+                pressure_drag_tensor = cp_field_to_drag(
                     cp_field=pressure_field,
                     normals=integration_normals,
                     face=faces_t.T,
-                    pos=verts_t * 1e-3,
+                    pos=integration_pos,
                     v_inf=float(gaot_loader.cfd_config["v_inf"]),
                     rho=float(gaot_loader.cfd_config["rho"]),
                 )
 
+                if not hasattr(gaot_loader, "_shear_force_calculator"):
+                    gaot_loader._shear_force_calculator = ShearForce(unit="mm^2")
+                shear_drag_tensor = gaot_loader._shear_force_calculator.calculate_shear_force(verts_t, faces_t)
+                drag_tensor = pressure_drag_tensor + shear_drag_tensor
+
             drag_val = float(drag_tensor.detach().cpu().item())
-            return drag_val if np.isfinite(drag_val) else None
+            if not np.isfinite(drag_val):
+                return None
+            if drag_val < 0.0:
+                warnings.warn(
+                    f"[latent_rollout] GAOT drag came back negative ({drag_val:.3f} N); using abs() for CSE compatibility.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                drag_val = abs(drag_val)
+            return drag_val
 
         gaot_loader.epoch_name = int(frame_step)
         if gaot_version == 3:
@@ -1521,6 +1543,13 @@ def _estimate_drag_newtons(
 
         if not np.isfinite(drag_val):
             return None
+        if drag_val < 0.0:
+            warnings.warn(
+                f"[latent_rollout] GAOT drag came back negative ({drag_val:.3f} N); using abs() for CSE compatibility.",
+                UserWarning,
+                stacklevel=2,
+            )
+            drag_val = abs(drag_val)
         return drag_val
     except Exception as exc:
         warnings.warn(
