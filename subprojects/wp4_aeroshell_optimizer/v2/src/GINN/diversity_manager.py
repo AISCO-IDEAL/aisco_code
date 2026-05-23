@@ -808,16 +808,22 @@ class DiversityTrainer:
             for k in range(len(active_constraint_cats)):
                 c_stack = torch.stack([per_z_c_scaled[i][k] for i in range(N)])
                 c_l2_live.append(torch.sqrt(c_stack.pow(2).sum() + 1e-12))
-            _use_linear_formula = getattr(self._alm_manager, "_alm_formula", "quadratic_augmented") == "linear_augmented"
+            _alm_formula = getattr(self._alm_manager, "_alm_formula", "quadratic_augmented")
             for k, cat in enumerate(active_constraint_cats):
                 c_name = self._total_loss._constraint_by_category[cat][0]
                 idx = active_constraint_indices[k]
                 lam = self._alm_manager.lamdas[idx].detach().squeeze()
                 mu = self._alm_manager.mus[idx].detach().squeeze()
                 grad_scale = self._norm_manager.get_grad_scale(f"alm_{c_name}")
-                if _use_linear_formula:
-                    # (λ + 0.5μ)·c — GINN-style; both multipliers amplify at 1/c near convergence
+                if _alm_formula == "linear_augmented":
+                    # (λ + 0.5μ)·c — both multipliers amplify at 1/c near convergence
                     alm_component_terms[f"alm_{c_name}"] = grad_scale * (lam + 0.5 * mu) * c_l2_live[k]
+                elif _alm_formula == "power_augmented":
+                    # λ·c + 0.5μ·cᵖ — per-constraint exponent (mirrors ALMManager.compute_penalty)
+                    p = self._alm_manager.exponents_tensor[idx].detach()
+                    alm_component_terms[f"alm_{c_name}"] = grad_scale * (
+                        lam * c_l2_live[k] + 0.5 * mu * c_l2_live[k].clamp(min=0.0) ** p
+                    )
                 else:
                     # λ·c + 0.5μ·c² — standard quadratic ALM
                     alm_component_terms[f"alm_{c_name}"] = grad_scale * (lam * c_l2_live[k] + 0.5 * mu * c_l2_live[k].pow(2))
@@ -947,7 +953,7 @@ class DiversityTrainer:
             for k in range(num_c):
                 c_stack = torch.stack([c_per_z_detached[i][k] for i in range(N)])
                 c_l2_detached.append(torch.sqrt(c_stack.pow(2).sum() + 1e-12))
-            _use_linear_formula = getattr(self._alm_manager, "_alm_formula", "quadratic_augmented") == "linear_augmented"
+            _alm_formula = getattr(self._alm_manager, "_alm_formula", "quadratic_augmented")
             weights = [[torch.zeros((), device=self._device) for _ in range(num_c)] for _ in range(N)]
             for k, cat in enumerate(active_constraint_cats):
                 c_name = self._total_loss._constraint_by_category[cat][0]
@@ -955,9 +961,13 @@ class DiversityTrainer:
                 lam = self._alm_manager.lamdas[idx].detach().squeeze()
                 mu = self._alm_manager.mus[idx].detach().squeeze()
                 grad_scale = self._norm_manager.get_grad_scale(f"alm_{c_name}")
-                if _use_linear_formula:
+                if _alm_formula == "linear_augmented":
                     # Gradient of (λ + 0.5μ)·‖c‖₂ w.r.t. c_i = (λ + 0.5μ) / ‖c‖₂ · c_i
                     factor = (lam + 0.5 * mu) / c_l2_detached[k] * grad_scale  # scalar
+                elif _alm_formula == "power_augmented":
+                    # Gradient of λ·‖c‖ + 0.5μ·‖c‖ᵖ w.r.t. c_i = (λ + 0.5μ·p·‖c‖^(p-1)) / ‖c‖ · c_i
+                    p = self._alm_manager.exponents_tensor[idx].detach()
+                    factor = (lam + 0.5 * mu * p * c_l2_detached[k] ** (p - 1)) / c_l2_detached[k] * grad_scale
                 else:
                     # Gradient of λ·‖c‖ + 0.5μ·‖c‖² w.r.t. c_i = (λ/‖c‖ + μ) · c_i
                     factor = (lam / c_l2_detached[k] + mu) * grad_scale  # scalar
