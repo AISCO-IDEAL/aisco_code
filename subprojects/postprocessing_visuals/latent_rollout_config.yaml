@@ -15,16 +15,16 @@ final_png_out: null
 # Animation / traversal
 # ---------------------------------------------------------------------------
 n_frames: 360
-resolution: 60
+resolution: 96
 radius: null
 fps: 24
 device: auto
-width: 2560
+width: 3840
 height: 2160
 panel_width: 1280
 azim: -60.0
 elev: 25.0
-mesh_zoom: 1.0
+mesh_zoom: 1.0  # 1.0 = standard distance (distance_mult=1.6). Higher zooms closer (can distort proportions).
 mode: spiral
 
 show_anchors: false
@@ -41,7 +41,7 @@ final_frame_use_best_cse: true
 # Colors / rendering
 # ---------------------------------------------------------------------------
 render_bg: "#23283E"
-transparent_background: false
+transparent_background: true
 
 mesh_color: "#5DADE2" #"#F2F4F7" # Aeroshell base color
 mesh_alpha: 0.85
@@ -70,9 +70,9 @@ solar_contour_postprocess_iters: 4
 solar_contour_hole_fill_iters: 2
 solar_overlay_smooth_iters: 10
 
-show_cse_overlay: false
+show_cse_overlay: true
 save_cse_samples: true
-show_cse_kmh: false
+show_cse_kmh: true
 show_cse_tacho: true
 show_latent_panel: true
 cse_text_color: "#EAF2F8"

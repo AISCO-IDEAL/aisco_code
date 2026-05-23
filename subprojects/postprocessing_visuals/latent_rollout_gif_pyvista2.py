@@ -1313,7 +1313,7 @@ def box_builder(
         radius=radius,
         fill=None,
         outline=_CARD_SECTION_OUTLINE,
-        width=2,
+        width=max(2, int(2 * scale)),
     )
     return img, draw
 
@@ -1924,7 +1924,7 @@ def draw_left_box(  # noqa: PLR0915
             radius=max(6, int(8 * scale)),
             fill=None,
             outline=_CARD_SECTION_OUTLINE,
-            width=2,
+            width=max(2, int(2 * scale)),
         )
         txt_x = pad_x + max(8, int(10 * scale))
         draw.text((txt_x, y_top + max(4, int(6 * scale))), title, fill=text_color, font=label_font)
@@ -1946,7 +1946,7 @@ def draw_left_box(  # noqa: PLR0915
             radius=max(6, int(8 * scale)),
             fill=None,
             outline=_CARD_SECTION_OUTLINE,
-            width=2,
+            width=max(2, int(2 * scale)),
         )
         caption = "Cruising Speed Estimate"
         cap_box = draw.textbbox((0, 0), caption, font=caption_font)
@@ -3194,8 +3194,17 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         png_out = Path(args.final_png_out)
         if bool(args.final_png_include_composite):
             if png_source_composite is not None:
-                imageio.imwrite(png_out, png_source_composite)
-                print(f"Saved final composite PNG ({hold_source_label}): {png_out}")
+                if bool(args.transparent_background):
+                    bg_rgb = np.array(_parse_color_rgb(args.render_bg), dtype=np.uint8)
+                    alpha_mask = np.where(
+                        np.all(png_source_composite == bg_rgb[None, None, :], axis=-1), 0, 255
+                    ).astype(np.uint8)
+                    png_rgba = np.dstack([png_source_composite, alpha_mask])
+                    imageio.imwrite(png_out, png_rgba)
+                    print(f"Saved transparent composite PNG ({hold_source_label}): {png_out}")
+                else:
+                    imageio.imwrite(png_out, png_source_composite)
+                    print(f"Saved final composite PNG ({hold_source_label}): {png_out}")
             else:
                 warnings.warn(
                     "[latent_rollout] final composite frame missing; skipping PNG export.",
