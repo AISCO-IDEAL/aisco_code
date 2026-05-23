@@ -610,7 +610,7 @@ def _build_face_overlay_mesh(
         return None
     try:
         sub = base_mesh.submesh([idx], append=True, repair=False)
-        if sub is None or len(sub.vertices) == 0:
+        if not isinstance(sub, trimesh.Trimesh) or len(sub.vertices) == 0:
             return None
         if normal_offset_mm != 0.0:
             vnorm = sub.vertex_normals
@@ -628,7 +628,7 @@ def _cutout_faces_from_mesh(base_mesh: trimesh.Trimesh, face_mask: np.ndarray) -
         return None
     try:
         sub = base_mesh.submesh([keep_idx], append=True, repair=False)
-        if sub is None or len(sub.vertices) == 0:
+        if not isinstance(sub, trimesh.Trimesh) or len(sub.vertices) == 0:
             return None
     except Exception:
         return None
@@ -682,7 +682,7 @@ def _smooth_binary_face_scores(
         np.add.at(accum, right, scores[left] * valid_f32[left])
         np.add.at(counts, left, valid_f32[right])
         np.add.at(counts, right, valid_f32[left])
-        scores = accum / np.clip(counts, 1.0, None)
+        scores = (accum / np.clip(counts, 1.0, None)).astype(np.float32)
         scores[~valid_mask] = -1.0
 
     return scores
@@ -1211,7 +1211,7 @@ def _build_solar_cell_texture(
             bottom = round(top + cell_h)
             fill = cell_a if (row + col) % 2 == 0 else cell_b
             draw.rectangle(
-                [(left, top), (right, bottom)],
+                ((left, top), (right, bottom)),
                 fill=fill,
                 outline=seam_color,
                 width=seam_width,
@@ -1311,7 +1311,7 @@ def box_builder(
     radius = max(8, int(10 * scale))
     # Filled rounded rect
     draw.rounded_rectangle(
-        [(0, 0), (box_w - 1, box_h - 1)],
+        ((0, 0), (box_w - 1, box_h - 1)),
         radius=radius,
         fill=(box_color[0], box_color[1], box_color[2], a),
         outline=None,
@@ -1324,7 +1324,7 @@ def box_builder(
         draw.line([(1, gy), (box_w - 2, gy)], fill=_CARD_GRID_COL, width=1)
     # Clip alpha channel to rounded rect so grid lines don't bleed into sharp corners
     clip_mask = Image.new("L", (box_w, box_h), 0)
-    ImageDraw.Draw(clip_mask).rounded_rectangle([(0, 0), (box_w - 1, box_h - 1)], radius=radius, fill=255)
+    ImageDraw.Draw(clip_mask).rounded_rectangle(((0, 0), (box_w - 1, box_h - 1)), radius=radius, fill=255)
     cur_alpha = np.asarray(img.split()[3], dtype=np.uint16)
     mask_np = np.asarray(clip_mask, dtype=np.uint16)
     new_alpha = ((cur_alpha * mask_np) // 255).astype(np.uint8)
@@ -1333,11 +1333,11 @@ def box_builder(
     # Red outer border drawn after clipping so it sits cleanly on top
     draw = ImageDraw.Draw(img, "RGBA")
     draw.rounded_rectangle(
-        [(0, 0), (box_w - 1, box_h - 1)],
+        ((0, 0), (box_w - 1, box_h - 1)),
         radius=radius,
         fill=None,
         outline=_CARD_SECTION_OUTLINE,
-        width=max(2, int(2 * scale)),
+        width=max(1.2, int(1.2 * scale)),
     )
     return img, draw
 
@@ -1580,7 +1580,7 @@ def draw_epoch_label_on_frame(
     if box_color is not None:
         pad = max(4, int(4 * scale_factor))
         draw.rectangle(
-            [(anchor_x - pad, anchor_y - pad), (anchor_x + text_w + pad, anchor_y + text_h + pad)],
+            ((anchor_x - pad, anchor_y - pad), (anchor_x + text_w + pad, anchor_y + text_h + pad)),
             fill=box_color,
         )
     draw.text(
@@ -1659,6 +1659,7 @@ def _init_gaot_drag_estimator(
             return GAOTPlyInference(cfd_config=cfd_config, device=str(device))
 
         _ensure_wp4_model_imports()
+        _GaotLoader: type[Any]
         if gaot_version == 1:
             from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.model_loader import ModelLoader as _GaotLoader  # noqa: PLC0415
         elif gaot_version == 2:
@@ -1680,7 +1681,7 @@ def _init_gaot_drag_estimator(
         return None
 
 
-def _estimate_drag_newtons(
+def _estimate_drag_newtons(  # noqa: PLR0912
     gaot_loader: Any,
     gaot_version: int,
     sdf_model: Any,
@@ -1953,11 +1954,11 @@ def draw_left_box(  # noqa: PLR0915
     def _section(y_top: int, title: str, value: str) -> int:
         y_bot = y_top + section_h
         draw.rounded_rectangle(
-            [(pad_x, y_top), (box_w - pad_x, y_bot)],
+            ((pad_x, y_top), (box_w - pad_x, y_bot)),
             radius=max(6, int(8 * scale)),
             fill=None,
             outline=_CARD_SECTION_OUTLINE,
-            width=max(2, int(2 * scale)),
+            width=max(1.2, int(1.2 * scale)),
         )
         txt_x = pad_x + max(8, int(10 * scale))
         draw.text((txt_x, y_top + max(4, int(6 * scale))), title, fill=text_color, font=label_font)
@@ -1975,11 +1976,11 @@ def draw_left_box(  # noqa: PLR0915
         tacho_top = y
         tacho_bottom = box_h - pad_y
         draw.rounded_rectangle(
-            [(pad_x, tacho_top), (box_w - pad_x, tacho_bottom)],
+            ((pad_x, tacho_top), (box_w - pad_x, tacho_bottom)),
             radius=max(6, int(8 * scale)),
             fill=None,
             outline=_CARD_SECTION_OUTLINE,
-            width=max(2, int(2 * scale)),
+            width=max(1, int(1 * scale)),
         )
         caption = "Cruising Speed Estimate"
         cap_box = draw.textbbox((0, 0), caption, font=caption_font)
@@ -1992,8 +1993,10 @@ def draw_left_box(  # noqa: PLR0915
         )
         cx = box_w // 2
         cy = tacho_top + max(20, int(26 * scale)) + tacho_radius
-        arc_start_deg = 330.0
-        arc_span_deg = 240.0
+        # 210 degrees is the bottom-left (0 km/h)
+        # Sweeping -240 degrees moves clockwise over the top arch to the bottom-right
+        arc_start_deg = 210.0
+        arc_span_deg = -240.0
         arc_pts_outer: list[tuple[int, int]] = []
         arc_pts_inner: list[tuple[int, int]] = []
         for k in range(81):
@@ -2008,7 +2011,7 @@ def draw_left_box(  # noqa: PLR0915
         if len(arc_pts_outer) >= 2 and len(arc_pts_inner) >= 2:
             glow_poly = arc_pts_outer + list(reversed(arc_pts_inner))
             draw.polygon(glow_poly, fill=(box_color[0], box_color[1], box_color[2], 155))
-            draw.line(arc_pts_outer, fill=text_color, width=max(1, int(2 * scale)))
+            draw.line(arc_pts_outer, fill=text_color, width=max(1.2, int(1.2 * scale)))
         tick_col: tuple[int, int, int] = (
             int(0.75 * text_color[0]),
             int(0.75 * text_color[1]),
@@ -2020,7 +2023,7 @@ def draw_left_box(  # noqa: PLR0915
             y_in = cy - int((tacho_radius - max(5, int(6 * scale))) * math.sin(angle))
             x_out = cx + int(tacho_radius * math.cos(angle))
             y_out = cy - int(tacho_radius * math.sin(angle))
-            draw.line([(x_in, y_in), (x_out, y_out)], fill=tick_col, width=max(1, int(1 * scale)))
+            draw.line([(x_in, y_in), (x_out, y_out)], fill=tick_col, width=max(1.2, int(1.2 * scale)))
         if cse_ms is not None and np.isfinite(cse_ms):
             kmh = max(0.0, float(cse_ms) * 3.6)
             needle_frac = max(0.0, min(1.0, kmh / tacho_kmh_max))
@@ -2028,7 +2031,7 @@ def draw_left_box(  # noqa: PLR0915
             nx = cx + int((tacho_radius - max(6, int(8 * scale))) * math.cos(angle))
             ny = cy - int((tacho_radius - max(6, int(8 * scale))) * math.sin(angle))
             needle_col = (235, 76, 66)
-            draw.line([(cx, cy), (nx, ny)], fill=needle_col, width=max(1, int(2 * scale)))
+            draw.line([(cx, cy), (nx, ny)], fill=needle_col, width=max(1.2, int(1.2 * scale)))
             hub_r = max(2, int(3 * scale))
             draw.ellipse([(cx - hub_r, cy - hub_r), (cx + hub_r, cy + hub_r)], fill=needle_col)
             speed_txt = f"{kmh:.1f} km/h"
@@ -2347,6 +2350,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         type=float,
         default=_c("mesh_zoom", 1.0),
         help="Mesh zoom factor: >1 brings camera closer (larger mesh), <1 zooms out. Default 1.0.",
+    )
+    parser.add_argument(
+        "--mesh_x_shift",
+        type=float,
+        default=_c("mesh_x_shift", 0.0),
+        help="Shift the mesh left/right in world X [mm]. Positive = right, negative = left. Default 0.0.",
     )
     parser.add_argument("--mesh_color", default=_c("mesh_color", "#000000"), help="Aeroshell color (hex)")
     parser.add_argument("--render_bg", default=_c("render_bg", "#23283E"), help="3D render background color (hex)")
@@ -2940,6 +2949,14 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         locked_camera_focal_point = bounds_center
         locked_camera_position = bounds_center + cam_offset
 
+    # Apply mesh_x_shift: pan camera focal point + position along world X so the
+    # mesh appears shifted left (negative) or right (positive) in the frame.
+    if float(args.mesh_x_shift) != 0.0:
+        x_shift = float(args.mesh_x_shift)
+        locked_camera_focal_point = locked_camera_focal_point + np.array([x_shift, 0.0, 0.0], dtype=np.float64)
+        locked_camera_position = locked_camera_position + np.array([x_shift, 0.0, 0.0], dtype=np.float64)
+        print(f"[camera] mesh_x_shift={x_shift:+.1f} mm applied to camera focal point")
+
     # Pre-compute the vision cone mesh once — loading it per-frame dominates runtime.
     _cached_cone_mesh: tuple[Tensor, Tensor] | None = None
     if args.show_windshield or args.show_solar_selection:
@@ -3260,7 +3277,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     hold_source_frame = frames[-1]
     png_source_aeroshell = last_aeroshell_rgb
     png_source_composite = last_composite_frame
-    if bool(args.final_frame_use_best_cse) and best_cse_aeroshell_rgb is not None and best_cse_composite_frame is not None:
+    if (
+        bool(args.final_frame_use_best_cse)
+        and best_cse_aeroshell_rgb is not None
+        and best_cse_composite_frame is not None
+        and best_cse_frame_idx is not None
+        and best_cse_ms is not None
+    ):
         hold_source_label = f"best CSE (frame {int(best_cse_frame_idx) + 1}, {float(best_cse_ms):.2f} m/s)"
         hold_source_frame = best_cse_composite_frame
         png_source_aeroshell = best_cse_aeroshell_rgb

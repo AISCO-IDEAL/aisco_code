@@ -616,7 +616,7 @@ def compute_solar_fields(
                 np.add.at(accum, right, scores[left] * valid_f32[left])
                 np.add.at(counts, left, valid_f32[right])
                 np.add.at(counts, right, valid_f32[left])
-                scores = accum / np.clip(counts, 1.0, None)
+                scores = (accum / np.clip(counts, 1.0, None)).astype(np.float32)
                 scores[~valid_np] = -1.0
             binary_mask = torch.tensor(scores > 0.5, dtype=torch.bool, device=illumination.device)
     binary_mask = binary_mask & valid_mask
@@ -1429,12 +1429,12 @@ def _add_legend(
     # Draw on a temporary RGBA overlay so the box is composited transparently
     overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
-    draw.rectangle([x0, y0, x0 + box_w, y0 + box_h], fill=box_bg)
+    draw.rectangle((x0, y0, x0 + box_w, y0 + box_h), fill=box_bg)
 
     for i, (label, rgba) in enumerate(entries):
         y = y0 + pad + i * line_h
         r, g, b, a = rgba
-        draw.rectangle([x0 + pad, y, x0 + pad + swatch, y + swatch], fill=(r, g, b, min(a, 220)))
+        draw.rectangle((x0 + pad, y, x0 + pad + swatch, y + swatch), fill=(r, g, b, min(a, 220)))
         draw.text((x0 + pad + text_x_off, y + 3), label, fill=font_color)
 
     img = Image.alpha_composite(img, overlay)
