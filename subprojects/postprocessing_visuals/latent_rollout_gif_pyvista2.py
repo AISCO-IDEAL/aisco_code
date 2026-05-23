@@ -1227,7 +1227,7 @@ def _build_solar_cell_texture(
 # ---------------------------------------------------------------------------
 _CARD_BOX_COLOR: tuple[int, int, int] = (20, 24, 30)
 _CARD_BOX_ALPHA: float = 0.72
-_CARD_GRID_COL: tuple[int, int, int, int] = (130, 150, 195, 40)
+_CARD_GRID_COL: tuple[int, int, int, int] = (130, 150, 195, 110)
 _CARD_SECTION_OUTLINE: tuple[int, int, int, int] = (195, 53, 49, 185)
 
 
@@ -1290,19 +1290,30 @@ def box_builder(
         fill=(box_color[0], box_color[1], box_color[2], a),
         outline=None,
     )
-    # Subtle grid
+    # Grid — clipped to rounded corners via a binary mask so corners stay round
     grid_step = max(28, int(40 * scale))
     for gx in range(1, box_w, grid_step):
         draw.line([(gx, 1), (gx, box_h - 2)], fill=_CARD_GRID_COL, width=1)
     for gy in range(1, box_h, grid_step):
         draw.line([(1, gy), (box_w - 2, gy)], fill=_CARD_GRID_COL, width=1)
-    # Red outer border
+    # Clip alpha channel to rounded rect so grid lines don't bleed into sharp corners
+    clip_mask = Image.new("L", (box_w, box_h), 0)
+    ImageDraw.Draw(clip_mask).rounded_rectangle(
+        [(0, 0), (box_w - 1, box_h - 1)], radius=radius, fill=255
+    )
+    cur_alpha = np.asarray(img.split()[3], dtype=np.uint16)
+    mask_np = np.asarray(clip_mask, dtype=np.uint16)
+    new_alpha = ((cur_alpha * mask_np) // 255).astype(np.uint8)
+    r_ch, g_ch, b_ch, _ = img.split()
+    img = Image.merge("RGBA", (r_ch, g_ch, b_ch, Image.fromarray(new_alpha)))
+    # Red outer border drawn after clipping so it sits cleanly on top
+    draw = ImageDraw.Draw(img, "RGBA")
     draw.rounded_rectangle(
         [(0, 0), (box_w - 1, box_h - 1)],
         radius=radius,
         fill=None,
         outline=_CARD_SECTION_OUTLINE,
-        width=1,
+        width=2,
     )
     return img, draw
 
@@ -1548,14 +1559,6 @@ def draw_epoch_label_on_frame(
     margin_bottom = max(8, int(12 * scale_factor))
     anchor_x = (w - text_w) // 2 + x_offset_px
     anchor_y = h - text_h - margin_bottom
-    # if box_color is not None:
-    #     pad_x = int(8 * scale_factor)
-    #     pad_y = int(4 * scale_factor)
-    #     draw.rectangle(
-    #         [(anchor_x - pad_x, anchor_y - pad_y),
-    #          (anchor_x + text_w + pad_x, anchor_y + text_h + pad_y)],
-    #         fill=box_color,
-    #     )
     draw.text(
         (anchor_x, anchor_y),
         label,
@@ -1919,9 +1922,9 @@ def draw_left_box(  # noqa: PLR0915
         draw.rounded_rectangle(
             [(pad_x, y_top), (box_w - pad_x, y_bot)],
             radius=max(6, int(8 * scale)),
-            fill=(box_color[0], box_color[1], box_color[2], int(0.30 * 255)),
+            fill=None,
             outline=_CARD_SECTION_OUTLINE,
-            width=1,
+            width=2,
         )
         txt_x = pad_x + max(8, int(10 * scale))
         draw.text((txt_x, y_top + max(4, int(6 * scale))), title, fill=text_color, font=label_font)
@@ -1941,9 +1944,9 @@ def draw_left_box(  # noqa: PLR0915
         draw.rounded_rectangle(
             [(pad_x, tacho_top), (box_w - pad_x, tacho_bottom)],
             radius=max(6, int(8 * scale)),
-            fill=(box_color[0], box_color[1], box_color[2], int(0.30 * 255)),
+            fill=None,
             outline=_CARD_SECTION_OUTLINE,
-            width=1,
+            width=2,
         )
         caption = "Cruising Speed Estimate"
         cap_box = draw.textbbox((0, 0), caption, font=caption_font)
@@ -2304,6 +2307,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     parser.add_argument("--panel_width", type=int, default=_c("panel_width", 320), help="Latent-map panel width in px")
     parser.add_argument("--azim", type=float, default=_c("azim", -60.0), help="Camera azimuth in degrees")
     parser.add_argument("--elev", type=float, default=_c("elev", 25.0), help="Camera elevation in degrees")
+    parser.add_argument(
+        "--mesh_zoom", type=float, default=_c("mesh_zoom", 1.0),
+        help="Mesh zoom factor: >1 brings camera closer (larger mesh), <1 zooms out. Default 1.0.",
+    )
     parser.add_argument("--mesh_color", default=_c("mesh_color", "#000000"), help="Aeroshell color (hex)")
     parser.add_argument("--render_bg", default=_c("render_bg", "#23283E"), help="3D render background color (hex)")
     parser.add_argument(
@@ -2867,7 +2874,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     # Lock camera once from WP2 prism bounds — identical scale across all modes.
     _prism_center, _prism_diag = _get_prism_center_diag(float(args.outer_prism_scale), args.bbox_padding)
     locked_camera_position, locked_camera_focal_point, locked_camera_view_up = _compute_camera_from_center(
-        _prism_center, _prism_diag, args.azim, args.elev
+        _prism_center, _prism_diag, args.azim, args.elev,
+        distance_mult=1.6 / max(0.1, float(args.mesh_zoom)),
     )
     if global_bounds is not None:
         bounds_center = np.array(
@@ -2890,7 +2898,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         )
 
     print("\nGenerating frames...")
-    outer_margin_x = max(12, int(0.06 * args.width))
+    outer_margin_x = max(4, int(0.02 * args.width))
     frame_scale = args.height / 600.0
     box_w, box_h = _box_dimensions(frame_scale, bool(args.show_cse_tacho))
     for i, (z0, z1) in enumerate(z_coords):
