@@ -550,6 +550,7 @@ def compute_solar_fields(
     sun_dir: Tensor,
     area_budget_mm2: float,
     cone_face_mask: Tensor | None = None,
+    binary_postprocess_iters: int = 2,
     sigmoid_sharpness: float = 10.0,
     soft_mask_selection_threshold: float = 0.5,
 ) -> tuple[Tensor, Tensor]:
@@ -586,9 +587,13 @@ def compute_solar_fields(
     sun_dir_unit = sun_dir_unit / torch.linalg.norm(sun_dir_unit).clamp_min(epsilon)
     illumination = (face_normals_unit * sun_dir_unit).sum(-1)
 
-    # Windshield faces get quality=-1: sorted last, never selected (matches SR_SolarLoss)
+    # Match SR_SolarLoss exactly: compute quality on the full aeroshell, then
+    # force windshield faces to quality=-1 before soft budget selection.
+    valid_mask = torch.ones_like(illumination, dtype=torch.bool)
     if cone_face_mask is not None:
-        illumination = illumination.masked_fill(cone_face_mask.to(illumination.device), -1.0)
+        cone_face_mask = cone_face_mask.to(illumination.device, dtype=torch.bool)
+        valid_mask = ~cone_face_mask
+        illumination = illumination.masked_fill(cone_face_mask, -1.0)
 
     quality_order = torch.argsort(illumination, descending=True)
     sorted_areas = face_area_m2[quality_order]
@@ -596,11 +601,49 @@ def compute_solar_fields(
     area_budget_m2 = area_budget_mm2 * 1e-6
     distance_to_budget = (area_budget_m2 - cumulative_area) / max(area_budget_m2, epsilon)
     soft_mask_sorted = torch.sigmoid(sigmoid_sharpness * distance_to_budget)
-
     original_order = torch.argsort(quality_order)
     soft_mask = soft_mask_sorted[original_order]
+    binary_mask = (soft_mask > soft_mask_selection_threshold)
 
-    binary_mask = (soft_mask > soft_mask_selection_threshold).float()
+    if binary_postprocess_iters > 0:
+        mesh = trimesh.Trimesh(vertices=verts_f32.detach().cpu().numpy(), faces=faces_i64.detach().cpu().numpy(), process=False)
+        adjacency = np.asarray(mesh.face_adjacency, dtype=np.int64)
+        if adjacency.size > 0:
+            valid_np = valid_mask.detach().cpu().numpy().astype(bool)
+            scores = binary_mask.detach().cpu().numpy().astype(np.float32)
+            valid_f32 = valid_np.astype(np.float32)
+            left = adjacency[:, 0]
+            right = adjacency[:, 1]
+            for _ in range(int(binary_postprocess_iters)):
+                accum = scores.copy()
+                counts = np.ones_like(scores, dtype=np.float32)
+                np.add.at(accum, left, scores[right] * valid_f32[right])
+                np.add.at(accum, right, scores[left] * valid_f32[left])
+                np.add.at(counts, left, valid_f32[right])
+                np.add.at(counts, right, valid_f32[left])
+                scores = accum / np.clip(counts, 1.0, None)
+                scores[~valid_np] = -1.0
+            binary_mask = torch.tensor(scores > 0.5, dtype=torch.bool, device=illumination.device)
+    binary_mask = binary_mask & valid_mask
+
+    # Post-op reallocation: fill removed windshield area with best remaining valid faces.
+    target_area_m2 = torch.minimum(
+        torch.tensor(area_budget_mm2 * 1e-6, device=illumination.device),
+        face_area_m2[valid_mask].sum(),
+    )
+    selected_area_m2 = face_area_m2[binary_mask].sum()
+    if float(selected_area_m2.item()) < float(target_area_m2.item()):
+        candidates = torch.where(valid_mask & (~binary_mask))[0]
+        if candidates.numel() > 0:
+            order = candidates[torch.argsort(illumination[candidates], descending=True)]
+            running = selected_area_m2
+            for idx in order:
+                if float(running.item()) >= float(target_area_m2.item()):
+                    break
+                binary_mask[idx] = True
+                running = running + face_area_m2[idx]
+
+    binary_mask = binary_mask.float()
     return binary_mask.detach(), illumination.detach()
 
 
@@ -1614,12 +1657,14 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             area_budget = float(_c("solar", "area_budget_mm2", default=4_200_000.0))
             sharpness = float(_c("solar", "sigmoid_sharpness", default=10.0))
             threshold = float(_c("solar", "soft_mask_selection_threshold", default=0.5))
+            binary_postprocess_iters = int(_c("solar", "binary_postprocess_iters", default=2))
             binary_mask_tensor, shading_tensor = compute_solar_fields(
                 vertices=verts_t,
                 faces=faces_t,
                 sun_dir=sun_dir,
                 area_budget_mm2=area_budget,
                 cone_face_mask=cone_mask,
+                binary_postprocess_iters=binary_postprocess_iters,
                 sigmoid_sharpness=sharpness,
                 soft_mask_selection_threshold=threshold,
             )

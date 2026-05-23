@@ -28,11 +28,11 @@ mode: circle
 # ---------------------------------------------------------------------------
 # Colors / rendering
 # ---------------------------------------------------------------------------
-mesh_color: "#E9ECEF" # Aeroshell base color
+mesh_color: "#F2F4F7" # Aeroshell base color
 mesh_alpha: 1.0
 render_bg: "#ffffff"
 show_assembly: true
-assembly_color: "#3C4148"
+assembly_color: "#F39C12"
 show_solar_selection: true
 show_windshield: true
 full_wheels: true
@@ -43,8 +43,11 @@ windshield_color: "#86A9BD"
 windshield_alpha: 0.32
 solar_sun_dir: [-1.0, 0.0, 1.0]
 solar_area_budget_mm2: 4200000.0
+solar_binary_postprocess_iters: 2
+solar_contour_postprocess_iters: 8
+solar_overlay_smooth_iters: 10
 # Clean-edge preset (no post-smoothing)
-mask_refine_subdivisions: 4
+mask_refine_subdivisions: 2
 solar_mask_refine_subdivisions: 0
 show_anchors: false
 epoch_gif: false

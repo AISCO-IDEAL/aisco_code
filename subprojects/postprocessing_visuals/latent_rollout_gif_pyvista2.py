@@ -424,6 +424,8 @@ def _compute_solar_selection_mask(
     sun_dir_xyz: tuple[float, float, float],
     area_budget_mm2: float,
     cone_face_mask: Tensor | None = None,
+    binary_postprocess_iters: int = 2,
+    contour_postprocess_iters: int = 6,
     sigmoid_sharpness: float = 10.0,
     threshold: float = 0.5,
 ) -> Tensor | None:
@@ -441,8 +443,11 @@ def _compute_solar_selection_mask(
         sun_dir = torch.tensor(sun_dir_xyz, dtype=torch.float32, device=device)
         sun_dir = sun_dir / torch.linalg.norm(sun_dir).clamp_min(epsilon)
         illumination = (face_normals_unit * sun_dir).sum(-1)
+        valid_mask = torch.ones_like(illumination, dtype=torch.bool)
         if cone_face_mask is not None:
-            illumination = illumination.masked_fill(cone_face_mask.to(device), -1.0)
+            cone_face_mask = cone_face_mask.to(device=device, dtype=torch.bool)
+            valid_mask = ~cone_face_mask
+            illumination = illumination.masked_fill(cone_face_mask, -1.0)
 
         quality_order = torch.argsort(illumination, descending=True)
         sorted_areas = face_area_m2[quality_order]
@@ -453,6 +458,64 @@ def _compute_solar_selection_mask(
         original_order = torch.argsort(quality_order)
         soft_mask = soft_mask_sorted[original_order]
         binary_mask = soft_mask > threshold
+
+        if binary_postprocess_iters > 0:
+            binary_np = binary_mask.detach().cpu().numpy().astype(np.float32)
+            valid_np = valid_mask.detach().cpu().numpy().astype(bool)
+            smoothed_scores = _smooth_binary_face_scores(
+                mesh=aeroshell_mesh,
+                base_scores=binary_np,
+                valid_mask=valid_np,
+                iterations=binary_postprocess_iters,
+            )
+            binary_mask = torch.tensor(smoothed_scores > 0.5, dtype=torch.bool, device=device)
+        binary_mask = binary_mask & valid_mask
+
+        if contour_postprocess_iters > 0:
+            valid_np = valid_mask.detach().cpu().numpy().astype(bool)
+            base_np = binary_mask.detach().cpu().numpy().astype(np.float32)
+            contour_scores = _smooth_binary_contour_scores(
+                mesh=aeroshell_mesh,
+                base_scores=base_np,
+                valid_mask=valid_np,
+                iterations=contour_postprocess_iters,
+            )
+
+            valid_idx = np.flatnonzero(valid_np)
+            if valid_idx.size > 0:
+                illum_np = illumination.detach().cpu().numpy()
+                area_np = face_area_m2.detach().cpu().numpy()
+                target_area_m2_np = min(max(area_budget_mm2 * 1e-6, 0.0), float(area_np[valid_idx].sum()))
+                order = valid_idx[np.lexsort((-illum_np[valid_idx], -contour_scores[valid_idx]))]
+                cumulative = np.cumsum(area_np[order])
+                if target_area_m2_np <= 0.0:
+                    keep_count = 0
+                else:
+                    keep_count = int(np.searchsorted(cumulative, target_area_m2_np, side="left")) + 1
+                    keep_count = min(keep_count, int(order.size))
+
+                selected_np = np.zeros(len(area_np), dtype=bool)
+                if keep_count > 0:
+                    selected_np[order[:keep_count]] = True
+                binary_mask = torch.tensor(selected_np, dtype=torch.bool, device=device)
+
+        # Post-op reallocation: if windshield exclusion removed selected area,
+        # refill from best remaining valid faces to reach the max allowed area.
+        target_area_m2 = torch.minimum(
+            torch.tensor(area_budget_mm2 * 1e-6, device=device),
+            face_area_m2[valid_mask].sum(),
+        )
+        selected_area_m2 = face_area_m2[binary_mask].sum()
+        if float(selected_area_m2.item()) < float(target_area_m2.item()):
+            candidates = torch.where(valid_mask & (~binary_mask))[0]
+            if candidates.numel() > 0:
+                order = candidates[torch.argsort(illumination[candidates], descending=True)]
+                running = selected_area_m2
+                for idx in order:
+                    if float(running.item()) >= float(target_area_m2.item()):
+                        break
+                    binary_mask[idx] = True
+                    running = running + face_area_m2[idx]
     except Exception as exc:
         warnings.warn(f"[latent_rollout] solar selection failed: {exc}. Skipping.", UserWarning, stacklevel=2)
         return None
@@ -508,6 +571,140 @@ def _subdivide_mesh_for_masks(mesh: trimesh.Trimesh, iterations: int) -> trimesh
     except Exception as exc:
         warnings.warn(
             f"[latent_rollout] mask subdivision failed: {exc}. Using original mesh.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return mesh
+    else:
+        return out
+
+
+def _smooth_binary_face_scores(
+    mesh: trimesh.Trimesh,
+    base_scores: np.ndarray,
+    valid_mask: np.ndarray,
+    iterations: int,
+) -> np.ndarray:
+    """Diffuse binary face scores across face adjacency while keeping a hard final mask possible."""
+    if iterations <= 0:
+        return base_scores
+
+    adjacency = np.asarray(mesh.face_adjacency, dtype=np.int64)
+    if adjacency.size == 0:
+        return base_scores
+
+    scores = base_scores.astype(np.float32, copy=True)
+    valid_f32 = valid_mask.astype(np.float32)
+    left = adjacency[:, 0]
+    right = adjacency[:, 1]
+
+    for _ in range(int(iterations)):
+        accum = scores.copy()
+        counts = np.ones_like(scores, dtype=np.float32)
+        np.add.at(accum, left, scores[right] * valid_f32[right])
+        np.add.at(accum, right, scores[left] * valid_f32[left])
+        np.add.at(counts, left, valid_f32[right])
+        np.add.at(counts, right, valid_f32[left])
+        scores = accum / np.clip(counts, 1.0, None)
+        scores[~valid_mask] = -1.0
+
+    return scores
+
+
+def _smooth_binary_contour_scores(
+    mesh: trimesh.Trimesh,
+    base_scores: np.ndarray,
+    valid_mask: np.ndarray,
+    iterations: int,
+) -> np.ndarray:
+    """Smooth only boundary faces so contour gets cleaner while interior stays stable."""
+    if iterations <= 0:
+        return base_scores
+
+    adjacency = np.asarray(mesh.face_adjacency, dtype=np.int64)
+    if adjacency.size == 0:
+        return base_scores
+
+    scores = base_scores.astype(np.float32, copy=True)
+    left = adjacency[:, 0]
+    right = adjacency[:, 1]
+    valid_edges = valid_mask[left] & valid_mask[right]
+    valid_f32 = valid_mask.astype(np.float32)
+
+    for _ in range(int(iterations)):
+        current_binary = scores > 0.5
+        edge_cross = valid_edges & (current_binary[left] != current_binary[right])
+        if not np.any(edge_cross):
+            break
+
+        boundary = np.zeros_like(current_binary, dtype=bool)
+        np.logical_or.at(boundary, left[edge_cross], True)
+        np.logical_or.at(boundary, right[edge_cross], True)
+        boundary &= valid_mask
+
+        accum = scores.copy()
+        counts = np.ones_like(scores, dtype=np.float32)
+        np.add.at(accum, left, scores[right] * valid_f32[right])
+        np.add.at(accum, right, scores[left] * valid_f32[left])
+        np.add.at(counts, left, valid_f32[right])
+        np.add.at(counts, right, valid_f32[left])
+        averaged = accum / np.clip(counts, 1.0, None)
+
+        # Keep interior faces unchanged; only relax boundary values.
+        scores[boundary] = 0.35 * scores[boundary] + 0.65 * averaged[boundary]
+        scores[~valid_mask] = -1.0
+
+    return scores
+
+
+def _allocate_area_budget_binary_mask(
+    mesh: trimesh.Trimesh,
+    face_area_m2: Tensor,
+    illumination: Tensor,
+    area_budget_mm2: float,
+    valid_mask: Tensor,
+    postprocess_iters: int = 0,
+) -> Tensor:
+    """Allocate solar area budget only over valid faces, optionally smoothing the binary footprint."""
+    area_budget_m2 = max(area_budget_mm2 * 1e-6, 0.0)
+    valid_np = valid_mask.detach().cpu().numpy().astype(bool)
+    illum_np = illumination.detach().cpu().numpy()
+    area_np = face_area_m2.detach().cpu().numpy()
+    binary_np = np.zeros(len(area_np), dtype=bool)
+
+    valid_idx = np.flatnonzero(valid_np)
+    if valid_idx.size == 0 or area_budget_m2 <= 0.0:
+        return torch.zeros_like(valid_mask, dtype=torch.bool)
+
+    initial_order = valid_idx[np.argsort(-illum_np[valid_idx], kind="stable")]
+    cumulative_initial = np.cumsum(area_np[initial_order])
+    initial_count = int(np.searchsorted(cumulative_initial, area_budget_m2, side="right"))
+    if initial_count <= 0:
+        return torch.zeros_like(valid_mask, dtype=torch.bool)
+    binary_np[initial_order[:initial_count]] = True
+
+    if postprocess_iters > 0:
+        smoothed_scores = _smooth_binary_face_scores(mesh, binary_np.astype(np.float32), valid_np, postprocess_iters)
+        refined_order = valid_idx[np.lexsort((-illum_np[valid_idx], -smoothed_scores[valid_idx]))]
+        cumulative_refined = np.cumsum(area_np[refined_order])
+        refined_count = int(np.searchsorted(cumulative_refined, area_budget_m2, side="right"))
+        binary_np[:] = False
+        if refined_count > 0:
+            binary_np[refined_order[:refined_count]] = True
+
+    return torch.tensor(binary_np, dtype=torch.bool, device=valid_mask.device)
+
+
+def _post_smooth_overlay_mesh(mesh: trimesh.Trimesh | None, iterations: int) -> trimesh.Trimesh | None:
+    """Apply post-op Taubin smoothing to overlay geometry edges only."""
+    if mesh is None or iterations <= 0:
+        return mesh
+    try:
+        out = mesh.copy()
+        trimesh.smoothing.filter_taubin(out, lamb=0.5, nu=-0.53, iterations=int(iterations))
+    except Exception as exc:
+        warnings.warn(
+            f"[latent_rollout] solar overlay post-smoothing failed: {exc}. Using unsmoothed overlay.",
             UserWarning,
             stacklevel=2,
         )
@@ -1369,6 +1566,24 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         help="Solar area budget in mm^2",
     )
     parser.add_argument(
+        "--solar_binary_postprocess_iters",
+        type=int,
+        default=int(_c("solar_binary_postprocess_iters", 2)),
+        help="Binary postprocess iterations for solar footprint smoothing (no gradients)",
+    )
+    parser.add_argument(
+        "--solar_contour_postprocess_iters",
+        type=int,
+        default=int(_c("solar_contour_postprocess_iters", 6)),
+        help="Boundary-only postprocess iterations to smooth solar contour while preserving interior",
+    )
+    parser.add_argument(
+        "--solar_overlay_smooth_iters",
+        type=int,
+        default=int(_c("solar_overlay_smooth_iters", 10)),
+        help="Post-op Taubin smoothing iterations for rendered solar overlay edges",
+    )
+    parser.add_argument(
         "--mask_refine_subdivisions",
         type=int,
         default=int(_c("mask_refine_subdivisions", 2)),
@@ -1696,12 +1911,18 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 sun_dir_xyz=(float(args.solar_sun_dir[0]), float(args.solar_sun_dir[1]), float(args.solar_sun_dir[2])),
                 area_budget_mm2=float(args.solar_area_budget_mm2),
                 cone_face_mask=cone_face_mask,
+                binary_postprocess_iters=int(args.solar_binary_postprocess_iters),
+                contour_postprocess_iters=int(args.solar_contour_postprocess_iters),
             )
             if solar_mask is not None:
-                solar_selection_mesh = _build_face_overlay_mesh(
+                solar_selection_mesh_raw = _build_face_overlay_mesh(
                     mask_mesh,
                     solar_mask.detach().cpu().numpy(),
                     normal_offset_mm=1.0,
+                )
+                solar_selection_mesh = _post_smooth_overlay_mesh(
+                    solar_selection_mesh_raw,
+                    int(args.solar_overlay_smooth_iters),
                 )
 
         if locked_camera_position is None:
