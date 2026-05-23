@@ -342,46 +342,58 @@ def _apply_full_wheels(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
     try:
         spec = importlib.util.spec_from_file_location("_aw", _ADD_WHEELS_PATH)
         if spec is None or spec.loader is None:
-            warnings.warn("[latent_rollout] add_wheels.py not found — skipping full-wheel replacement.", UserWarning, stacklevel=2)
+            warnings.warn(
+                "[latent_rollout] add_wheels.py not found - skipping full-wheel replacement.",
+                UserWarning,
+                stacklevel=2,
+            )
             return mesh
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)  # type: ignore[union-attr]
 
         centers = mod.infer_wheel_centers(mesh)
         if not centers:
-            warnings.warn("[latent_rollout] No wheel-like components found — skipping full-wheel replacement.", UserWarning, stacklevel=2)
+            warnings.warn(
+                "[latent_rollout] no wheel-like components found - skipping full-wheel replacement.",
+                UserWarning,
+                stacklevel=2,
+            )
             return mesh
         base = mod.remove_cut_wheel_components(mesh, centers)
         wheels = mod.make_full_wheels(centers)
         if wheels is None:
             return base
-        result = trimesh.util.concatenate([base, wheels])
+        out = trimesh.util.concatenate([base, wheels])
         print(f"[latent_rollout] full_wheels: {len(centers)} wheel(s) replaced")
     except Exception as exc:
-        warnings.warn(f"[latent_rollout] full_wheels failed: {exc}. Using original mesh.", UserWarning, stacklevel=2)
+        warnings.warn(
+            f"[latent_rollout] full_wheels failed: {exc}. Using original mesh.",
+            UserWarning,
+            stacklevel=2,
+        )
         return mesh
     else:
-        return result
+        return out
 
 
 def _precompute_vision_cone_mesh(
     assembly_id: int,
     device: torch.device,
 ) -> tuple[Tensor, Tensor] | None:
-    """Load and tessellate the vision cone mesh once; cache result for all frames."""
+    """Load and cache the WP3 vision cone mesh once for reuse across frames."""
     try:
         from subprojects.wp3_solar_estimator.utils.wp3_vision_cone import get_vision_cone_mesh  # noqa: PLC0415
 
         cone_verts, cone_faces = get_vision_cone_mesh(assembly_id, device=device)
-        print(f"[latent_rollout] vision cone mesh precomputed: {cone_verts.shape[0]} verts")
-        return cone_verts, cone_faces
     except Exception as exc:
         warnings.warn(
-            f"[latent_rollout] vision cone precompute failed: {exc}. Will skip per-frame.",
+            f"[latent_rollout] failed to precompute vision cone mesh: {exc}. Proceeding without cache.",
             UserWarning,
             stacklevel=2,
         )
         return None
+    else:
+        return cone_verts, cone_faces
 
 
 def _compute_windshield_face_mask(
@@ -390,11 +402,9 @@ def _compute_windshield_face_mask(
     device: torch.device,
     precomputed_cone: tuple[Tensor, Tensor] | None = None,
 ) -> Tensor | None:
-    """Return a bool tensor (F,) marking aeroshell faces inside the vision cone."""
+    """Return a bool face mask marking aeroshell faces inside the vision cone."""
     try:
-        from subprojects.wp3_solar_estimator.utils.wp3_vision_cone import (  # noqa: PLC0415
-            get_vision_cone_face_mask,
-        )
+        from subprojects.wp3_solar_estimator.utils.wp3_vision_cone import get_vision_cone_face_mask  # noqa: PLC0415
 
         if precomputed_cone is not None:
             cone_verts, cone_faces = precomputed_cone
@@ -402,7 +412,9 @@ def _compute_windshield_face_mask(
             cone_faces = cone_faces.to(device=device)
         else:
             from subprojects.wp3_solar_estimator.utils.wp3_vision_cone import get_vision_cone_mesh  # noqa: PLC0415
+
             cone_verts, cone_faces = get_vision_cone_mesh(assembly_id, device=device)
+
         aero_verts = torch.tensor(aeroshell_mesh.vertices, dtype=torch.float32, device=device)
         aero_faces = torch.tensor(aeroshell_mesh.faces, dtype=torch.long, device=device)
         mask = get_vision_cone_face_mask(cone_verts, cone_faces, aero_verts, aero_faces)
@@ -417,32 +429,6 @@ def _compute_windshield_face_mask(
         return None
     else:
         return mask
-
-
-def _load_windshield_from_wp2(assembly_id: int, tol: float = 2.0, atol: float = 0.4) -> trimesh.Trimesh | None:
-    """Tessellate the WP2 vision NBZ mesh for direct windshield rendering."""
-    try:
-        from subprojects.wp2_assembler.version4.components.nbz import vision_nbz  # noqa: PLC0415
-
-        assy = vision_nbz(id_number=assembly_id)
-        solids = list(assy.toCompound().Solids())
-        parts: list[trimesh.Trimesh] = []
-        for solid in solids:
-            verts_cq, faces_cq = solid.tessellate(tol, atol)
-            verts = np.array([[v.x, v.y, v.z] for v in verts_cq], dtype=np.float32)
-            faces = np.array(faces_cq, dtype=np.int64)
-            if len(verts) > 0 and len(faces) > 0:
-                parts.append(trimesh.Trimesh(vertices=verts, faces=faces))
-        if not parts:
-            return None
-        return trimesh.util.concatenate(parts)
-    except Exception as exc:
-        warnings.warn(
-            f"[latent_rollout] WP2 windshield load failed: {exc}. Skipping.",
-            UserWarning,
-            stacklevel=2,
-        )
-        return None
 
 
 def _compute_solar_selection_mask(
@@ -1080,132 +1066,19 @@ def render_mesh(
     return img[:, :, :3]  # (H, W, 3) uint8 RGB
 
 
-def _render_inner_assembly_mask(
-    assembly_mesh: trimesh.Trimesh,
-    width: int,
-    height: int,
-    azim_deg: float,
-    elev_deg: float,
-    look_at_bounds: list[float] | None,
-    camera_position: np.ndarray,
-    camera_focal_point: np.ndarray,
-    camera_view_up: np.ndarray,
-) -> np.ndarray:
-    """Render a binary-like mask image for the inner assembly with the active camera."""
-    plotter = pv.Plotter(off_screen=True, window_size=[width, height])
-    plotter.background_color = (0.0, 0.0, 0.0)
-    plotter.enable_anti_aliasing(aa_type='fxaa')
-    plotter.enable_depth_peeling(number_of_peels=2, occlusion_ratio=0.0)
-
-    pv_asm = pv.wrap(assembly_mesh)
-    plotter.add_mesh(
-        pv_asm,
-        color=(1.0, 1.0, 1.0),
-        opacity=1.0,
-        ambient=1.0,
-        diffuse=0.0,
-        smooth_shading=False,
-        specular=0.0,
-    )
-
-    plotter.camera.position = tuple(float(v) for v in camera_position)
-    plotter.camera.focal_point = tuple(float(v) for v in camera_focal_point)
-    plotter.camera.up = tuple(float(v) for v in camera_view_up)
-    if look_at_bounds is not None:
-        with contextlib.suppress(Exception):
-            plotter.reset_camera(bounds=look_at_bounds)
-    plotter.reset_camera_clipping_range()
-
-    img = plotter.screenshot(return_img=True)
-    plotter.close()
-    return img[:, :, :3]
-
-
-def _compute_inner_assembly_shift_px(
-    assembly_mesh: trimesh.Trimesh,
-    width: int,
-    height: int,
-    panel_width: int,
-    azim_deg: float,
-    elev_deg: float,
-    look_at_bounds: list[float] | None,
-    camera_position: np.ndarray,
-    camera_focal_point: np.ndarray,
-    camera_view_up: np.ndarray,
-) -> tuple[int, int] | None:
-    """Compute pixel translation so inner-assembly bbox midpoint lands at full GIF center."""
-    mask_rgb = _render_inner_assembly_mask(
-        assembly_mesh=assembly_mesh,
-        width=width,
-        height=height,
-        azim_deg=azim_deg,
-        elev_deg=elev_deg,
-        look_at_bounds=look_at_bounds,
-        camera_position=camera_position,
-        camera_focal_point=camera_focal_point,
-        camera_view_up=camera_view_up,
-    )
-    gray = np.max(mask_rgb, axis=2)
-    ys, xs = np.nonzero(gray > 8)
-    if xs.size == 0 or ys.size == 0:
-        return None
-
-    cx = 0.5 * (float(xs.min()) + float(xs.max()))
-    cy = 0.5 * (float(ys.min()) + float(ys.max()))
-    target_x = 0.5 * float(width + panel_width)
-    target_y = 0.5 * float(height)
-    dx = int(round(target_x - cx))
-    dy = int(round(target_y - cy))
-    return dx, dy
-
-
-def _shift_rgb_frame(frame_rgb: np.ndarray, dx: int, dy: int, bg_rgb: tuple[int, int, int]) -> np.ndarray:
-    """Translate RGB image by (dx, dy) with solid background fill."""
-    if dx == 0 and dy == 0:
-        return frame_rgb
-
-    h, w, _ = frame_rgb.shape
-    out = np.empty_like(frame_rgb)
-    out[:, :, 0] = bg_rgb[0]
-    out[:, :, 1] = bg_rgb[1]
-    out[:, :, 2] = bg_rgb[2]
-
-    dst_x0 = max(0, dx)
-    src_x0 = max(0, -dx)
-    dst_y0 = max(0, dy)
-    src_y0 = max(0, -dy)
-    copy_w = min(w - dst_x0, w - src_x0)
-    copy_h = min(h - dst_y0, h - src_y0)
-    if copy_w <= 0 or copy_h <= 0:
-        return out
-
-    out[dst_y0: dst_y0 + copy_h, dst_x0: dst_x0 + copy_w, :] = frame_rgb[
-        src_y0: src_y0 + copy_h,
-        src_x0: src_x0 + copy_w,
-        :,
-    ]
-    return out
-
-
-def compute_camera_pose(
-    mesh: trimesh.Trimesh,
+def _compute_camera_from_center(
+    center: np.ndarray,
+    diag: float,
     azim_deg: float = -60.0,
     elev_deg: float = 25.0,
     distance_mult: float = 1.6,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Compute camera position/focus/up using the same logic as latent_rollout_gif.py."""
-    vertices = mesh.vertices
-    vmin = vertices.min(axis=0)
-    vmax = vertices.max(axis=0)
-    centroid = 0.5 * (vmin + vmax)
-    diag = float(np.linalg.norm(vmax - vmin))
+    """Compute camera position/focal-point/up from a scene center and diagonal."""
     dist = diag * distance_mult
-
     azim = np.radians(azim_deg)
     elev = np.radians(elev_deg)
-    cam_pos = centroid + dist * np.array([np.cos(elev) * np.cos(azim), np.cos(elev) * np.sin(azim), np.sin(elev)])
-
-    forward = centroid - cam_pos
+    cam_pos = center + dist * np.array([np.cos(elev) * np.cos(azim), np.cos(elev) * np.sin(azim), np.sin(elev)])
+    forward = center - cam_pos
     forward /= np.linalg.norm(forward)
     world_up = np.array([0.0, 0.0, 1.0])
     right = np.cross(forward, world_up)
@@ -1215,8 +1088,42 @@ def compute_camera_pose(
     right /= np.linalg.norm(right)
     up = np.cross(right, forward)
     up /= np.linalg.norm(up)
+    return cam_pos, center.copy(), up
 
-    return cam_pos, centroid, up
+
+def _get_prism_center_diag(
+    prism_scale: float = _DEFAULT_OUTER_PRISM_SCALE,
+    bbox_padding: float = 0.0,
+) -> tuple[np.ndarray, float]:
+    """Return (center_xyz, diagonal_mm) for the WP2 outer prism extraction bounds."""
+    try:
+        from subprojects.wp2_assembler.version4.utils.reg_imp import (  # noqa: PLC0415
+            get_outer_prism_bounds_mm,
+            scale_outer_prism,
+        )
+        outer = get_outer_prism_bounds_mm()
+        scaled = scale_outer_prism(outer, prism_scale)
+        prism_x, prism_y, prism_z = scaled["x"], scaled["y"], scaled["z"]
+    except Exception:
+        prism_x, prism_y, prism_z = (-2900.0, 2900.0), (-1150.0, 1150.0), (0.0, 1650.0)
+    vmin = np.array([prism_x[0] - bbox_padding, prism_y[0] - bbox_padding, prism_z[0]], dtype=np.float64)
+    vmax = np.array([prism_x[1] + bbox_padding, prism_y[1] + bbox_padding, prism_z[1] + bbox_padding], dtype=np.float64)
+    return 0.5 * (vmin + vmax), float(np.linalg.norm(vmax - vmin))
+
+
+def compute_camera_pose(
+    mesh: trimesh.Trimesh,
+    azim_deg: float = -60.0,
+    elev_deg: float = 25.0,
+    distance_mult: float = 1.6,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Compute camera position/focus/up from a mesh bounding box."""
+    vertices = mesh.vertices
+    vmin = vertices.min(axis=0)
+    vmax = vertices.max(axis=0)
+    center = 0.5 * (vmin + vmax)
+    diag = float(np.linalg.norm(vmax - vmin))
+    return _compute_camera_from_center(center, diag, azim_deg, elev_deg, distance_mult)
 
 # ---------------------------------------------------------------------------
 # 2D latent space panel
@@ -1331,11 +1238,11 @@ def draw_latent_panel(  # noqa: PLR0915
     show_anchors: bool = True,
     epoch_num: int | None = None,  # kept for signature compat; text drawn on composite instead
     show_latent_card: bool = True,
+    card_margin_x: int | None = None,
+    box_alpha: float = 0.72,
 ) -> np.ndarray:
     """Return (H, W, 3) uint8 right panel: background grid + latent spiral card.
 
-    Epoch counter and z-coordinates are intentionally NOT drawn here — they are
-    overlaid on the full composite (see draw_epoch_z_overlays).
     """
     _C = colors or {}
     bg = _C.get("bg", (35, 40, 62))
@@ -1384,13 +1291,15 @@ def draw_latent_panel(  # noqa: PLR0915
     card_w = min(card_w, w - 2 * margin)
     card_h = min(card_h, h - 2 * margin)
 
-    # Center card in panel.
-    cx_card = (w - card_w) // 2
+    # Place the card near the right edge so the full frame reads as one shared
+    # background with symmetric overlay boxes.
+    margin_x = card_margin_x if card_margin_x is not None else max(12, int(0.06 * w))
+    cx_card = max(margin_x, w - card_w - margin_x)
     cy_card = (h - card_h) // 2
 
-    # Card fill — same alpha as CSE card.
+    # Card fill — use alpha parameter for transparency (matches CSE card)
     box_color = bg_fill if isinstance(bg_fill, tuple) else (35, 40, 62)
-    a = int(0.92 * 255)
+    a = int(max(0.0, min(1.0, box_alpha)) * 255)
     draw.rounded_rectangle(
         [(cx_card, cy_card), (cx_card + card_w, cy_card + card_h)],
         radius=max(8, int(10 * scale)),
@@ -1410,7 +1319,7 @@ def draw_latent_panel(  # noqa: PLR0915
         [(cx_card + pad_x, cy_card + pad_y_card),
          (cx_card + card_w - pad_x, cy_card + card_h - pad_y_card)],
         radius=max(6, int(8 * scale)),
-        fill=(box_color[0], box_color[1], box_color[2], int(0.30 * 255)),
+        fill=(box_color[0], box_color[1], box_color[2], int(a * 0.30)),
         outline=section_outline,
         width=1,
     )
@@ -1500,60 +1409,25 @@ def draw_latent_panel(  # noqa: PLR0915
         width=lw_thick,
     )
 
-    # Axis labels.
+    # Axis labels and latent coordinates stay inside the right panel/card.
     font_label = _get_font(max(9, int(13 * scale_factor)))
     draw.text((inner_x1 - int(26 * scale_factor), icy - int(16 * scale_factor)),
               "z₀", fill=axis_lbl_col, font=font_label)
     draw.text((icx + int(5 * scale_factor), inner_y0 + int(8 * scale_factor)),
               "z₁", fill=axis_lbl_col, font=font_label)
 
-    return np.asarray(img)
-
-
-def draw_epoch_z_overlays(
-    composite_rgb: np.ndarray,
-    epoch_num: int | None,
-    z0: float,
-    z1: float,
-    colors: dict | None = None,
-) -> np.ndarray:
-    """Overlay epoch counter (top-center) and z-coords (bottom-center) on the full composite.
-
-    The full composite spans render_width + panel_width, so text is centered
-    across the entire GIF width.
-    """
-    _C = colors or {}
-    title_col = _C.get("title", (200, 205, 230))
-    coord_text_col = _C.get("coord_text", (130, 195, 255))
-
-    h, full_w = composite_rgb.shape[:2]
-    scale_factor = h / 600.0
-
-    img = Image.fromarray(composite_rgb)
-    draw = ImageDraw.Draw(img)
-
-    font_epoch = _get_font(max(10, int(15 * scale_factor)))
-    font_coord = _get_font(max(8, int(11 * scale_factor)))
-
-    margin_top = int(8 * scale_factor)
-    margin_bot = int(8 * scale_factor)
-
-    # Epoch counter — top center.
-    if epoch_num is not None:
-        text_e = f"Epoch {epoch_num}"
-        bb_e = draw.textbbox((0, 0), text_e, font=font_epoch)
-        tw_e = bb_e[2] - bb_e[0]
-        draw.text(((full_w - tw_e) // 2, margin_top), text_e, fill=title_col, font=font_epoch)
-
-    # z-coordinates — bottom center.
-    text_z = f"z = [{z0:+.3f}, {z1:+.3f}]"
-    bb_z = draw.textbbox((0, 0), text_z, font=font_coord)
-    zh = bb_z[3] - bb_z[1]
-    zw = bb_z[2] - bb_z[0]
-    draw.text(((full_w - zw) // 2, h - margin_bot - zh), text_z, fill=coord_text_col, font=font_coord)
+    coord_text = f"z = [{z0:+.3f}, {z1:+.3f}]"
+    coord_box = draw.textbbox((0, 0), coord_text, font=_get_font(max(8, int(11 * scale_factor))))
+    coord_w = coord_box[2] - coord_box[0]
+    coord_h = coord_box[3] - coord_box[1]
+    draw.text(
+        ((w - coord_w) // 2, h - max(8, int(12 * scale_factor)) - coord_h),
+        coord_text,
+        fill=_C.get("coord_text", (130, 195, 255)),
+        font=_get_font(max(8, int(11 * scale_factor))),
+    )
 
     return np.asarray(img)
-
 
 
 def draw_epoch_label_on_frame(
@@ -1577,18 +1451,22 @@ def draw_epoch_label_on_frame(
 
     img = Image.fromarray(frame_rgb)
     draw = ImageDraw.Draw(img)
-    h = frame_rgb.shape[0]
+    h, w = frame_rgb.shape[:2]
     scale_factor = h / 600.0
     font_epoch = _get_font(max(10, int(15 * scale_factor)))
-    anchor_x = x_offset_px + int(8 * scale_factor)
-    anchor_y = int(8 * scale_factor)
     label = f"Epoch {epoch_num}"
+    bbox = draw.textbbox((0, 0), label, font=font_epoch)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    margin_bottom = max(8, int(12 * scale_factor))
+    anchor_x = (w - text_w) // 2 + x_offset_px
+    anchor_y = h - text_h - margin_bottom
     if box_color is not None:
-        left, top, right, bottom = draw.textbbox((anchor_x, anchor_y), label, font=font_epoch)
         pad_x = int(8 * scale_factor)
         pad_y = int(4 * scale_factor)
         draw.rectangle(
-            [(left - pad_x, top - pad_y), (right + pad_x, bottom + pad_y)],
+            [(anchor_x - pad_x, anchor_y - pad_y),
+             (anchor_x + text_w + pad_x, anchor_y + text_h + pad_y)],
             fill=box_color,
         )
     draw.text(
@@ -1911,9 +1789,16 @@ def draw_metrics_box_on_frame(
     show_tacho: bool = False,
     tacho_bg_color: tuple[int, int, int] = (35, 40, 62),
     motion_phase: float = 0.0,
+    anchor_right: bool = False,
+    sections: list[tuple[str, str]] | None = None,
 ) -> np.ndarray:
-    """Draw a right-panel style metrics card (Drag/Solar/Tacho) on an RGB frame."""
-    if not lines:
+    """Draw a metrics card on an RGB frame.
+
+    When *sections* is provided it is used directly as [(title, value), ...]
+    and *lines* is ignored for section content.  When *sections* is None the
+    legacy behaviour of parsing Drag/Solar from *lines* is preserved.
+    """
+    if sections is None and not lines:
         return frame_rgb
 
     img = Image.fromarray(frame_rgb)
@@ -1932,17 +1817,25 @@ def draw_metrics_box_on_frame(
     section_outline = (195, 53, 49, 185)
     grid_col = (130, 150, 195, 40)
 
-    drag_value = "n/a"
-    solar_value = "n/a"
-    for line in lines:
-        if line.lower().startswith("drag"):
-            drag_value = line.split(":", 1)[1].strip() if ":" in line else line
-        elif line.lower().startswith("solar"):
-            solar_value = line.split(":", 1)[1].strip() if ":" in line else line
+    # Resolve which (title, value) rows to draw.
+    if sections is not None:
+        sections_to_draw = list(sections)
+    else:
+        drag_value = "n/a"
+        solar_value = "n/a"
+        for line in lines:
+            if line.lower().startswith("drag"):
+                drag_value = line.split(":", 1)[1].strip() if ":" in line else line
+            elif line.lower().startswith("solar"):
+                solar_value = line.split(":", 1)[1].strip() if ":" in line else line
+        sections_to_draw = [("Drag", drag_value), ("Solar", solar_value)]
 
-    x0 = int(anchor_x)
+    n_sects = len(sections_to_draw)
+    frame_w = frame_rgb.shape[1]
     card_w = max(max(210, int(258 * scale)), int((tacho_radius * 2) + 2 * pad_x + 8))
-    card_h = 2 * section_h + section_gap + 2 * pad_y
+    x0 = int(frame_w - int(anchor_x) - card_w) if anchor_right else int(anchor_x)
+    x0 = max(0, x0)
+    card_h = n_sects * section_h + max(0, n_sects - 1) * section_gap + 2 * pad_y
     if show_tacho:
         tacho_block_h = int((2 * tacho_radius) + max(40, int(52 * scale)))
         card_h += section_gap + tacho_block_h
@@ -1981,9 +1874,10 @@ def draw_metrics_box_on_frame(
         return y_bot
 
     y = y0 + pad_y
-    y = _draw_section(y, "Drag", drag_value)
-    y += section_gap
-    y = _draw_section(y, "Solar", solar_value)
+    for _si, (_st, _sv) in enumerate(sections_to_draw):
+        y = _draw_section(y, _st, _sv)
+        if _si < n_sects - 1:
+            y += section_gap
 
     y += section_gap
 
@@ -2055,68 +1949,6 @@ def draw_metrics_box_on_frame(
         draw.text((cx - txt_w // 2, cy + max(14, int(18 * scale))), speed_txt, fill=text_color, font=font_tacho)
 
     return np.asarray(img)
-
-
-def align_epoch_frame_to_standard_view(
-    frame_rgb: np.ndarray,
-    standard_width: int,
-    bg_color: tuple[int, int, int],
-) -> np.ndarray:
-    """Shift wide epoch_gif render so framing matches non-epoch modes.
-
-    Non-epoch renders use ``standard_width`` for the 3D viewport and center the
-    camera there. Epoch mode renders wider (``standard_width + panel_width``) so
-    geometry can spill into the right area. This helper shifts that wide image
-    left by half of the extra width, preserving scale while restoring the same
-    object placement as non-epoch modes.
-    """
-    h, w, _ = frame_rgb.shape
-    if w <= standard_width:
-        return frame_rgb
-
-    extra = w - standard_width
-    shift_px = extra // 2
-    if shift_px <= 0:
-        return frame_rgb
-
-    out = np.empty((h, w, 3), dtype=np.uint8)
-    out[:, :, 0] = bg_color[0]
-    out[:, :, 1] = bg_color[1]
-    out[:, :, 2] = bg_color[2]
-
-    # Move content left; keep right-side overflow visible in the blank area.
-    out[:, : (w - shift_px), :] = frame_rgb[:, shift_px:, :]
-    return out
-
-
-def compose_epoch_frame(
-    standard_rgb: np.ndarray,
-    wide_aligned_rgb: np.ndarray,
-    standard_width: int,
-    bg_color: tuple[int, int, int],
-) -> np.ndarray:
-    """Compose epoch frame with exact standard-mode left view plus right overflow.
-
-    Left region [0:standard_width] is taken from the standard-width render to keep
-    size/location identical to non-epoch modes. Right region is taken from the
-    aligned wide render to preserve spillover beyond the former seam.
-    """
-    h, w_std, _ = standard_rgb.shape
-    h_wide, w_wide, _ = wide_aligned_rgb.shape
-    if h != h_wide:
-        raise ValueError("compose_epoch_frame requires matching frame heights")
-    if w_std != standard_width:
-        raise ValueError("compose_epoch_frame standard width mismatch")
-    if w_wide <= standard_width:
-        return wide_aligned_rgb
-
-    out = np.empty((h, w_wide, 3), dtype=np.uint8)
-    out[:, :, 0] = bg_color[0]
-    out[:, :, 1] = bg_color[1]
-    out[:, :, 2] = bg_color[2]
-    out[:, :standard_width, :] = standard_rgb
-    out[:, standard_width:, :] = wide_aligned_rgb[:, standard_width:, :]
-    return out
 
 
 # ---------------------------------------------------------------------------
@@ -2678,6 +2510,18 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         help="CSE overlay background opacity in [0,1]",
     )
     parser.add_argument(
+        "--latent_box_alpha",
+        type=float,
+        default=float(_c("latent_box_alpha", 0.72)),
+        help="Latent overlay background opacity in [0,1]",
+    )
+    parser.add_argument(
+        "--assembly_scale",
+        type=float,
+        default=float(_c("assembly_scale", 1.0)),
+        help="Fine-tune scale of the inner assembly (1.0 = default)",
+    )
+    parser.add_argument(
         "--mask_refine_subdivisions",
         type=int,
         default=int(_c("mask_refine_subdivisions", 2)),
@@ -2901,6 +2745,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             inner_assembly = load_inner_assembly(args.checkpoint, epoch_num)
             if inner_assembly is not None and args.full_wheels:
                 inner_assembly = _apply_full_wheels(inner_assembly)
+            # Apply assembly scale fine-tune
+            if inner_assembly is not None and float(args.assembly_scale) != 1.0:
+                inner_assembly.vertices *= float(args.assembly_scale)
         else:
             print("[assembly] WARN: could not parse epoch from checkpoint stem, skipping")
 
@@ -2963,13 +2810,27 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     best_cse_frame_idx: int | None = None
     best_cse_aeroshell_rgb: np.ndarray | None = None
     best_cse_composite_frame: np.ndarray | None = None
-    locked_camera_position: np.ndarray | None = None
-    locked_camera_focal_point: np.ndarray | None = None
-    locked_camera_view_up: np.ndarray | None = None
-    assembly_center_shift_px: tuple[int, int] | None = None
     render_width = args.width
     assembly_smooth_shading = not args.full_wheels
     solar_selection_texture = _build_solar_cell_texture() if args.show_solar_selection else None
+
+    # Lock camera once from WP2 prism bounds — identical scale across all modes.
+    _prism_center, _prism_diag = _get_prism_center_diag(float(args.outer_prism_scale), args.bbox_padding)
+    locked_camera_position, locked_camera_focal_point, locked_camera_view_up = _compute_camera_from_center(
+        _prism_center, _prism_diag, args.azim, args.elev
+    )
+    if global_bounds is not None:
+        bounds_center = np.array(
+            [
+                0.5 * (global_bounds[0] + global_bounds[1]),
+                0.5 * (global_bounds[2] + global_bounds[3]),
+                0.5 * (global_bounds[4] + global_bounds[5]),
+            ],
+            dtype=np.float64,
+        )
+        cam_offset = locked_camera_position - locked_camera_focal_point
+        locked_camera_focal_point = bounds_center
+        locked_camera_position = bounds_center + cam_offset
 
     # Pre-compute the vision cone mesh once — loading it per-frame dominates runtime.
     _cached_cone_mesh: tuple[Tensor, Tensor] | None = None
@@ -2979,6 +2840,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         )
 
     print("\nGenerating frames...")
+    outer_margin_x = max(12, int(0.06 * args.width))
     for i, (z0, z1) in enumerate(z_coords):
         frame_ckpt = frame_checkpoints[i]
         frame_epoch_num: int | None = base_epoch_num
@@ -3026,10 +2888,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                     panel_scale_radius=panel_scale_radius,
                     show_anchors=args.show_anchors,
                     show_latent_card=bool(args.show_latent_panel),
+                    card_margin_x=outer_margin_x,
                 )
-                composite_skip = np.concatenate([last_valid_rgb, panel], axis=1)
-                composite_skip = draw_epoch_z_overlays(
-                    composite_skip, frame_epoch_num, z0, z1, colors=panel_colors
+                composite_skip = np.array(last_valid_rgb, copy=True)
+                panel_x = max(0, composite_skip.shape[1] - panel.shape[1])
+                composite_skip[:, panel_x : panel_x + panel.shape[1], :] = panel
+                composite_skip = draw_epoch_label_on_frame(
+                    composite_skip, frame_epoch_num, box_color=(20, 24, 30)
                 )
                 frames.append(composite_skip)
             continue
@@ -3165,40 +3030,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 else:
                     cse_overlay_lines.append("CSE: n/a")
 
-        if locked_camera_position is None:
-            locked_camera_position, locked_camera_focal_point, locked_camera_view_up = compute_camera_pose(
-                mesh,
-                azim_deg=args.azim,
-                elev_deg=args.elev,
-            )
-            if global_bounds is not None:
-                bounds_center = np.array(
-                    [
-                        0.5 * (global_bounds[0] + global_bounds[1]),
-                        0.5 * (global_bounds[2] + global_bounds[3]),
-                        0.5 * (global_bounds[4] + global_bounds[5]),
-                    ],
-                    dtype=np.float64,
-                )
-                cam_offset = locked_camera_position - locked_camera_focal_point
-                locked_camera_focal_point = bounds_center
-                locked_camera_position = bounds_center + cam_offset
-            if inner_assembly is not None and assembly_center_shift_px is None:
-                with contextlib.suppress(Exception):
-                    assembly_center_shift_px = _compute_inner_assembly_shift_px(
-                        assembly_mesh=inner_assembly,
-                        width=render_width,
-                        height=args.height,
-                        panel_width=int(args.panel_width),
-                        azim_deg=args.azim,
-                        elev_deg=args.elev,
-                        look_at_bounds=global_bounds,
-                        camera_position=locked_camera_position,
-                        camera_focal_point=locked_camera_focal_point,
-                        camera_view_up=locked_camera_view_up,
-                    )
-            print("  [camera locked]", end="")
-
         rgb = render_mesh(
             mesh=mesh_for_render,
             bg_color=render_bg_rgba,
@@ -3223,13 +3054,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             pressure_field=pressure_field_cp_np,
             pressure_field_enabled=show_pressure_field_now,
         )
-        if assembly_center_shift_px is not None:
-            rgb = _shift_rgb_frame(
-                rgb,
-                dx=int(assembly_center_shift_px[0]),
-                dy=int(assembly_center_shift_px[1]),
-                bg_rgb=_parse_color_rgb(args.render_bg),
-            )
         panel = draw_latent_panel(
             args.panel_width,
             args.height,
@@ -3245,10 +3069,20 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             panel_scale_radius=panel_scale_radius,
             show_anchors=args.show_anchors,
             show_latent_card=bool(args.show_latent_panel),
+            card_margin_x=outer_margin_x,
+            box_alpha=float(args.latent_box_alpha),
         )
-        composite = np.concatenate([rgb, panel], axis=1)
-        composite = draw_epoch_z_overlays(composite, frame_epoch_num, z0, z1, colors=panel_colors)
-
+        composite = np.array(rgb, copy=True)
+        panel_x = max(0, composite.shape[1] - panel.shape[1])
+        # Alpha blend the panel overlay to avoid harsh cutoff
+        if panel.shape[2] == 4:
+            alpha = panel[:, :, 3] / 255.0
+            for c in range(3):
+                composite[:, panel_x : panel_x + panel.shape[1], c] = (
+                    (1 - alpha) * composite[:, panel_x : panel_x + panel.shape[1], c] + alpha * panel[:, :, c]
+                ).astype(np.uint8)
+        else:
+            composite[:, panel_x : panel_x + panel.shape[1], :] = panel
         if args.show_cse_overlay and cse_overlay_lines:
             composite = draw_metrics_box_on_frame(
                 composite,
@@ -3259,9 +3093,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 cse_speed_ms=cse_ms,
                 show_tacho=bool(args.show_cse_tacho),
                 tacho_bg_color=panel_colors["bg"],
+                anchor_x=outer_margin_x,
                 motion_phase=(2.0 * math.pi * float(i) / max(1, int(total_frames))),
             )
 
+        composite = draw_epoch_label_on_frame(
+            composite, frame_epoch_num, box_color=(20, 24, 30)
+        )
         frames.append(composite)
         last_valid_rgb = rgb
         last_aeroshell_rgb = rgb
