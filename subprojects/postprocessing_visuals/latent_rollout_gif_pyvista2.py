@@ -1080,6 +1080,113 @@ def render_mesh(
     return img[:, :, :3]  # (H, W, 3) uint8 RGB
 
 
+def _render_inner_assembly_mask(
+    assembly_mesh: trimesh.Trimesh,
+    width: int,
+    height: int,
+    azim_deg: float,
+    elev_deg: float,
+    look_at_bounds: list[float] | None,
+    camera_position: np.ndarray,
+    camera_focal_point: np.ndarray,
+    camera_view_up: np.ndarray,
+) -> np.ndarray:
+    """Render a binary-like mask image for the inner assembly with the active camera."""
+    plotter = pv.Plotter(off_screen=True, window_size=[width, height])
+    plotter.background_color = (0.0, 0.0, 0.0)
+    plotter.enable_anti_aliasing(aa_type='fxaa')
+    plotter.enable_depth_peeling(number_of_peels=2, occlusion_ratio=0.0)
+
+    pv_asm = pv.wrap(assembly_mesh)
+    plotter.add_mesh(
+        pv_asm,
+        color=(1.0, 1.0, 1.0),
+        opacity=1.0,
+        ambient=1.0,
+        diffuse=0.0,
+        smooth_shading=False,
+        specular=0.0,
+    )
+
+    plotter.camera.position = tuple(float(v) for v in camera_position)
+    plotter.camera.focal_point = tuple(float(v) for v in camera_focal_point)
+    plotter.camera.up = tuple(float(v) for v in camera_view_up)
+    if look_at_bounds is not None:
+        with contextlib.suppress(Exception):
+            plotter.reset_camera(bounds=look_at_bounds)
+    plotter.reset_camera_clipping_range()
+
+    img = plotter.screenshot(return_img=True)
+    plotter.close()
+    return img[:, :, :3]
+
+
+def _compute_inner_assembly_shift_px(
+    assembly_mesh: trimesh.Trimesh,
+    width: int,
+    height: int,
+    panel_width: int,
+    azim_deg: float,
+    elev_deg: float,
+    look_at_bounds: list[float] | None,
+    camera_position: np.ndarray,
+    camera_focal_point: np.ndarray,
+    camera_view_up: np.ndarray,
+) -> tuple[int, int] | None:
+    """Compute pixel translation so inner-assembly bbox midpoint lands at full GIF center."""
+    mask_rgb = _render_inner_assembly_mask(
+        assembly_mesh=assembly_mesh,
+        width=width,
+        height=height,
+        azim_deg=azim_deg,
+        elev_deg=elev_deg,
+        look_at_bounds=look_at_bounds,
+        camera_position=camera_position,
+        camera_focal_point=camera_focal_point,
+        camera_view_up=camera_view_up,
+    )
+    gray = np.max(mask_rgb, axis=2)
+    ys, xs = np.nonzero(gray > 8)
+    if xs.size == 0 or ys.size == 0:
+        return None
+
+    cx = 0.5 * (float(xs.min()) + float(xs.max()))
+    cy = 0.5 * (float(ys.min()) + float(ys.max()))
+    target_x = 0.5 * float(width + panel_width)
+    target_y = 0.5 * float(height)
+    dx = int(round(target_x - cx))
+    dy = int(round(target_y - cy))
+    return dx, dy
+
+
+def _shift_rgb_frame(frame_rgb: np.ndarray, dx: int, dy: int, bg_rgb: tuple[int, int, int]) -> np.ndarray:
+    """Translate RGB image by (dx, dy) with solid background fill."""
+    if dx == 0 and dy == 0:
+        return frame_rgb
+
+    h, w, _ = frame_rgb.shape
+    out = np.empty_like(frame_rgb)
+    out[:, :, 0] = bg_rgb[0]
+    out[:, :, 1] = bg_rgb[1]
+    out[:, :, 2] = bg_rgb[2]
+
+    dst_x0 = max(0, dx)
+    src_x0 = max(0, -dx)
+    dst_y0 = max(0, dy)
+    src_y0 = max(0, -dy)
+    copy_w = min(w - dst_x0, w - src_x0)
+    copy_h = min(h - dst_y0, h - src_y0)
+    if copy_w <= 0 or copy_h <= 0:
+        return out
+
+    out[dst_y0: dst_y0 + copy_h, dst_x0: dst_x0 + copy_w, :] = frame_rgb[
+        src_y0: src_y0 + copy_h,
+        src_x0: src_x0 + copy_w,
+        :,
+    ]
+    return out
+
+
 def compute_camera_pose(
     mesh: trimesh.Trimesh,
     azim_deg: float = -60.0,
@@ -1208,7 +1315,7 @@ def _build_solar_cell_texture(
     return texture
 
 
-def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statement count reflects supported traversal modes
+def draw_latent_panel(  # noqa: PLR0915
     w: int,
     h: int,
     z_radius: float,
@@ -1222,9 +1329,14 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
     mode: str = "circle",
     panel_scale_radius: float | None = None,
     show_anchors: bool = True,
-    epoch_num: int | None = None,
+    epoch_num: int | None = None,  # kept for signature compat; text drawn on composite instead
+    show_latent_card: bool = True,
 ) -> np.ndarray:
-    """Return (H, W, 3) uint8 side panel showing the 2D latent map."""
+    """Return (H, W, 3) uint8 right panel: background grid + latent spiral card.
+
+    Epoch counter and z-coordinates are intentionally NOT drawn here — they are
+    overlaid on the full composite (see draw_epoch_z_overlays).
+    """
     _C = colors or {}
     bg = _C.get("bg", (35, 40, 62))
     bg_epoch = _C.get("bg_epoch", bg)
@@ -1237,77 +1349,119 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
     cursor_col = _C.get("cursor", (80, 200, 255))
     cursor_out_col = _C.get("cursor_outline", (255, 255, 255))
     axis_lbl_col = _C.get("axis_label", (180, 190, 220))
-    coord_text_col = _C.get("coord_text", (130, 195, 255))
-    title_col = _C.get("title", (200, 205, 230))
 
-    img = Image.new("RGB", (w, h), color=bg_epoch if mode == "epoch_gif" else bg)
-    draw = ImageDraw.Draw(img)
+    bg_fill = bg
+    img = Image.new("RGB", (w, h), color=bg_fill)
+    draw = ImageDraw.Draw(img, "RGBA")
 
     scale_factor = h / 600.0
-    lw_grid = max(1, int(1 * scale_factor))
     lw_axis = max(1, int(1 * scale_factor))
     lw_thick = max(1, int(2 * scale_factor))
-    font_info = _get_font(max(8, int(11 * scale_factor)))
-    font_title = _get_font(max(9, int(12 * scale_factor)))
 
-    # Epoch counter — top-left in all modes
-    if epoch_num is not None:
-        font_epoch = _get_font(max(10, int(15 * scale_factor)))
-        draw.text(
-            (int(8 * scale_factor), int(8 * scale_factor)),
-            f"Epoch {epoch_num}",
-            fill=title_col,
-            font=font_epoch,
-        )
+    # Only the inner card gets a grid; the panel background stays uniform.
+    grid_step = max(28, int(40 * scale_factor))
 
-    if mode == "epoch_gif":
-        # epoch_gif: panel is plain background — no latent map content
+    # In epoch_gif mode without the latent card there is nothing more to draw.
+    if not show_latent_card and mode == "epoch_gif":
         return np.asarray(img)
 
-    grid_step = max(28, int(40 * scale_factor))
-    for x in range(0, w + grid_step, grid_step):
-        draw.line([(x, 0), (x, h)], fill=grid_col, width=1)
-    for y in range(0, h + grid_step, grid_step):
-        draw.line([(0, y), (w, y)], fill=grid_col, width=1)
+    if not show_latent_card:
+        return np.asarray(img)
 
-    cx, cy = w // 2, h // 2
+    # ── Card dimensions — identical formula to the CSE card ─────────────────
+    scale = scale_factor
+    pad_x = max(8, int(12 * scale))
+    pad_y_card = max(6, int(10 * scale))
+    section_h = max(34, int(46 * scale))
+    section_gap = max(6, int(8 * scale))
+    tacho_radius_ref = max(28, int(58 * scale))
+    tacho_block_h = int((2 * tacho_radius_ref) + max(40, int(52 * scale)))
+    card_w = max(max(210, int(258 * scale)), int((tacho_radius_ref * 2) + 2 * pad_x + 8))
+    card_h = 2 * section_h + section_gap + 2 * pad_y_card + section_gap + tacho_block_h
+
+    # Cap to panel size with a margin.
+    margin = max(12, int(16 * scale))
+    card_w = min(card_w, w - 2 * margin)
+    card_h = min(card_h, h - 2 * margin)
+
+    # Center card in panel.
+    cx_card = (w - card_w) // 2
+    cy_card = (h - card_h) // 2
+
+    # Card fill — same alpha as CSE card.
+    box_color = bg_fill if isinstance(bg_fill, tuple) else (35, 40, 62)
+    a = int(0.92 * 255)
+    draw.rounded_rectangle(
+        [(cx_card, cy_card), (cx_card + card_w, cy_card + card_h)],
+        radius=max(8, int(10 * scale)),
+        fill=(box_color[0], box_color[1], box_color[2], a),
+        outline=None,
+    )
+
+    # Inner card grid (same step).
+    for gx in range(cx_card + 1, cx_card + card_w, grid_step):
+        draw.line([(gx, cy_card + 1), (gx, cy_card + card_h - 1)], fill=grid_col, width=1)
+    for gy in range(cy_card + 1, cy_card + card_h, grid_step):
+        draw.line([(cx_card + 1, gy), (cx_card + card_w - 1, gy)], fill=grid_col, width=1)
+
+    # Card section border (thin red, same as CSE sections).
+    section_outline: tuple[int, int, int, int] = (195, 53, 49, 185)
+    draw.rounded_rectangle(
+        [(cx_card + pad_x, cy_card + pad_y_card),
+         (cx_card + card_w - pad_x, cy_card + card_h - pad_y_card)],
+        radius=max(6, int(8 * scale)),
+        fill=(box_color[0], box_color[1], box_color[2], int(0.30 * 255)),
+        outline=section_outline,
+        width=1,
+    )
+
+    # ── Latent spiral map inside card interior ───────────────────────────────
+    inner_x0 = cx_card + pad_x
+    inner_y0 = cy_card + pad_y_card
+    inner_x1 = cx_card + card_w - pad_x
+    inner_y1 = cy_card + card_h - pad_y_card
+    inner_w = inner_x1 - inner_x0
+    inner_h = inner_y1 - inner_y0
+    icx = inner_x0 + inner_w // 2
+    icy = inner_y0 + inner_h // 2
 
     _scale_ref = panel_scale_radius if panel_scale_radius is not None else z_radius
-    scale = (min(w, h) * 0.40) / max(_scale_ref * 1.5, 1e-6)
+    map_scale = (min(inner_w, inner_h) * 0.40) / max(_scale_ref * 1.5, 1e-6)
 
     def z2px(z0v: float, z1v: float) -> tuple[int, int]:
-        return cx + int(z0v * scale), cy - int(z1v * scale)
+        return icx + int(z0v * map_scale), icy - int(z1v * map_scale)
 
-    # Axis lines
-    draw.line([(12, cy), (w - 12, cy)], fill=axis_col, width=lw_axis)
-    draw.line([(cx, 12), (cx, h - 12)], fill=axis_col, width=lw_axis)
+    # Axis lines.
+    draw.line([(inner_x0 + 4, icy), (inner_x1 - 4, icy)], fill=axis_col, width=lw_axis)
+    draw.line([(icx, inner_y0 + 4), (icx, inner_y1 - 4)], fill=axis_col, width=lw_axis)
 
-    # Training manifold circle (shown as reference boundary in circle/spiral modes)
-    r_px = int(z_radius * scale)
-    if mode in ("circle", "spiral"):
+    # Training manifold circle.
+    r_px = int(z_radius * map_scale)
+    if mode in ("circle", "spiral", "epoch_gif"):
         draw.ellipse(
-            [(cx - r_px, cy - r_px), (cx + r_px, cy + r_px)],
+            [(icx - r_px, icy - r_px), (icx + r_px, icy + r_px)],
             outline=circle_col,
             width=lw_axis,
         )
 
-    # Pretrained anchor dots (Proportionally Scaled)
+    # Pretrained anchor dots.
     if show_anchors and Z_pretrained is not None:
         font_sm = _get_font(max(8, int(11 * scale_factor)))
-        for i, (z0a, z1a) in enumerate(Z_pretrained):
-            px, py = z2px(float(z0a), float(z1a))
-            r = max(2, int(4 * scale_factor))
-            offset = max(3, int(7 * scale_factor))
-            draw.ellipse([(px - r, py - r), (px + r, py + r)], fill=anchor_col)
-            draw.text((px + offset, py - offset), str(i), fill=anchor_lbl_col, font=font_sm)
+        for k, (z0a, z1a) in enumerate(Z_pretrained):
+            apx, apy = z2px(float(z0a), float(z1a))
+            r_a = max(2, int(4 * scale_factor))
+            off = max(3, int(7 * scale_factor))
+            draw.ellipse([(apx - r_a, apy - r_a), (apx + r_a, apy + r_a)], fill=anchor_col)
+            draw.text((apx + off, apy - off), str(k), fill=anchor_lbl_col,
+                      font=_get_font(max(8, int(11 * scale_factor))))
 
-    # Trajectory / progress visualization
+    # Trajectory / progress visualization.
     if mode == "circle":
         if n_frames > 1 and r_px > 5:
             arc_end_deg = -90 + (360.0 * frame_idx / n_frames)
             with contextlib.suppress(Exception):
                 draw.arc(
-                    [(cx - r_px, cy - r_px), (cx + r_px, cy + r_px)],
+                    [(icx - r_px, icy - r_px), (icx + r_px, icy + r_px)],
                     start=-90,
                     end=arc_end_deg,
                     fill=progress_col,
@@ -1315,7 +1469,7 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
                 )
     elif trajectory_coords is not None and len(trajectory_coords) > 1:
         full_pts = [z2px(zc0, zc1) for zc0, zc1 in trajectory_coords]
-        draw.line(full_pts, fill=circle_col, width=lw_grid)
+        draw.line(full_pts, fill=circle_col, width=lw_axis)
         traversed = full_pts[: frame_idx + 1]
         if len(traversed) >= 2:
             draw.line(traversed, fill=progress_col, width=lw_thick)
@@ -1323,42 +1477,83 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
             ep_r = max(2, int(5 * scale_factor))
             for ep_z0, ep_z1 in (trajectory_coords[0], trajectory_coords[-1]):
                 ex, ey = z2px(ep_z0, ep_z1)
-                draw.ellipse([(ex - ep_r, ey - ep_r), (ex + ep_r, ey + ep_r)], outline=circle_col, width=lw_thick)
+                draw.ellipse([(ex - ep_r, ey - ep_r), (ex + ep_r, ey + ep_r)],
+                              outline=circle_col, width=lw_thick)
         if mode == "cross":
             ep_r = max(2, int(5 * scale_factor))
             seen: set[tuple[int, int]] = set()
             for ep_z0, ep_z1 in trajectory_coords:
                 ep = z2px(ep_z0, ep_z1)
                 if ep not in seen and abs(ep_z0) > 1e-6 and abs(ep_z1) > 1e-6:
-                    draw.ellipse([(ep[0] - ep_r, ep[1] - ep_r), (ep[0] + ep_r, ep[1] + ep_r)], outline=circle_col, width=lw_thick)
+                    draw.ellipse([(ep[0] - ep_r, ep[1] - ep_r),
+                                  (ep[0] + ep_r, ep[1] + ep_r)],
+                                 outline=circle_col, width=lw_thick)
                     seen.add(ep)
 
-    # Current cursor (bright dot - Proportionally Scaled)
-    px, py = z2px(z0, z1)
-    r = max(3, int(7 * scale_factor))
-    draw.ellipse([(px - r, py - r), (px + r, py + r)], fill=cursor_col, outline=cursor_out_col, width=lw_thick)
+    # Current cursor.
+    px_c, py_c = z2px(z0, z1)
+    r_cursor = max(3, int(7 * scale_factor))
+    draw.ellipse(
+        [(px_c - r_cursor, py_c - r_cursor), (px_c + r_cursor, py_c + r_cursor)],
+        fill=cursor_col,
+        outline=cursor_out_col,
+        width=lw_thick,
+    )
 
-    # Axis labels & Info Text
-    font_label = ImageFont.truetype("DejaVuSans-Bold.ttf", max(9, int(13 * scale_factor)), layout_engine=ImageFont.Layout.BASIC)
-
-    draw.text((w - int(26 * scale_factor), cy - int(16 * scale_factor)), "z₀", fill=axis_lbl_col, font=font_label)
-    draw.text((cx + int(5 * scale_factor), int(8 * scale_factor)), "z₁", fill=axis_lbl_col, font=font_label)
-
-    draw.text((int(8 * scale_factor), h - int(36 * scale_factor)), f"z = [{z0:+.3f}, {z1:+.3f}]", fill=coord_text_col, font=font_info)
-
-    _mode_label = {
-        "circle": "Circle",
-        "spiral": "Spiral",
-        "line": "Line",
-        "cross": "Cross",
-        "epoch_gif": "Epoch GIF",
-    }.get(mode, mode.capitalize())
-    # Title only shown in latent-space modes (epoch_gif returned early above).
-    # Skip title when epoch label is shown to keep top-left uncluttered.
-    if epoch_num is None:
-        draw.text((int(8 * scale_factor), int(8 * scale_factor)), f"Latent Space · {_mode_label}", fill=title_col, font=font_title)
+    # Axis labels.
+    font_label = _get_font(max(9, int(13 * scale_factor)))
+    draw.text((inner_x1 - int(26 * scale_factor), icy - int(16 * scale_factor)),
+              "z₀", fill=axis_lbl_col, font=font_label)
+    draw.text((icx + int(5 * scale_factor), inner_y0 + int(8 * scale_factor)),
+              "z₁", fill=axis_lbl_col, font=font_label)
 
     return np.asarray(img)
+
+
+def draw_epoch_z_overlays(
+    composite_rgb: np.ndarray,
+    epoch_num: int | None,
+    z0: float,
+    z1: float,
+    colors: dict | None = None,
+) -> np.ndarray:
+    """Overlay epoch counter (top-center) and z-coords (bottom-center) on the full composite.
+
+    The full composite spans render_width + panel_width, so text is centered
+    across the entire GIF width.
+    """
+    _C = colors or {}
+    title_col = _C.get("title", (200, 205, 230))
+    coord_text_col = _C.get("coord_text", (130, 195, 255))
+
+    h, full_w = composite_rgb.shape[:2]
+    scale_factor = h / 600.0
+
+    img = Image.fromarray(composite_rgb)
+    draw = ImageDraw.Draw(img)
+
+    font_epoch = _get_font(max(10, int(15 * scale_factor)))
+    font_coord = _get_font(max(8, int(11 * scale_factor)))
+
+    margin_top = int(8 * scale_factor)
+    margin_bot = int(8 * scale_factor)
+
+    # Epoch counter — top center.
+    if epoch_num is not None:
+        text_e = f"Epoch {epoch_num}"
+        bb_e = draw.textbbox((0, 0), text_e, font=font_epoch)
+        tw_e = bb_e[2] - bb_e[0]
+        draw.text(((full_w - tw_e) // 2, margin_top), text_e, fill=title_col, font=font_epoch)
+
+    # z-coordinates — bottom center.
+    text_z = f"z = [{z0:+.3f}, {z1:+.3f}]"
+    bb_z = draw.textbbox((0, 0), text_z, font=font_coord)
+    zh = bb_z[3] - bb_z[1]
+    zw = bb_z[2] - bb_z[0]
+    draw.text(((full_w - zw) // 2, h - margin_bot - zh), text_z, fill=coord_text_col, font=font_coord)
+
+    return np.asarray(img)
+
 
 
 def draw_epoch_label_on_frame(
@@ -1753,8 +1948,7 @@ def draw_metrics_box_on_frame(
         card_h += section_gap + tacho_block_h
 
     y_centered = (h - card_h) // 2
-    hover_px = int(round(math.sin(float(motion_phase)) * max(1, int(3 * scale)))) if show_tacho else 0
-    y0 = max(int(anchor_y), y_centered + hover_px)
+    y0 = max(int(anchor_y), y_centered)
     x1 = x0 + card_w
     y1 = y0 + card_h
     a = int(max(0.0, min(1.0, box_alpha)) * 255)
@@ -1766,8 +1960,8 @@ def draw_metrics_box_on_frame(
         outline=None,
     )
 
-    # Subtle local grid like the right workspace panel.
-    grid_step = max(18, int(26 * scale))
+    # Subtle local grid — same step and thickness as the right latent panel.
+    grid_step = max(28, int(40 * scale))
     for gx in range(x0 + 1, x1, grid_step):
         draw.line([(gx, y0 + 1), (gx, y1 - 1)], fill=grid_col, width=1)
     for gy in range(y0 + 1, y1, grid_step):
@@ -2375,6 +2569,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         help="Show an optional CSE speed tachometer in the overlay",
     )
     parser.add_argument(
+        "--show-latent-panel",
+        dest="show_latent_panel",
+        action=argparse.BooleanOptionalAction,
+        default=bool(_c("show_latent_panel", True)),
+        help="Show the latent spiral card in the right panel (including epoch_gif mode)",
+    )
+    parser.add_argument(
         "--export-final-png",
         dest="export_final_png",
         action=argparse.BooleanOptionalAction,
@@ -2765,44 +2966,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     locked_camera_position: np.ndarray | None = None
     locked_camera_focal_point: np.ndarray | None = None
     locked_camera_view_up: np.ndarray | None = None
+    assembly_center_shift_px: tuple[int, int] | None = None
     render_width = args.width
     assembly_smooth_shading = not args.full_wheels
     solar_selection_texture = _build_solar_cell_texture() if args.show_solar_selection else None
-
-    if active_mode == "epoch_gif" and frame_checkpoints:
-        # Lock camera from the user-selected checkpoint (not earliest epoch), so
-        # epoch_gif framing matches non-epoch runs that use this checkpoint.
-        ref_idx = 0
-        with contextlib.suppress(ValueError):
-            ref_idx = frame_checkpoints.index(args.checkpoint)
-        ref_ckpt = frame_checkpoints[ref_idx]
-        if ref_ckpt is not None:
-            _load_model_state_from_checkpoint(model, ref_ckpt, device)
-            ref_z0, ref_z1 = z_coords[ref_idx]
-            ref_mesh = extract_mesh(model, extractor, ref_z0, ref_z1, z_dim, device)
-            if ref_mesh is not None and len(ref_mesh.vertices) > 0:
-                (
-                    locked_camera_position,
-                    locked_camera_focal_point,
-                    locked_camera_view_up,
-                ) = compute_camera_pose(
-                    ref_mesh,
-                    azim_deg=args.azim,
-                    elev_deg=args.elev,
-                )
-                if global_bounds is not None:
-                    bounds_center = np.array(
-                        [
-                            0.5 * (global_bounds[0] + global_bounds[1]),
-                            0.5 * (global_bounds[2] + global_bounds[3]),
-                            0.5 * (global_bounds[4] + global_bounds[5]),
-                        ],
-                        dtype=np.float64,
-                    )
-                    cam_offset = locked_camera_position - locked_camera_focal_point
-                    locked_camera_focal_point = bounds_center
-                    locked_camera_position = bounds_center + cam_offset
-                print(f"[camera lock] using reference checkpoint: {ref_ckpt.name}")
 
     # Pre-compute the vision cone mesh once — loading it per-frame dominates runtime.
     _cached_cone_mesh: tuple[Tensor, Tensor] | None = None
@@ -2858,9 +3025,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                     mode=active_mode,
                     panel_scale_radius=panel_scale_radius,
                     show_anchors=args.show_anchors,
-                    epoch_num=frame_epoch_num,
+                    show_latent_card=bool(args.show_latent_panel),
                 )
-                frames.append(np.concatenate([last_valid_rgb, panel], axis=1))
+                composite_skip = np.concatenate([last_valid_rgb, panel], axis=1)
+                composite_skip = draw_epoch_z_overlays(
+                    composite_skip, frame_epoch_num, z0, z1, colors=panel_colors
+                )
+                frames.append(composite_skip)
             continue
 
         cone_face_mask: Tensor | None = None
@@ -3012,6 +3183,20 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 cam_offset = locked_camera_position - locked_camera_focal_point
                 locked_camera_focal_point = bounds_center
                 locked_camera_position = bounds_center + cam_offset
+            if inner_assembly is not None and assembly_center_shift_px is None:
+                with contextlib.suppress(Exception):
+                    assembly_center_shift_px = _compute_inner_assembly_shift_px(
+                        assembly_mesh=inner_assembly,
+                        width=render_width,
+                        height=args.height,
+                        panel_width=int(args.panel_width),
+                        azim_deg=args.azim,
+                        elev_deg=args.elev,
+                        look_at_bounds=global_bounds,
+                        camera_position=locked_camera_position,
+                        camera_focal_point=locked_camera_focal_point,
+                        camera_view_up=locked_camera_view_up,
+                    )
             print("  [camera locked]", end="")
 
         rgb = render_mesh(
@@ -3038,6 +3223,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             pressure_field=pressure_field_cp_np,
             pressure_field_enabled=show_pressure_field_now,
         )
+        if assembly_center_shift_px is not None:
+            rgb = _shift_rgb_frame(
+                rgb,
+                dx=int(assembly_center_shift_px[0]),
+                dy=int(assembly_center_shift_px[1]),
+                bg_rgb=_parse_color_rgb(args.render_bg),
+            )
         panel = draw_latent_panel(
             args.panel_width,
             args.height,
@@ -3052,9 +3244,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             mode=active_mode,
             panel_scale_radius=panel_scale_radius,
             show_anchors=args.show_anchors,
-            epoch_num=frame_epoch_num,
+            show_latent_card=bool(args.show_latent_panel),
         )
         composite = np.concatenate([rgb, panel], axis=1)
+        composite = draw_epoch_z_overlays(composite, frame_epoch_num, z0, z1, colors=panel_colors)
 
         if args.show_cse_overlay and cse_overlay_lines:
             composite = draw_metrics_box_on_frame(

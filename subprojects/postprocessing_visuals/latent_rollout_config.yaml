@@ -43,7 +43,7 @@ render_bg: "#23283E"
 transparent_background: false
 
 mesh_color: "#5DADE2" #"#F2F4F7" # Aeroshell base color
-mesh_alpha: 0.8
+mesh_alpha: 0.85
 
 show_assembly: true
 assembly_color: "#F39C12"
@@ -72,6 +72,7 @@ show_cse_overlay: false
 save_cse_samples: true
 show_cse_kmh: false
 show_cse_tacho: true
+show_latent_panel: true
 cse_text_color: "#EAF2F8"
 cse_box_color: "#27314A"
 cse_box_alpha: 0.72
