@@ -497,6 +497,25 @@ def _cutout_faces_from_mesh(base_mesh: trimesh.Trimesh, face_mask: np.ndarray) -
         return sub
 
 
+def _subdivide_mesh_for_masks(mesh: trimesh.Trimesh, iterations: int) -> trimesh.Trimesh:
+    """Refine mesh triangulation for cleaner mask/cutout boundaries without smoothing."""
+    if iterations <= 0:
+        return mesh
+    out = mesh
+    try:
+        for _ in range(int(iterations)):
+            out = out.subdivide()
+    except Exception as exc:
+        warnings.warn(
+            f"[latent_rollout] mask subdivision failed: {exc}. Using original mesh.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return mesh
+    else:
+        return out
+
+
 # ---------------------------------------------------------------------------
 # Mesh extraction
 # ---------------------------------------------------------------------------
@@ -780,55 +799,89 @@ def _get_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
 
 
 def _build_solar_cell_texture(
-    texture_size: int = 1024,
-    cells_x: int = 48,
-    cells_y: int = 32,
+    texture_size: int = 1536,
+    cells_x: int = 8,
+    cells_y: int = 5,
 ) -> pv.Texture:
-    """Create a procedural texture resembling monocrystalline solar cells."""
-    bg_color = (6, 14, 34)
-    cell_a = (18, 52, 132)
-    cell_b = (14, 44, 118)
-    grid_color = (222, 232, 255)
-    finger_color = (196, 214, 255)
+    """Create a procedural texture closely matching a framed blue PV module."""
+    bg_color = (238, 238, 238)
+    frame_color = (96, 96, 96)
+    module_bg = (236, 242, 248)
+    cell_a = (23, 72, 122)
+    cell_b = (20, 66, 114)
+    seam_color = (236, 242, 248)
+    finger_color = (154, 184, 218)
+    busbar_color = (224, 234, 246)
 
     image = Image.new("RGB", (texture_size, texture_size), color=bg_color)
     draw = ImageDraw.Draw(image)
 
-    cell_w = texture_size / float(cells_x)
-    cell_h = texture_size / float(cells_y)
-    margin = max(2, int(min(cell_w, cell_h) * 0.07))
-    radius = max(3, int(min(cell_w, cell_h) * 0.16))
-    outline_width = max(1, texture_size // 256)
-    finger_width = max(1, texture_size // 320)
-    fingers_per_cell = 5
+    frame_pad = int(texture_size * 0.04)
+    module_left = frame_pad
+    module_top = frame_pad
+    module_right = texture_size - frame_pad
+    module_bottom = texture_size - frame_pad
+    draw.rectangle([(module_left, module_top), (module_right, module_bottom)], outline=frame_color, width=max(2, texture_size // 320))
+
+    inner_pad = int(texture_size * 0.012)
+    panel_left = module_left + inner_pad
+    panel_top = module_top + inner_pad
+    panel_right = module_right - inner_pad
+    panel_bottom = module_bottom - inner_pad
+    draw.rectangle([(panel_left, panel_top), (panel_right, panel_bottom)], fill=module_bg)
+
+    panel_w = panel_right - panel_left
+    panel_h = panel_bottom - panel_top
+    gap = max(2, int(min(panel_w / cells_x, panel_h / cells_y) * 0.03))
+    cell_w = (panel_w - gap * (cells_x + 1)) / float(cells_x)
+    cell_h = (panel_h - gap * (cells_y + 1)) / float(cells_y)
+    radius = max(4, int(min(cell_w, cell_h) * 0.18))
+    finger_width = max(1, texture_size // 700)
+    busbar_width = max(1, texture_size // 420)
+    fingers_per_cell = 14
 
     for row in range(cells_y):
         for col in range(cells_x):
-            left = int(round(col * cell_w + margin))
-            top = int(round(row * cell_h + margin))
-            right = int(round((col + 1) * cell_w - margin))
-            bottom = int(round((row + 1) * cell_h - margin))
+            left = int(round(panel_left + gap + col * (cell_w + gap)))
+            top = int(round(panel_top + gap + row * (cell_h + gap)))
+            right = int(round(left + cell_w))
+            bottom = int(round(top + cell_h))
             fill = cell_a if (row + col) % 2 == 0 else cell_b
             draw.rounded_rectangle(
                 [(left, top), (right, bottom)],
                 radius=radius,
                 fill=fill,
-                outline=grid_color,
-                width=outline_width,
+                outline=seam_color,
+                width=max(1, texture_size // 768),
             )
-            inner_left = left + outline_width
-            inner_right = right - outline_width
-            inner_top = top + outline_width
-            inner_bottom = bottom - outline_width
+
+            inner_left = left + 2
+            inner_right = right - 2
+            inner_top = top + 2
+            inner_bottom = bottom - 2
             if inner_right > inner_left and inner_bottom > inner_top:
+                # Dense vertical metallization fingers like the reference module.
                 for k in range(1, fingers_per_cell + 1):
-                    frac = k / float(fingers_per_cell + 1)
-                    y = int(round(inner_top + frac * (inner_bottom - inner_top)))
+                    frac = k / float(fingers_per_cell + 1.0)
+                    x = int(round(inner_left + frac * (inner_right - inner_left)))
                     draw.line(
-                        [(inner_left, y), (inner_right, y)],
+                        [(x, inner_top), (x, inner_bottom)],
                         fill=finger_color,
                         width=finger_width,
                     )
+                # Horizontal busbars.
+                y_top = int(round(inner_top + 0.20 * (inner_bottom - inner_top)))
+                y_bottom = int(round(inner_top + 0.80 * (inner_bottom - inner_top)))
+                draw.line([(inner_left, y_top), (inner_right, y_top)], fill=busbar_color, width=busbar_width)
+                draw.line([(inner_left, y_bottom), (inner_right, y_bottom)], fill=busbar_color, width=busbar_width)
+
+    # Diamond seams between 4 neighboring cells.
+    d = max(3, texture_size // 180)
+    for row in range(1, cells_y):
+        for col in range(1, cells_x):
+            cx = int(round(panel_left + gap + col * (cell_w + gap) - gap / 2.0))
+            cy = int(round(panel_top + gap + row * (cell_h + gap) - gap / 2.0))
+            draw.polygon([(cx, cy - d), (cx + d, cy), (cx, cy + d), (cx - d, cy)], fill=seam_color)
 
     texture = pv.Texture(np.asarray(image))
     texture.repeat = True
@@ -1330,6 +1383,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         help="Solar area budget in mm^2",
     )
     parser.add_argument(
+        "--mask_refine_subdivisions",
+        type=int,
+        default=int(_c("mask_refine_subdivisions", 2)),
+        help="Subdivision steps for windshield/solar mask geometry (higher = cleaner edges, no post-smoothing)",
+    )
+    parser.add_argument(
         "--show-anchors",
         dest="show_anchors",
         action=argparse.BooleanOptionalAction,
@@ -1614,11 +1673,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         solar_selection_mesh: trimesh.Trimesh | None = None
         windshield_mesh: trimesh.Trimesh | None = None
         mesh_for_render = mesh
+        mask_mesh = mesh
         if args.show_windshield or args.show_solar_selection:
-            cone_face_mask = _compute_windshield_face_mask(mesh, args.windshield_assembly_id, device)
+            mask_mesh = _subdivide_mesh_for_masks(mesh, args.mask_refine_subdivisions)
+            cone_face_mask = _compute_windshield_face_mask(mask_mesh, args.windshield_assembly_id, device)
         if args.show_windshield and cone_face_mask is not None:
             cone_np = cone_face_mask.detach().cpu().numpy()
-            cutout_mesh = _cutout_faces_from_mesh(mesh, cone_np)
+            cutout_mesh = _cutout_faces_from_mesh(mask_mesh, cone_np)
             if cutout_mesh is not None:
                 mesh_for_render = cutout_mesh
             else:
@@ -1629,13 +1690,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 )
             if float(args.windshield_alpha) > 0.0:
                 windshield_mesh = _build_face_overlay_mesh(
-                    mesh,
+                    mask_mesh,
                     cone_np,
                     normal_offset_mm=1.5,
                 )
         if args.show_solar_selection:
             solar_mask = _compute_solar_selection_mask(
-                mesh,
+                mask_mesh,
                 device=device,
                 sun_dir_xyz=(float(args.solar_sun_dir[0]), float(args.solar_sun_dir[1]), float(args.solar_sun_dir[2])),
                 area_budget_mm2=float(args.solar_area_budget_mm2),
@@ -1643,7 +1704,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             )
             if solar_mask is not None:
                 solar_selection_mesh = _build_face_overlay_mesh(
-                    mesh,
+                    mask_mesh,
                     solar_mask.detach().cpu().numpy(),
                     normal_offset_mm=1.0,
                 )

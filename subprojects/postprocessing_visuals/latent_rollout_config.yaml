@@ -14,13 +14,13 @@ output_dir: /cluster/work/fuge/AISCO/wp9/pyvista_gif
 # Animation / traversal
 # ---------------------------------------------------------------------------
 n_frames: 240
-resolution: 40
+resolution: 96
 radius: null
 fps: 24
 device: auto
-width: 4096
+width: 2560
 height: 2160
-panel_width: 320
+panel_width: 1280
 azim: -60.0
 elev: 25.0
 mode: circle
@@ -43,6 +43,8 @@ windshield_color: "#86A9BD"
 windshield_alpha: 0.32
 solar_sun_dir: [-1.0, 0.0, 1.0]
 solar_area_budget_mm2: 4200000.0
+# Clean-edge preset (no post-smoothing)
+mask_refine_subdivisions: 2
 show_anchors: false
 epoch_gif: false
 epoch_coords: [0.0, 0.0]
@@ -69,8 +71,8 @@ cross_radius: null
 # ---------------------------------------------------------------------------
 # Mesh extraction
 # ---------------------------------------------------------------------------
-bbox_padding: 1.3
-outer_prism_scale: 1.6
+bbox_padding: 1.25
+outer_prism_scale: 1.3
 
 # ---------------------------------------------------------------------------
 # Latent-space side panel colors
