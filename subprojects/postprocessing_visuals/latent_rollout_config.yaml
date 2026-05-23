@@ -24,6 +24,7 @@ height: 2160
 panel_width: 1280
 azim: -60.0
 elev: 25.0
+mesh_zoom: 1.0
 mode: spiral
 
 show_anchors: false
@@ -31,7 +32,7 @@ epoch_coords: [0.0, 0.0]
 
 epoch_gif: false
 
-final_hold_seconds: 2.0
+final_hold_seconds: 0.0
 export_final_png: true
 final_png_include_composite: true
 final_frame_use_best_cse: true
@@ -47,6 +48,7 @@ mesh_alpha: 0.85
 
 show_assembly: true
 assembly_color: "#F39C12"
+assembly_scale: 1.0
 
 full_wheels: true
 cutoff_wheel: false
@@ -76,6 +78,8 @@ show_latent_panel: true
 cse_text_color: "#EAF2F8"
 cse_box_color: "#27314A"
 cse_box_alpha: 0.72
+latent_box_alpha: 0.72
+cse_metrics_device: cpu
 
 
 gaot_version: 3
