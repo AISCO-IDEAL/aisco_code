@@ -74,9 +74,7 @@ def _parse_color_rgba_float(c: str | list, alpha: float = 1.0) -> tuple[float, f
 # Domain constants — prism bounds (mm) matching the wp2 assembler definition
 # ---------------------------------------------------------------------------
 
-_PRISM_X = (-2900.0, 2900.0)
-_PRISM_Y = (-1150.0, 1150.0)
-_PRISM_Z = (0.0, 1650.0)
+_DEFAULT_OUTER_PRISM_SCALE = 1.3
 
 # ---------------------------------------------------------------------------
 # Model loading
@@ -392,6 +390,59 @@ def _compute_windshield_face_mask(
         return mask
 
 
+def _load_windshield_from_wp2(assembly_id: int, tol: float = 2.0, atol: float = 0.4) -> trimesh.Trimesh | None:
+    """Tessellate the WP2 vision NBZ mesh for direct windshield rendering."""
+    try:
+        from subprojects.wp2_assembler.version4.components.nbz import vision_nbz  # noqa: PLC0415
+
+        assy = vision_nbz(id_number=assembly_id)
+        solids = list(assy.toCompound().Solids())
+        parts: list[trimesh.Trimesh] = []
+        for solid in solids:
+            verts_cq, faces_cq = solid.tessellate(tol, atol)
+            verts = np.array([[v.x, v.y, v.z] for v in verts_cq], dtype=np.float32)
+            faces = np.array(faces_cq, dtype=np.int64)
+            if len(verts) > 0 and len(faces) > 0:
+                parts.append(trimesh.Trimesh(vertices=verts, faces=faces))
+        if not parts:
+            return None
+        return trimesh.util.concatenate(parts)
+    except Exception as exc:
+        warnings.warn(
+            f"[latent_rollout] WP2 windshield load failed: {exc}. Skipping.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+
+
+def _compute_windshield_face_mask_from_cone_mesh(
+    aeroshell_mesh: trimesh.Trimesh,
+    cone_mesh: trimesh.Trimesh,
+    device: torch.device,
+) -> Tensor | None:
+    """Fallback: compute windshield face mask via cone-mesh containment test.
+
+    This still returns an aeroshell face mask (intersection area), never the cone
+    geometry itself, matching aeroshell_png semantics.
+    """
+    try:
+        centers = aeroshell_mesh.triangles_center
+        inside = cone_mesh.contains(centers)
+        mask = torch.tensor(inside.astype(np.bool_), dtype=torch.bool, device=device)
+        n = int(mask.sum().item())
+        print(f"[latent_rollout] windshield cone_face_mask (fallback): {n} / {len(aeroshell_mesh.faces)} faces")
+    except Exception as exc:
+        warnings.warn(
+            f"[latent_rollout] windshield fallback mask failed: {exc}. Skipping.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+    else:
+        return mask
+
+
 def _compute_solar_selection_mask(
     aeroshell_mesh: trimesh.Trimesh,
     device: torch.device,
@@ -456,6 +507,21 @@ def _build_face_overlay_mesh(
         return sub
 
 
+def _cutout_faces_from_mesh(base_mesh: trimesh.Trimesh, face_mask: np.ndarray) -> trimesh.Trimesh | None:
+    """Return a mesh with masked faces removed."""
+    keep_idx = np.flatnonzero(~face_mask.astype(bool))
+    if keep_idx.size == 0:
+        return None
+    try:
+        sub = base_mesh.submesh([keep_idx], append=True, repair=False)
+        if sub is None or len(sub.vertices) == 0:
+            return None
+    except Exception:
+        return None
+    else:
+        return sub
+
+
 # ---------------------------------------------------------------------------
 # Mesh extraction
 # ---------------------------------------------------------------------------
@@ -472,6 +538,58 @@ def build_extractor(device: torch.device, resolution: int, bbox_padding: float =
             [_PRISM_X[0] - bbox_padding, _PRISM_X[1] + bbox_padding],
             [_PRISM_Y[0] - bbox_padding, _PRISM_Y[1] + bbox_padding],
             [_PRISM_Z[0], _PRISM_Z[1] + bbox_padding],
+        ],
+        resolution=resolution,
+    )
+    return extractor
+
+
+def build_extractor_with_wp2_prism(
+    device: torch.device,
+    resolution: int,
+    bbox_padding: float = 0.0,
+    prism_scale: float = _DEFAULT_OUTER_PRISM_SCALE,
+) -> Any:
+    """Build extractor using WP2 regulation-derived outer prism bounds.
+
+    Falls back to legacy hardcoded bounds if WP2 utility import fails.
+    """
+    from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config  # noqa: PLC0415
+
+    cfg = load_mesh_extraction_config()
+    cfg = dc_replace(cfg, device=str(device))
+    extractor = MeshSDFExtractor(config=cfg)
+
+    try:
+        from subprojects.wp2_assembler.version4.utils.reg_imp import (  # noqa: PLC0415
+            get_outer_prism_bounds_mm,
+            scale_outer_prism,
+        )
+
+        outer = get_outer_prism_bounds_mm()
+        scaled = scale_outer_prism(outer, prism_scale)
+        prism_x = scaled["x"]
+        prism_y = scaled["y"]
+        prism_z = scaled["z"]
+        print(
+            f"[extractor] WP2 outer prism scale={prism_scale:.3f} "
+            f"x={prism_x} y={prism_y} z={prism_z}"
+        )
+    except Exception as exc:
+        warnings.warn(
+            f"[extractor] WP2 prism import failed ({exc}); using legacy hardcoded bounds.",
+            UserWarning,
+            stacklevel=2,
+        )
+        prism_x = (-2900.0, 2900.0)
+        prism_y = (-1150.0, 1150.0)
+        prism_z = (0.0, 1650.0)
+
+    extractor.set_grid(
+        bbox=[
+            [prism_x[0] - bbox_padding, prism_x[1] + bbox_padding],
+            [prism_y[0] - bbox_padding, prism_y[1] + bbox_padding],
+            [prism_z[0], prism_z[1] + bbox_padding],
         ],
         resolution=resolution,
     )
@@ -1092,6 +1210,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         help="Expand each face of the extraction prism by this many mm",
     )
     parser.add_argument(
+        "--outer_prism_scale",
+        type=float,
+        default=float(_c("outer_prism_scale", _DEFAULT_OUTER_PRISM_SCALE)),
+        help="Scale factor for WP2 outer prism sampling bounds (default: 1.3)",
+    )
+    parser.add_argument(
         "--show_assembly",
         action="store_true",
         default=bool(_c("show_assembly", False)),
@@ -1132,8 +1256,14 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         default=int(_c("windshield_assembly_id", 1)),
         help="WP2 assembly id used for windshield face-mask computation",
     )
-    parser.add_argument("--solar_selection_color", default=_c("solar_selection_color", "#FFD700"), help="Solar selection color (hex)")
-    parser.add_argument("--windshield_color", default=_c("windshield_color", "#4FC3F7"), help="Windshield overlay color (hex)")
+    parser.add_argument("--solar_selection_color", default=_c("solar_selection_color", "#D2E0F2"), help="Solar selection color (hex)")
+    parser.add_argument("--windshield_color", default=_c("windshield_color", "#979797"), help="Windshield overlay color (hex)")
+    parser.add_argument(
+        "--windshield-alpha",
+        type=float,
+        default=float(_c("windshield_alpha", 0.65)),
+        help="Windshield opacity in [0,1] (0 = cut out windshield area from aeroshell)",
+    )
     parser.add_argument(
         "--solar_sun_dir",
         type=float,
@@ -1244,7 +1374,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     render_bg_rgba = _parse_color_rgba_float(args.render_bg)
     assembly_color_rgba = _parse_color_rgba_float(args.assembly_color, 1.0)
     solar_selection_color_rgba = _parse_color_rgba_float(args.solar_selection_color, 1.0)
-    windshield_color_rgba = _parse_color_rgba_float(args.windshield_color, 0.65)
+    windshield_color_rgba = _parse_color_rgba_float(args.windshield_color, float(args.windshield_alpha))
 
     # Build panel colors dict (sourced from YAML cfg, with hardcoded fallbacks)
     panel_colors = {
@@ -1300,7 +1430,16 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             print("[assembly] WARN: could not parse epoch from checkpoint stem, skipping")
 
     # --- Build extractor once ---
-    extractor = build_extractor(device, args.resolution, bbox_padding=args.bbox_padding)
+    extractor = build_extractor_with_wp2_prism(
+        device,
+        args.resolution,
+        bbox_padding=args.bbox_padding,
+        prism_scale=float(args.outer_prism_scale),
+    )
+
+    windshield_cone_mesh: trimesh.Trimesh | None = None
+    if args.show_windshield or args.show_solar_selection:
+        windshield_cone_mesh = _load_windshield_from_wp2(args.windshield_assembly_id)
 
     # --- Build z-vector sequence for selected traversal mode ---
     line_start_pt = (float(args.line_start[0]), float(args.line_start[1]))
@@ -1426,14 +1565,29 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         cone_face_mask: Tensor | None = None
         solar_selection_mesh: trimesh.Trimesh | None = None
         windshield_mesh: trimesh.Trimesh | None = None
+        mesh_for_render = mesh
         if args.show_windshield or args.show_solar_selection:
             cone_face_mask = _compute_windshield_face_mask(mesh, args.windshield_assembly_id, device)
+            if cone_face_mask is None and windshield_cone_mesh is not None:
+                cone_face_mask = _compute_windshield_face_mask_from_cone_mesh(mesh, windshield_cone_mesh, device)
         if args.show_windshield and cone_face_mask is not None:
-            windshield_mesh = _build_face_overlay_mesh(
-                mesh,
-                cone_face_mask.detach().cpu().numpy(),
-                normal_offset_mm=1.5,
-            )
+            cone_np = cone_face_mask.detach().cpu().numpy()
+            if float(args.windshield_alpha) <= 0.0:
+                cutout_mesh = _cutout_faces_from_mesh(mesh, cone_np)
+                if cutout_mesh is not None:
+                    mesh_for_render = cutout_mesh
+                else:
+                    warnings.warn(
+                        "[latent_rollout] windshield cutout produced empty mesh; using original aeroshell.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+            else:
+                windshield_mesh = _build_face_overlay_mesh(
+                    mesh,
+                    cone_np,
+                    normal_offset_mm=1.5,
+                )
         if args.show_solar_selection:
             solar_mask = _compute_solar_selection_mask(
                 mesh,
@@ -1458,7 +1612,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             print("  [camera locked]", end="")
 
         rgb = render_mesh(
-            mesh=mesh,
+            mesh=mesh_for_render,
             bg_color=render_bg_rgba,
             mesh_color=mesh_color_rgba,
             mesh_alpha=args.mesh_alpha,
@@ -1480,7 +1634,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         )
         if active_mode == "epoch_gif":
             rgb_wide = render_mesh(
-                mesh=mesh,
+                mesh=mesh_for_render,
                 bg_color=render_bg_rgba,
                 mesh_color=mesh_color_rgba,
                 mesh_alpha=args.mesh_alpha,
