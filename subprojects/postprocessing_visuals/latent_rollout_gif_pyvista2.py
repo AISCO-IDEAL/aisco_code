@@ -1222,32 +1222,184 @@ def _build_solar_cell_texture(
     return texture
 
 
-def draw_latent_panel(  # noqa: PLR0915
-    w: int,
-    h: int,
-    z_radius: float,
-    Z_pretrained: np.ndarray | None,
+# ---------------------------------------------------------------------------
+# Overlay box constants (shared by both left and right boxes)
+# ---------------------------------------------------------------------------
+_CARD_BOX_COLOR: tuple[int, int, int] = (20, 24, 30)
+_CARD_BOX_ALPHA: float = 0.72
+_CARD_GRID_COL: tuple[int, int, int, int] = (130, 150, 195, 40)
+_CARD_SECTION_OUTLINE: tuple[int, int, int, int] = (195, 53, 49, 185)
+
+
+def _box_dimensions(scale: float, show_tacho: bool) -> tuple[int, int]:
+    """Return (box_w, box_h) shared by both overlay boxes for the given frame scale.
+
+    Args:
+        scale: frame_height / 600.0.
+        show_tacho: Whether the left box includes a tachometer section.
+
+    Returns:
+        (box_w, box_h) in pixels.
+    """
+    pad_x = max(8, int(12 * scale))
+    pad_y = max(6, int(10 * scale))
+    section_gap = max(6, int(8 * scale))
+    section_h = max(34, int(46 * scale))
+    tacho_radius = max(28, int(58 * scale))
+    box_w = max(210, int(258 * scale))
+    box_w = max(box_w, int((tacho_radius * 2) + 2 * pad_x + 8))
+    # Left box content: drag + solar + (CSE row if no tacho, else tacho arc block)
+    n_base = 2 if show_tacho else 3
+    box_h = n_base * section_h + max(0, n_base - 1) * section_gap + 2 * pad_y
+    if show_tacho:
+        tacho_block_h = int((2 * tacho_radius) + max(40, int(52 * scale)))
+        box_h += section_gap + tacho_block_h
+    return box_w, box_h
+
+
+def box_builder(
+    box_w: int,
+    box_h: int,
+    scale: float,
+    box_color: tuple[int, int, int] = _CARD_BOX_COLOR,
+    box_alpha: float = _CARD_BOX_ALPHA,
+) -> tuple[Image.Image, ImageDraw.ImageDraw]:
+    """Create the shared semi-transparent card background used by both overlay boxes.
+
+    Draws a rounded-rect fill, a subtle grid, and a red outer border.
+    Callers receive (img, draw) and render content at local (0, 0) coordinates.
+
+    Args:
+        box_w: Card width in pixels.
+        box_h: Card height in pixels.
+        scale: frame_height / 600.0 for DPI-independent sizing.
+        box_color: RGB background fill color.
+        box_alpha: Opacity in [0.0, 1.0] — same key for both boxes.
+
+    Returns:
+        (img, draw) — RGBA PIL Image and its draw context.
+    """
+    img = Image.new("RGBA", (box_w, box_h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img, "RGBA")
+    a = int(max(0.0, min(1.0, box_alpha)) * 255)
+    radius = max(8, int(10 * scale))
+    # Filled rounded rect
+    draw.rounded_rectangle(
+        [(0, 0), (box_w - 1, box_h - 1)],
+        radius=radius,
+        fill=(box_color[0], box_color[1], box_color[2], a),
+        outline=None,
+    )
+    # Subtle grid
+    grid_step = max(28, int(40 * scale))
+    for gx in range(1, box_w, grid_step):
+        draw.line([(gx, 1), (gx, box_h - 2)], fill=_CARD_GRID_COL, width=1)
+    for gy in range(1, box_h, grid_step):
+        draw.line([(1, gy), (box_w - 2, gy)], fill=_CARD_GRID_COL, width=1)
+    # Red outer border
+    draw.rounded_rectangle(
+        [(0, 0), (box_w - 1, box_h - 1)],
+        radius=radius,
+        fill=None,
+        outline=_CARD_SECTION_OUTLINE,
+        width=1,
+    )
+    return img, draw
+
+
+def box_position(
+    frame_w: int,
+    frame_h: int,
+    box_w: int,
+    box_h: int,
+    margin_x: int,
+) -> tuple[int, int, int, int]:
+    """Return pixel positions for both overlay boxes.
+
+    Both boxes are vertically centered on the frame.
+    Left box is margin_x from the left edge; right box is margin_x from the right edge.
+
+    Args:
+        frame_w: Full composite frame width in pixels.
+        frame_h: Full composite frame height in pixels.
+        box_w: Width of each box (both use the same width).
+        box_h: Height of each box.
+        margin_x: Horizontal gap from each respective frame edge.
+
+    Returns:
+        (left_x, box_y, right_x, box_y) — top-left corners for left and right boxes.
+    """
+    box_y = (frame_h - box_h) // 2
+    left_x = margin_x
+    right_x = frame_w - margin_x - box_w
+    return left_x, box_y, right_x, box_y
+
+
+def _composite_box_on_frame(
+    frame_rgb: np.ndarray,
+    box_img: Image.Image,
+    x: int,
+    y: int,
+) -> np.ndarray:
+    """Alpha-composite an RGBA card image onto an RGB frame at (x, y).
+
+    Args:
+        frame_rgb: (H, W, 3) uint8 numpy array.
+        box_img: RGBA PIL Image produced by box_builder.
+        x: Left edge destination x in the frame.
+        y: Top edge destination y in the frame.
+
+    Returns:
+        (H, W, 3) uint8 numpy array with the card composited in.
+    """
+    frame = Image.fromarray(frame_rgb).convert("RGBA")
+    dest_x = max(0, x)
+    dest_y = max(0, y)
+    crop_w = min(box_img.width, frame_rgb.shape[1] - dest_x)
+    crop_h = min(box_img.height, frame_rgb.shape[0] - dest_y)
+    if crop_w <= 0 or crop_h <= 0:
+        return frame_rgb
+    frame.alpha_composite(box_img.crop((0, 0, crop_w, crop_h)), dest=(dest_x, dest_y))
+    return np.asarray(frame.convert("RGB"))
+
+
+def draw_right_box(  # noqa: PLR0915
+    draw: ImageDraw.ImageDraw,
+    box_w: int,
+    box_h: int,
+    scale: float,
     z0: float,
     z1: float,
+    z_radius: float,
+    Z_pretrained: np.ndarray | None,
     frame_idx: int,
     n_frames: int,
-    colors: dict | None = None,
-    trajectory_coords: list[tuple[float, float]] | None = None,
-    mode: str = "circle",
-    panel_scale_radius: float | None = None,
-    show_anchors: bool = True,
-    epoch_num: int | None = None,  # kept for signature compat; text drawn on composite instead
-    show_latent_card: bool = True,
-    card_margin_x: int | None = None,
-    box_alpha: float = 0.72,
-) -> np.ndarray:
-    """Return (H, W, 3) uint8 right panel: background grid + latent spiral card.
+    mode: str,
+    trajectory_coords: list[tuple[float, float]] | None,
+    panel_scale_radius: float,
+    show_anchors: bool,
+    colors: dict | None,
+) -> None:
+    """Draw the latent-space map at local box coordinates (0, 0).
 
+    Args:
+        draw: ImageDraw context from box_builder.
+        box_w: Box width in pixels.
+        box_h: Box height in pixels.
+        scale: frame_height / 600.0.
+        z0: Current latent z₀ coordinate.
+        z1: Current latent z₁ coordinate.
+        z_radius: Training manifold radius for the circle overlay.
+        Z_pretrained: (N, 2) array of pretrained anchor coordinates, or None.
+        frame_idx: Current frame index (for progress arc).
+        n_frames: Total frame count.
+        mode: Traversal mode ("circle", "spiral", "line", "cross", "epoch_gif").
+        trajectory_coords: Full trajectory as [(z0, z1), ...], or None.
+        panel_scale_radius: Effective radius used to scale the latent map view.
+        show_anchors: Whether to draw pretrained anchor dots.
+        colors: Optional colour overrides dict (same keys as panel_colors in main).
     """
     _C = colors or {}
-    bg = _C.get("bg", (35, 40, 62))
-    bg_epoch = _C.get("bg_epoch", bg)
-    grid_col = _C.get("grid", (54, 66, 96))
     axis_col = _C.get("axis", (75, 85, 115))
     circle_col = _C.get("circle", (110, 125, 165))
     anchor_col = _C.get("anchor", (220, 90, 90))
@@ -1257,85 +1409,21 @@ def draw_latent_panel(  # noqa: PLR0915
     cursor_out_col = _C.get("cursor_outline", (255, 255, 255))
     axis_lbl_col = _C.get("axis_label", (180, 190, 220))
 
-    bg_fill = bg
-    img = Image.new("RGB", (w, h), color=bg_fill)
-    draw = ImageDraw.Draw(img, "RGBA")
-
-    scale_factor = h / 600.0
-    lw_axis = max(1, int(1 * scale_factor))
-    lw_thick = max(1, int(2 * scale_factor))
-
-    # Only the inner card gets a grid; the panel background stays uniform.
-    grid_step = max(28, int(40 * scale_factor))
-
-    # In epoch_gif mode without the latent card there is nothing more to draw.
-    if not show_latent_card and mode == "epoch_gif":
-        return np.asarray(img)
-
-    if not show_latent_card:
-        return np.asarray(img)
-
-    # ── Card dimensions — identical formula to the CSE card ─────────────────
-    scale = scale_factor
+    lw_axis = max(1, int(1 * scale))
+    lw_thick = max(1, int(2 * scale))
     pad_x = max(8, int(12 * scale))
-    pad_y_card = max(6, int(10 * scale))
-    section_h = max(34, int(46 * scale))
-    section_gap = max(6, int(8 * scale))
-    tacho_radius_ref = max(28, int(58 * scale))
-    tacho_block_h = int((2 * tacho_radius_ref) + max(40, int(52 * scale)))
-    card_w = max(max(210, int(258 * scale)), int((tacho_radius_ref * 2) + 2 * pad_x + 8))
-    card_h = 2 * section_h + section_gap + 2 * pad_y_card + section_gap + tacho_block_h
+    pad_y = max(6, int(10 * scale))
 
-    # Cap to panel size with a margin.
-    margin = max(12, int(16 * scale))
-    card_w = min(card_w, w - 2 * margin)
-    card_h = min(card_h, h - 2 * margin)
-
-    # Place the card near the right edge so the full frame reads as one shared
-    # background with symmetric overlay boxes.
-    margin_x = card_margin_x if card_margin_x is not None else max(12, int(0.06 * w))
-    cx_card = max(margin_x, w - card_w - margin_x)
-    cy_card = (h - card_h) // 2
-
-    # Card fill — use alpha parameter for transparency (matches CSE card)
-    box_color = bg_fill if isinstance(bg_fill, tuple) else (35, 40, 62)
-    a = int(max(0.0, min(1.0, box_alpha)) * 255)
-    draw.rounded_rectangle(
-        [(cx_card, cy_card), (cx_card + card_w, cy_card + card_h)],
-        radius=max(8, int(10 * scale)),
-        fill=(box_color[0], box_color[1], box_color[2], a),
-        outline=None,
-    )
-
-    # Inner card grid (same step).
-    for gx in range(cx_card + 1, cx_card + card_w, grid_step):
-        draw.line([(gx, cy_card + 1), (gx, cy_card + card_h - 1)], fill=grid_col, width=1)
-    for gy in range(cy_card + 1, cy_card + card_h, grid_step):
-        draw.line([(cx_card + 1, gy), (cx_card + card_w - 1, gy)], fill=grid_col, width=1)
-
-    # Card section border (thin red, same as CSE sections).
-    section_outline: tuple[int, int, int, int] = (195, 53, 49, 185)
-    draw.rounded_rectangle(
-        [(cx_card + pad_x, cy_card + pad_y_card),
-         (cx_card + card_w - pad_x, cy_card + card_h - pad_y_card)],
-        radius=max(6, int(8 * scale)),
-        fill=(box_color[0], box_color[1], box_color[2], int(a * 0.30)),
-        outline=section_outline,
-        width=1,
-    )
-
-    # ── Latent spiral map inside card interior ───────────────────────────────
-    inner_x0 = cx_card + pad_x
-    inner_y0 = cy_card + pad_y_card
-    inner_x1 = cx_card + card_w - pad_x
-    inner_y1 = cy_card + card_h - pad_y_card
+    inner_x0 = pad_x
+    inner_y0 = pad_y
+    inner_x1 = box_w - pad_x
+    inner_y1 = box_h - pad_y
     inner_w = inner_x1 - inner_x0
     inner_h = inner_y1 - inner_y0
     icx = inner_x0 + inner_w // 2
     icy = inner_y0 + inner_h // 2
 
-    _scale_ref = panel_scale_radius if panel_scale_radius is not None else z_radius
-    map_scale = (min(inner_w, inner_h) * 0.40) / max(_scale_ref * 1.5, 1e-6)
+    map_scale = (min(inner_w, inner_h) * 0.40) / max(panel_scale_radius * 1.5, 1e-6)
 
     def z2px(z0v: float, z1v: float) -> tuple[int, int]:
         return icx + int(z0v * map_scale), icy - int(z1v * map_scale)
@@ -1355,16 +1443,15 @@ def draw_latent_panel(  # noqa: PLR0915
 
     # Pretrained anchor dots.
     if show_anchors and Z_pretrained is not None:
-        font_sm = _get_font(max(8, int(11 * scale_factor)))
         for k, (z0a, z1a) in enumerate(Z_pretrained):
             apx, apy = z2px(float(z0a), float(z1a))
-            r_a = max(2, int(4 * scale_factor))
-            off = max(3, int(7 * scale_factor))
+            r_a = max(2, int(4 * scale))
+            off = max(3, int(7 * scale))
             draw.ellipse([(apx - r_a, apy - r_a), (apx + r_a, apy + r_a)], fill=anchor_col)
             draw.text((apx + off, apy - off), str(k), fill=anchor_lbl_col,
-                      font=_get_font(max(8, int(11 * scale_factor))))
+                      font=_get_font(max(8, int(11 * scale))))
 
-    # Trajectory / progress visualization.
+    # Trajectory / progress.
     if mode == "circle":
         if n_frames > 1 and r_px > 5:
             arc_end_deg = -90 + (360.0 * frame_idx / n_frames)
@@ -1379,17 +1466,17 @@ def draw_latent_panel(  # noqa: PLR0915
     elif trajectory_coords is not None and len(trajectory_coords) > 1:
         full_pts = [z2px(zc0, zc1) for zc0, zc1 in trajectory_coords]
         draw.line(full_pts, fill=circle_col, width=lw_axis)
-        traversed = full_pts[: frame_idx + 1]
+        traversed = full_pts[:frame_idx + 1]
         if len(traversed) >= 2:
             draw.line(traversed, fill=progress_col, width=lw_thick)
         if mode == "line":
-            ep_r = max(2, int(5 * scale_factor))
+            ep_r = max(2, int(5 * scale))
             for ep_z0, ep_z1 in (trajectory_coords[0], trajectory_coords[-1]):
                 ex, ey = z2px(ep_z0, ep_z1)
                 draw.ellipse([(ex - ep_r, ey - ep_r), (ex + ep_r, ey + ep_r)],
                               outline=circle_col, width=lw_thick)
         if mode == "cross":
-            ep_r = max(2, int(5 * scale_factor))
+            ep_r = max(2, int(5 * scale))
             seen: set[tuple[int, int]] = set()
             for ep_z0, ep_z1 in trajectory_coords:
                 ep = z2px(ep_z0, ep_z1)
@@ -1401,7 +1488,7 @@ def draw_latent_panel(  # noqa: PLR0915
 
     # Current cursor.
     px_c, py_c = z2px(z0, z1)
-    r_cursor = max(3, int(7 * scale_factor))
+    r_cursor = max(3, int(7 * scale))
     draw.ellipse(
         [(px_c - r_cursor, py_c - r_cursor), (px_c + r_cursor, py_c + r_cursor)],
         fill=cursor_col,
@@ -1409,25 +1496,25 @@ def draw_latent_panel(  # noqa: PLR0915
         width=lw_thick,
     )
 
-    # Axis labels and latent coordinates stay inside the right panel/card.
-    font_label = _get_font(max(9, int(13 * scale_factor)))
-    draw.text((inner_x1 - int(26 * scale_factor), icy - int(16 * scale_factor)),
-              "z₀", fill=axis_lbl_col, font=font_label)
-    draw.text((icx + int(5 * scale_factor), inner_y0 + int(8 * scale_factor)),
-              "z₁", fill=axis_lbl_col, font=font_label)
+    # Axis labels.
+    font_label = _get_font(max(9, int(13 * scale)))
+    draw.text((inner_x1 - int(26 * scale), icy - int(16 * scale)),
+              "z\u2080", fill=axis_lbl_col, font=font_label)
+    draw.text((icx + int(5 * scale), inner_y0 + int(8 * scale)),
+              "z\u2081", fill=axis_lbl_col, font=font_label)
 
+    # Coordinate readout at bottom of box.
     coord_text = f"z = [{z0:+.3f}, {z1:+.3f}]"
-    coord_box = draw.textbbox((0, 0), coord_text, font=_get_font(max(8, int(11 * scale_factor))))
-    coord_w = coord_box[2] - coord_box[0]
-    coord_h = coord_box[3] - coord_box[1]
+    coord_font = _get_font(max(8, int(11 * scale)))
+    coord_bbox = draw.textbbox((0, 0), coord_text, font=coord_font)
+    coord_w = coord_bbox[2] - coord_bbox[0]
+    coord_h_px = coord_bbox[3] - coord_bbox[1]
     draw.text(
-        ((w - coord_w) // 2, h - max(8, int(12 * scale_factor)) - coord_h),
+        ((box_w - coord_w) // 2, box_h - max(8, int(12 * scale)) - coord_h_px),
         coord_text,
         fill=_C.get("coord_text", (130, 195, 255)),
-        font=_get_font(max(8, int(11 * scale_factor))),
+        font=coord_font,
     )
-
-    return np.asarray(img)
 
 
 def draw_epoch_label_on_frame(
@@ -1461,14 +1548,14 @@ def draw_epoch_label_on_frame(
     margin_bottom = max(8, int(12 * scale_factor))
     anchor_x = (w - text_w) // 2 + x_offset_px
     anchor_y = h - text_h - margin_bottom
-    if box_color is not None:
-        pad_x = int(8 * scale_factor)
-        pad_y = int(4 * scale_factor)
-        draw.rectangle(
-            [(anchor_x - pad_x, anchor_y - pad_y),
-             (anchor_x + text_w + pad_x, anchor_y + text_h + pad_y)],
-            fill=box_color,
-        )
+    # if box_color is not None:
+    #     pad_x = int(8 * scale_factor)
+    #     pad_y = int(4 * scale_factor)
+    #     draw.rectangle(
+    #         [(anchor_x - pad_x, anchor_y - pad_y),
+    #          (anchor_x + text_w + pad_x, anchor_y + text_h + pad_y)],
+    #         fill=box_color,
+    #     )
     draw.text(
         (anchor_x, anchor_y),
         label,
@@ -1777,34 +1864,34 @@ def _compute_cse_speed_ms(
         return None
 
 
-def draw_metrics_box_on_frame(
-    frame_rgb: np.ndarray,
-    lines: list[str],
-    text_color: tuple[int, int, int] = (235, 240, 245),
-    box_color: tuple[int, int, int] = (20, 24, 30),
-    box_alpha: float = 0.72,
-    anchor_x: int = 12,
-    anchor_y: int = 12,
-    cse_speed_ms: float | None = None,
-    show_tacho: bool = False,
-    tacho_bg_color: tuple[int, int, int] = (35, 40, 62),
-    motion_phase: float = 0.0,
-    anchor_right: bool = False,
-    sections: list[tuple[str, str]] | None = None,
-) -> np.ndarray:
-    """Draw a metrics card on an RGB frame.
+def draw_left_box(  # noqa: PLR0915
+    draw: ImageDraw.ImageDraw,
+    box_w: int,
+    box_h: int,
+    scale: float,
+    box_color: tuple[int, int, int],
+    drag_n: float | None,
+    solar_w: float | None,
+    cse_ms: float | None,
+    show_tacho: bool,
+    text_color: tuple[int, int, int],
+    show_kmh: bool = False,
+) -> None:
+    """Draw Drag / Solar / CSE (or tachometer) at local box coordinates (0, 0).
 
-    When *sections* is provided it is used directly as [(title, value), ...]
-    and *lines* is ignored for section content.  When *sections* is None the
-    legacy behaviour of parsing Drag/Solar from *lines* is preserved.
+    Args:
+        draw: ImageDraw context from box_builder.
+        box_w: Box width in pixels.
+        box_h: Box height in pixels.
+        scale: frame_height / 600.0.
+        box_color: RGB fill used for inner section backgrounds.
+        drag_n: Drag force in Newtons, or None.
+        solar_w: Solar power in Watts, or None.
+        cse_ms: CSE speed in m/s, or None.
+        show_tacho: Render a tachometer instead of a plain CSE row.
+        text_color: RGB text color.
+        show_kmh: Append km/h conversion to CSE text (ignored when show_tacho=True).
     """
-    if sections is None and not lines:
-        return frame_rgb
-
-    img = Image.fromarray(frame_rgb)
-    draw = ImageDraw.Draw(img, "RGBA")
-    h = frame_rgb.shape[0]
-    scale = h / 600.0
     label_font = _get_font(max(10, int(11 * scale)))
     value_font = _get_font(max(10, int(13 * scale)))
     caption_font = _get_font(max(9, int(10 * scale)))
@@ -1814,95 +1901,61 @@ def draw_metrics_box_on_frame(
     section_h = max(34, int(46 * scale))
     tacho_radius = max(28, int(58 * scale))
     tacho_kmh_max = 150.0
-    section_outline = (195, 53, 49, 185)
-    grid_col = (130, 150, 195, 40)
 
-    # Resolve which (title, value) rows to draw.
-    if sections is not None:
-        sections_to_draw = list(sections)
-    else:
-        drag_value = "n/a"
-        solar_value = "n/a"
-        for line in lines:
-            if line.lower().startswith("drag"):
-                drag_value = line.split(":", 1)[1].strip() if ":" in line else line
-            elif line.lower().startswith("solar"):
-                solar_value = line.split(":", 1)[1].strip() if ":" in line else line
-        sections_to_draw = [("Drag", drag_value), ("Solar", solar_value)]
+    drag_str = f"{drag_n:.1f} N" if drag_n is not None else "n/a"
+    solar_str = f"{solar_w:.1f} W" if solar_w is not None else "n/a"
+    sections_to_draw: list[tuple[str, str]] = [("Drag", drag_str), ("Solar", solar_str)]
+    if not show_tacho:
+        if cse_ms is not None:
+            cse_str = f"{cse_ms:.2f} m/s"
+            if show_kmh:
+                cse_str = f"{cse_str} ({cse_ms * 3.6:.1f} km/h)"
+        else:
+            cse_str = "n/a"
+        sections_to_draw.append(("CSE", cse_str))
 
-    n_sects = len(sections_to_draw)
-    frame_w = frame_rgb.shape[1]
-    card_w = max(max(210, int(258 * scale)), int((tacho_radius * 2) + 2 * pad_x + 8))
-    x0 = int(frame_w - int(anchor_x) - card_w) if anchor_right else int(anchor_x)
-    x0 = max(0, x0)
-    card_h = n_sects * section_h + max(0, n_sects - 1) * section_gap + 2 * pad_y
-    if show_tacho:
-        tacho_block_h = int((2 * tacho_radius) + max(40, int(52 * scale)))
-        card_h += section_gap + tacho_block_h
-
-    y_centered = (h - card_h) // 2
-    y0 = max(int(anchor_y), y_centered)
-    x1 = x0 + card_w
-    y1 = y0 + card_h
-    a = int(max(0.0, min(1.0, box_alpha)) * 255)
-
-    draw.rounded_rectangle(
-        [(x0, y0), (x1, y1)],
-        radius=max(8, int(10 * scale)),
-        fill=(box_color[0], box_color[1], box_color[2], a),
-        outline=None,
-    )
-
-    # Subtle local grid — same step and thickness as the right latent panel.
-    grid_step = max(28, int(40 * scale))
-    for gx in range(x0 + 1, x1, grid_step):
-        draw.line([(gx, y0 + 1), (gx, y1 - 1)], fill=grid_col, width=1)
-    for gy in range(y0 + 1, y1, grid_step):
-        draw.line([(x0 + 1, gy), (x1 - 1, gy)], fill=grid_col, width=1)
-
-    def _draw_section(y_top: int, title: str, value: str) -> int:
+    def _section(y_top: int, title: str, value: str) -> int:
         y_bot = y_top + section_h
         draw.rounded_rectangle(
-            [(x0 + pad_x, y_top), (x1 - pad_x, y_bot)],
+            [(pad_x, y_top), (box_w - pad_x, y_bot)],
             radius=max(6, int(8 * scale)),
             fill=(box_color[0], box_color[1], box_color[2], int(0.30 * 255)),
-            outline=section_outline,
+            outline=_CARD_SECTION_OUTLINE,
             width=1,
         )
-        draw.text((x0 + pad_x + max(8, int(10 * scale)), y_top + max(4, int(6 * scale))), title, fill=text_color, font=label_font)
-        draw.text((x0 + pad_x + max(8, int(10 * scale)), y_top + max(18, int(24 * scale))), value, fill=text_color, font=value_font)
+        txt_x = pad_x + max(8, int(10 * scale))
+        draw.text((txt_x, y_top + max(4, int(6 * scale))), title, fill=text_color, font=label_font)
+        draw.text((txt_x, y_top + max(18, int(24 * scale))), value, fill=text_color, font=value_font)
         return y_bot
 
-    y = y0 + pad_y
-    for _si, (_st, _sv) in enumerate(sections_to_draw):
-        y = _draw_section(y, _st, _sv)
-        if _si < n_sects - 1:
+    y = pad_y
+    for si, (st, sv) in enumerate(sections_to_draw):
+        y = _section(y, st, sv)
+        if si < len(sections_to_draw) - 1:
             y += section_gap
-
     y += section_gap
 
     if show_tacho:
-        # Tacho section with explicit caption.
         tacho_top = y
-        tacho_bottom = y1 - pad_y
+        tacho_bottom = box_h - pad_y
         draw.rounded_rectangle(
-            [(x0 + pad_x, tacho_top), (x1 - pad_x, tacho_bottom)],
+            [(pad_x, tacho_top), (box_w - pad_x, tacho_bottom)],
             radius=max(6, int(8 * scale)),
             fill=(box_color[0], box_color[1], box_color[2], int(0.30 * 255)),
-            outline=section_outline,
+            outline=_CARD_SECTION_OUTLINE,
             width=1,
         )
         caption = "Cruising Speed Estimate"
         cap_box = draw.textbbox((0, 0), caption, font=caption_font)
         cap_w = cap_box[2] - cap_box[0]
-        draw.text((x0 + (card_w - cap_w) // 2, tacho_top + max(4, int(6 * scale))), caption, fill=text_color, font=caption_font)
-
-        cx = x0 + (x1 - x0) // 2
+        draw.text(
+            ((box_w - cap_w) // 2, tacho_top + max(4, int(6 * scale))),
+            caption, fill=text_color, font=caption_font,
+        )
+        cx = box_w // 2
         cy = tacho_top + max(20, int(26 * scale)) + tacho_radius
         arc_start_deg = 330.0
         arc_span_deg = 240.0
-
-        # Build a centered 2/3-circle arc with horizontal endpoints (same y-value).
         arc_pts_outer: list[tuple[int, int]] = []
         arc_pts_inner: list[tuple[int, int]] = []
         for k in range(81):
@@ -1914,13 +1967,15 @@ def draw_metrics_box_on_frame(
             iy = cy - int((tacho_radius - max(6, int(8 * scale))) * math.sin(angle))
             arc_pts_outer.append((ox, oy))
             arc_pts_inner.append((ix, iy))
-
         if len(arc_pts_outer) >= 2 and len(arc_pts_inner) >= 2:
             glow_poly = arc_pts_outer + list(reversed(arc_pts_inner))
-            draw.polygon(glow_poly, fill=(tacho_bg_color[0], tacho_bg_color[1], tacho_bg_color[2], 155))
+            draw.polygon(glow_poly, fill=(box_color[0], box_color[1], box_color[2], 155))
             draw.line(arc_pts_outer, fill=text_color, width=max(1, int(2 * scale)))
-
-        tick_col = tuple(int(0.75 * c) for c in text_color)
+        tick_col: tuple[int, int, int] = (
+            int(0.75 * text_color[0]),
+            int(0.75 * text_color[1]),
+            int(0.75 * text_color[2]),
+        )
         for frac in (0.0, 0.25, 0.5, 0.75, 1.0):
             angle = math.radians(arc_start_deg + (arc_span_deg * frac))
             x_in = cx + int((tacho_radius - max(5, int(6 * scale))) * math.cos(angle))
@@ -1928,11 +1983,10 @@ def draw_metrics_box_on_frame(
             x_out = cx + int(tacho_radius * math.cos(angle))
             y_out = cy - int(tacho_radius * math.sin(angle))
             draw.line([(x_in, y_in), (x_out, y_out)], fill=tick_col, width=max(1, int(1 * scale)))
-
-        if cse_speed_ms is not None and np.isfinite(cse_speed_ms):
-            kmh = max(0.0, float(cse_speed_ms) * 3.6)
-            frac = max(0.0, min(1.0, kmh / tacho_kmh_max))
-            angle = math.radians(arc_start_deg + (arc_span_deg * frac))
+        if cse_ms is not None and np.isfinite(cse_ms):
+            kmh = max(0.0, float(cse_ms) * 3.6)
+            needle_frac = max(0.0, min(1.0, kmh / tacho_kmh_max))
+            angle = math.radians(arc_start_deg + (arc_span_deg * needle_frac))
             nx = cx + int((tacho_radius - max(6, int(8 * scale))) * math.cos(angle))
             ny = cy - int((tacho_radius - max(6, int(8 * scale))) * math.sin(angle))
             needle_col = (235, 76, 66)
@@ -1942,13 +1996,9 @@ def draw_metrics_box_on_frame(
             speed_txt = f"{kmh:.1f} km/h"
         else:
             speed_txt = "n/a"
-
-        font_tacho = value_font
-        txt_box = draw.textbbox((0, 0), speed_txt, font=font_tacho)
+        txt_box = draw.textbbox((0, 0), speed_txt, font=value_font)
         txt_w = txt_box[2] - txt_box[0]
-        draw.text((cx - txt_w // 2, cy + max(14, int(18 * scale))), speed_txt, fill=text_color, font=font_tacho)
-
-    return np.asarray(img)
+        draw.text((cx - txt_w // 2, cy + max(14, int(18 * scale))), speed_txt, fill=text_color, font=value_font)
 
 
 # ---------------------------------------------------------------------------
@@ -2647,8 +2697,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
 
     # Build panel colors dict (sourced from YAML cfg, with hardcoded fallbacks)
     panel_colors = {
-        "bg": _parse_color_rgb(_c("panel_bg", "#23283E")),
-        "bg_epoch": _parse_color_rgb(_c("panel_bg", "#23283E")),
+        "bg": _parse_color_rgb(_c("panel_bg", "#14181E")),
+        "bg_epoch": _parse_color_rgb(_c("panel_bg", "#14181E")),
         "grid": _parse_color_rgb(_c("panel_grid", "#36435F")),
         "axis": _parse_color_rgb(_c("panel_axis", "#4B5573")),
         "circle": _parse_color_rgb(_c("panel_circle", "#6E7DA5")),
@@ -2841,6 +2891,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
 
     print("\nGenerating frames...")
     outer_margin_x = max(12, int(0.06 * args.width))
+    frame_scale = args.height / 600.0
+    box_w, box_h = _box_dimensions(frame_scale, bool(args.show_cse_tacho))
     for i, (z0, z1) in enumerate(z_coords):
         frame_ckpt = frame_checkpoints[i]
         frame_epoch_num: int | None = base_epoch_num
@@ -2873,26 +2925,23 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                     }
                 )
             if last_valid_rgb is not None:
-                panel = draw_latent_panel(
-                    args.panel_width,
-                    args.height,
-                    z_radius,
-                    Z_np,
-                    z0,
-                    z1,
-                    i,
-                    total_frames,
-                    colors=panel_colors,
-                    trajectory_coords=panel_trajectory,
-                    mode=active_mode,
-                    panel_scale_radius=panel_scale_radius,
-                    show_anchors=args.show_anchors,
-                    show_latent_card=bool(args.show_latent_panel),
-                    card_margin_x=outer_margin_x,
-                )
                 composite_skip = np.array(last_valid_rgb, copy=True)
-                panel_x = max(0, composite_skip.shape[1] - panel.shape[1])
-                composite_skip[:, panel_x : panel_x + panel.shape[1], :] = panel
+                if bool(args.show_latent_panel):
+                    right_img, right_draw = box_builder(
+                        box_w, box_h, frame_scale,
+                        box_color=cse_box_rgb, box_alpha=float(args.latent_box_alpha),
+                    )
+                    draw_right_box(
+                        right_draw, box_w, box_h, frame_scale,
+                        z0, z1, z_radius, Z_np, i, total_frames,
+                        active_mode, panel_trajectory, panel_scale_radius,
+                        bool(args.show_anchors), panel_colors,
+                    )
+                    _, skip_box_y, right_x, _ = box_position(
+                        composite_skip.shape[1], composite_skip.shape[0],
+                        box_w, box_h, outer_margin_x,
+                    )
+                    composite_skip = _composite_box_on_frame(composite_skip, right_img, right_x, skip_box_y)
                 composite_skip = draw_epoch_label_on_frame(
                     composite_skip, frame_epoch_num, box_color=(20, 24, 30)
                 )
@@ -2902,7 +2951,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         cone_face_mask: Tensor | None = None
         solar_selection_mesh: trimesh.Trimesh | None = None
         windshield_mesh: trimesh.Trimesh | None = None
-        cse_overlay_lines: list[str] = []
         drag_n: float | None = None
         solar_w: float | None = None
         cse_ms: float | None = None
@@ -3018,18 +3066,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 }
             )
 
-        if args.show_cse_overlay:
-            cse_overlay_lines.append(f"Drag: {drag_n:.1f} N" if drag_n is not None else "Drag: n/a")
-            cse_overlay_lines.append(f"Solar est.: {solar_w:.1f} W" if solar_w is not None else "Solar est.: n/a")
-            if not bool(args.show_cse_tacho):
-                if cse_ms is not None:
-                    cse_line = f"CSE: {cse_ms:.2f} m/s"
-                    if bool(args.show_cse_kmh):
-                        cse_line = f"{cse_line} ({cse_ms * 3.6:.1f} km/h)"
-                    cse_overlay_lines.append(cse_line)
-                else:
-                    cse_overlay_lines.append("CSE: n/a")
-
         rgb = render_mesh(
             mesh=mesh_for_render,
             bg_color=render_bg_rgba,
@@ -3054,48 +3090,34 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             pressure_field=pressure_field_cp_np,
             pressure_field_enabled=show_pressure_field_now,
         )
-        panel = draw_latent_panel(
-            args.panel_width,
-            args.height,
-            z_radius,
-            Z_np,
-            z0,
-            z1,
-            i,
-            total_frames,
-            colors=panel_colors,
-            trajectory_coords=panel_trajectory,
-            mode=active_mode,
-            panel_scale_radius=panel_scale_radius,
-            show_anchors=args.show_anchors,
-            show_latent_card=bool(args.show_latent_panel),
-            card_margin_x=outer_margin_x,
-            box_alpha=float(args.latent_box_alpha),
-        )
         composite = np.array(rgb, copy=True)
-        panel_x = max(0, composite.shape[1] - panel.shape[1])
-        # Alpha blend the panel overlay to avoid harsh cutoff
-        if panel.shape[2] == 4:
-            alpha = panel[:, :, 3] / 255.0
-            for c in range(3):
-                composite[:, panel_x : panel_x + panel.shape[1], c] = (
-                    (1 - alpha) * composite[:, panel_x : panel_x + panel.shape[1], c] + alpha * panel[:, :, c]
-                ).astype(np.uint8)
-        else:
-            composite[:, panel_x : panel_x + panel.shape[1], :] = panel
-        if args.show_cse_overlay and cse_overlay_lines:
-            composite = draw_metrics_box_on_frame(
-                composite,
-                cse_overlay_lines,
-                text_color=cse_text_rgb,
-                box_color=cse_box_rgb,
-                box_alpha=float(args.cse_box_alpha),
-                cse_speed_ms=cse_ms,
-                show_tacho=bool(args.show_cse_tacho),
-                tacho_bg_color=panel_colors["bg"],
-                anchor_x=outer_margin_x,
-                motion_phase=(2.0 * math.pi * float(i) / max(1, int(total_frames))),
+        lbox_x, box_y, rbox_x, _ = box_position(
+            composite.shape[1], composite.shape[0], box_w, box_h, outer_margin_x,
+        )
+        if bool(args.show_latent_panel):
+            right_img, right_draw = box_builder(
+                box_w, box_h, frame_scale,
+                box_color=cse_box_rgb, box_alpha=float(args.latent_box_alpha),
             )
+            draw_right_box(
+                right_draw, box_w, box_h, frame_scale,
+                z0, z1, z_radius, Z_np, i, total_frames,
+                active_mode, panel_trajectory, panel_scale_radius,
+                bool(args.show_anchors), panel_colors,
+            )
+            composite = _composite_box_on_frame(composite, right_img, rbox_x, box_y)
+        if args.show_cse_overlay:
+            left_img, left_draw = box_builder(
+                box_w, box_h, frame_scale,
+                box_color=cse_box_rgb, box_alpha=float(args.latent_box_alpha),
+            )
+            draw_left_box(
+                left_draw, box_w, box_h, frame_scale, cse_box_rgb,
+                drag_n, solar_w, cse_ms,
+                bool(args.show_cse_tacho), cse_text_rgb,
+                show_kmh=bool(args.show_cse_kmh),
+            )
+            composite = _composite_box_on_frame(composite, left_img, lbox_x, box_y)
 
         composite = draw_epoch_label_on_frame(
             composite, frame_epoch_num, box_color=(20, 24, 30)
