@@ -23,7 +23,7 @@ layers:
     z_fight_scale: 1.0       # uniform scale toward centroid to prevent Z-fighting with aeroshell (< 1.0 = smaller)
 
   windshield:
-    enabled: true             # bake vision-cone face mask onto aeroshell (wp3_vision_cone)
+    enabled: false             # bake vision-cone face mask onto aeroshell (wp3_vision_cone)
     color: "#b0d2df"          # light gray — the windshield zone; alpha controls opacity
     alpha: 0.0               # 0.0 = transparent cut-through, 1.0 = fully opaque gray
     assembly_id: 1            # WP2 assembly_map.yaml key (same NBZ as inner_assembly)
