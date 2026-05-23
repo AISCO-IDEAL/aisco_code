@@ -1088,8 +1088,10 @@ def compute_camera_pose(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Compute camera position/focus/up using the same logic as latent_rollout_gif.py."""
     vertices = mesh.vertices
-    centroid = vertices.mean(axis=0)
-    diag = float(np.linalg.norm(vertices.max(axis=0) - vertices.min(axis=0)))
+    vmin = vertices.min(axis=0)
+    vmax = vertices.max(axis=0)
+    centroid = 0.5 * (vmin + vmax)
+    diag = float(np.linalg.norm(vmax - vmin))
     dist = diag * distance_mult
 
     azim = np.radians(azim_deg)
@@ -1731,7 +1733,7 @@ def draw_metrics_box_on_frame(
     section_gap = max(6, int(8 * scale))
     section_h = max(34, int(46 * scale))
     tacho_radius = max(28, int(58 * scale))
-    tacho_kmh_max = 120.0
+    tacho_kmh_max = 150.0
     section_outline = (195, 53, 49, 185)
     grid_col = (130, 150, 195, 40)
 
@@ -1802,19 +1804,33 @@ def draw_metrics_box_on_frame(
             outline=section_outline,
             width=1,
         )
-        caption = "Cruising speed estimate"
+        caption = "Cruising Speed Estimate"
         cap_box = draw.textbbox((0, 0), caption, font=caption_font)
         cap_w = cap_box[2] - cap_box[0]
         draw.text((x0 + (card_w - cap_w) // 2, tacho_top + max(4, int(6 * scale))), caption, fill=text_color, font=caption_font)
 
         cx = x0 + (x1 - x0) // 2
         cy = tacho_top + max(20, int(26 * scale)) + tacho_radius
-        dial_box = [(cx - tacho_radius, cy - tacho_radius), (cx + tacho_radius, cy + tacho_radius)]
-        arc_start_deg = 120.0
-        arc_end_deg = 360.0
-        arc_span_deg = arc_end_deg - arc_start_deg
-        draw.pieslice(dial_box, start=arc_start_deg, end=arc_end_deg, fill=tacho_bg_color)
-        draw.arc(dial_box, start=arc_start_deg, end=arc_end_deg, fill=text_color, width=max(1, int(2 * scale)))
+        arc_start_deg = 330.0
+        arc_span_deg = 240.0
+
+        # Build a centered 2/3-circle arc with horizontal endpoints (same y-value).
+        arc_pts_outer: list[tuple[int, int]] = []
+        arc_pts_inner: list[tuple[int, int]] = []
+        for k in range(81):
+            frac = k / 80.0
+            angle = math.radians(arc_start_deg + (arc_span_deg * frac))
+            ox = cx + int(tacho_radius * math.cos(angle))
+            oy = cy - int(tacho_radius * math.sin(angle))
+            ix = cx + int((tacho_radius - max(6, int(8 * scale))) * math.cos(angle))
+            iy = cy - int((tacho_radius - max(6, int(8 * scale))) * math.sin(angle))
+            arc_pts_outer.append((ox, oy))
+            arc_pts_inner.append((ix, iy))
+
+        if len(arc_pts_outer) >= 2 and len(arc_pts_inner) >= 2:
+            glow_poly = arc_pts_outer + list(reversed(arc_pts_inner))
+            draw.polygon(glow_poly, fill=(tacho_bg_color[0], tacho_bg_color[1], tacho_bg_color[2], 155))
+            draw.line(arc_pts_outer, fill=text_color, width=max(1, int(2 * scale)))
 
         tick_col = tuple(int(0.75 * c) for c in text_color)
         for frac in (0.0, 0.25, 0.5, 0.75, 1.0):
@@ -1839,10 +1855,10 @@ def draw_metrics_box_on_frame(
         else:
             speed_txt = "n/a"
 
-        font_tacho = _get_font(max(12, int(16 * scale)))
+        font_tacho = value_font
         txt_box = draw.textbbox((0, 0), speed_txt, font=font_tacho)
         txt_w = txt_box[2] - txt_box[0]
-        draw.text((cx - txt_w // 2, cy + max(4, int(6 * scale))), speed_txt, fill=text_color, font=font_tacho)
+        draw.text((cx - txt_w // 2, cy + max(14, int(18 * scale))), speed_txt, fill=text_color, font=font_tacho)
 
     return np.asarray(img)
 
@@ -2746,11 +2762,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     best_cse_frame_idx: int | None = None
     best_cse_aeroshell_rgb: np.ndarray | None = None
     best_cse_composite_frame: np.ndarray | None = None
-    last_valid_epoch_base: np.ndarray | None = None
     locked_camera_position: np.ndarray | None = None
     locked_camera_focal_point: np.ndarray | None = None
     locked_camera_view_up: np.ndarray | None = None
-    render_width = args.width + args.panel_width if active_mode == "epoch_gif" else args.width
+    render_width = args.width
     assembly_smooth_shading = not args.full_wheels
     solar_selection_texture = _build_solar_cell_texture() if args.show_solar_selection else None
 
@@ -2775,6 +2790,18 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                     azim_deg=args.azim,
                     elev_deg=args.elev,
                 )
+                if global_bounds is not None:
+                    bounds_center = np.array(
+                        [
+                            0.5 * (global_bounds[0] + global_bounds[1]),
+                            0.5 * (global_bounds[2] + global_bounds[3]),
+                            0.5 * (global_bounds[4] + global_bounds[5]),
+                        ],
+                        dtype=np.float64,
+                    )
+                    cam_offset = locked_camera_position - locked_camera_focal_point
+                    locked_camera_focal_point = bounds_center
+                    locked_camera_position = bounds_center + cam_offset
                 print(f"[camera lock] using reference checkpoint: {ref_ckpt.name}")
 
     # Pre-compute the vision cone mesh once — loading it per-frame dominates runtime.
@@ -2817,35 +2844,23 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                     }
                 )
             if last_valid_rgb is not None:
-                if active_mode == "epoch_gif":
-                    if last_valid_epoch_base is not None:
-                        frames.append(
-                            draw_epoch_label_on_frame(
-                                last_valid_epoch_base,
-                                frame_epoch_num,
-                                color=panel_colors["title"],
-                                x_offset_px=args.width,
-                                box_color=panel_colors["bg"],
-                            )
-                        )
-                else:
-                    panel = draw_latent_panel(
-                        args.panel_width,
-                        args.height,
-                        z_radius,
-                        Z_np,
-                        z0,
-                        z1,
-                        i,
-                        total_frames,
-                        colors=panel_colors,
-                        trajectory_coords=panel_trajectory,
-                        mode=active_mode,
-                        panel_scale_radius=panel_scale_radius,
-                        show_anchors=args.show_anchors,
-                        epoch_num=frame_epoch_num,
-                    )
-                    frames.append(np.concatenate([last_valid_rgb, panel], axis=1))
+                panel = draw_latent_panel(
+                    args.panel_width,
+                    args.height,
+                    z_radius,
+                    Z_np,
+                    z0,
+                    z1,
+                    i,
+                    total_frames,
+                    colors=panel_colors,
+                    trajectory_coords=panel_trajectory,
+                    mode=active_mode,
+                    panel_scale_radius=panel_scale_radius,
+                    show_anchors=args.show_anchors,
+                    epoch_num=frame_epoch_num,
+                )
+                frames.append(np.concatenate([last_valid_rgb, panel], axis=1))
             continue
 
         cone_face_mask: Tensor | None = None
@@ -2985,6 +3000,18 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 azim_deg=args.azim,
                 elev_deg=args.elev,
             )
+            if global_bounds is not None:
+                bounds_center = np.array(
+                    [
+                        0.5 * (global_bounds[0] + global_bounds[1]),
+                        0.5 * (global_bounds[2] + global_bounds[3]),
+                        0.5 * (global_bounds[4] + global_bounds[5]),
+                    ],
+                    dtype=np.float64,
+                )
+                cam_offset = locked_camera_position - locked_camera_focal_point
+                locked_camera_focal_point = bounds_center
+                locked_camera_position = bounds_center + cam_offset
             print("  [camera locked]", end="")
 
         rgb = render_mesh(
@@ -2994,7 +3021,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             mesh_alpha=args.mesh_alpha,
             assembly_mesh=inner_assembly,
             assembly_color=assembly_color_rgba,
-            width=args.width if active_mode == "epoch_gif" else render_width,
+            width=render_width,
             height=args.height,
             azim_deg=args.azim,
             elev_deg=args.elev,
@@ -3011,68 +3038,23 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             pressure_field=pressure_field_cp_np,
             pressure_field_enabled=show_pressure_field_now,
         )
-        if active_mode == "epoch_gif":
-            rgb_wide = render_mesh(
-                mesh=mesh_for_render,
-                bg_color=render_bg_rgba,
-                mesh_color=mesh_color_rgba,
-                mesh_alpha=args.mesh_alpha,
-                assembly_mesh=inner_assembly,
-                assembly_color=assembly_color_rgba,
-                width=render_width,
-                height=args.height,
-                azim_deg=args.azim,
-                elev_deg=args.elev,
-                look_at_bounds=global_bounds,
-                camera_position=locked_camera_position,
-                camera_focal_point=locked_camera_focal_point,
-                camera_view_up=locked_camera_view_up,
-                solar_selection_mesh=solar_selection_mesh,
-                solar_selection_color=solar_selection_color_rgba,
-                solar_selection_texture=solar_selection_texture,
-                windshield_mesh=windshield_mesh,
-                windshield_color=windshield_color_rgba,
-                assembly_smooth_shading=assembly_smooth_shading,
-                pressure_field=pressure_field_cp_np,
-                pressure_field_enabled=show_pressure_field_now,
-            )
-            aligned = align_epoch_frame_to_standard_view(
-                rgb_wide,
-                standard_width=args.width,
-                bg_color=panel_colors["bg_epoch"],
-            )
-            epoch_base = compose_epoch_frame(
-                standard_rgb=rgb,
-                wide_aligned_rgb=aligned,
-                standard_width=args.width,
-                bg_color=panel_colors["bg_epoch"],
-            )
-            composite = draw_epoch_label_on_frame(
-                epoch_base,
-                frame_epoch_num,
-                color=panel_colors["title"],
-                x_offset_px=args.width,
-                box_color=panel_colors["bg"],
-            )
-            last_valid_epoch_base = epoch_base
-        else:
-            panel = draw_latent_panel(
-                args.panel_width,
-                args.height,
-                z_radius,
-                Z_np,
-                z0,
-                z1,
-                i,
-                total_frames,
-                colors=panel_colors,
-                trajectory_coords=panel_trajectory,
-                mode=active_mode,
-                panel_scale_radius=panel_scale_radius,
-                show_anchors=args.show_anchors,
-                epoch_num=frame_epoch_num,
-            )
-            composite = np.concatenate([rgb, panel], axis=1) 
+        panel = draw_latent_panel(
+            args.panel_width,
+            args.height,
+            z_radius,
+            Z_np,
+            z0,
+            z1,
+            i,
+            total_frames,
+            colors=panel_colors,
+            trajectory_coords=panel_trajectory,
+            mode=active_mode,
+            panel_scale_radius=panel_scale_radius,
+            show_anchors=args.show_anchors,
+            epoch_num=frame_epoch_num,
+        )
+        composite = np.concatenate([rgb, panel], axis=1)
 
         if args.show_cse_overlay and cse_overlay_lines:
             composite = draw_metrics_box_on_frame(
