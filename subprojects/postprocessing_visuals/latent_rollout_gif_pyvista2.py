@@ -963,6 +963,8 @@ def render_mesh(
     windshield_mesh: trimesh.Trimesh | None = None,
     windshield_color: tuple[float, float, float, float] = (0.31, 0.76, 0.97, 0.65),
     assembly_smooth_shading: bool = True,
+    pressure_field: np.ndarray | None = None,
+    pressure_field_enabled: bool = False,
 ) -> np.ndarray:
     """Render mesh and inner assembly using PyVista with Order-Independent Transparency."""
     # 1. Initialize offscreen plotter (removing the multi_samples keyword argument)
@@ -988,17 +990,30 @@ def render_mesh(
             specular_power=50,
         )
 
-    # 4. Add Aeroshell (Semi-Transparent)
+    # 4. Add aeroshell OR pressure-field map on aeroshell surface
     pv_mesh = pv.wrap(mesh)
-    plotter.add_mesh(
-        pv_mesh,
-        color=mesh_color[:3],
-        opacity=mesh_alpha,
-        ambient=0.3,
-        diffuse=0.7,
-        specular=0.1,
-        smooth_shading=True
-    )
+    if pressure_field_enabled and pressure_field is not None and len(pressure_field) == len(mesh.vertices):
+        plotter.add_mesh(
+            pv_mesh,
+            scalars=np.asarray(pressure_field, dtype=np.float32),
+            cmap="turbo",
+            opacity=1.0,
+            ambient=0.3,
+            diffuse=0.7,
+            specular=0.1,
+            smooth_shading=True,
+            show_scalar_bar=False,
+        )
+    else:
+        plotter.add_mesh(
+            pv_mesh,
+            color=mesh_color[:3],
+            opacity=mesh_alpha,
+            ambient=0.3,
+            diffuse=0.7,
+            specular=0.1,
+            smooth_shading=True
+        )
 
     if solar_selection_mesh is not None:
         pv_sol = pv.wrap(solar_selection_mesh)
@@ -1469,6 +1484,7 @@ def _estimate_drag_newtons(
     sdf_model: Any,
     mesh: trimesh.Trimesh,
     frame_step: int,
+    gaot_pressure_field: Tensor | None = None,
 ) -> float | None:
     """Estimate drag (N) from an extracted mesh via GAOT internals.
 
@@ -1496,8 +1512,11 @@ def _estimate_drag_newtons(
 
             with torch.no_grad(), _suppress_wandb_logging():
                 batch = gaot_loader._preprocess(verts_t, faces_t)
-                output = gaot_loader.gaot.forward(batch=batch, tokens_pos=gaot_loader._latent_tokens)
-                pressure_field = output["field"]
+                if gaot_pressure_field is None:
+                    output = gaot_loader.gaot.forward(batch=batch, tokens_pos=gaot_loader._latent_tokens)
+                    pressure_field = output["field"]
+                else:
+                    pressure_field = gaot_pressure_field
 
                 # Match GAOT3 ModelLoader: integrate with model-space geometry (x-flipped).
                 integration_normals = batch.c if hasattr(batch, "c") and batch.c is not None else batch.c_raw
@@ -1554,6 +1573,37 @@ def _estimate_drag_newtons(
     except Exception as exc:
         warnings.warn(
             f"[latent_rollout] GAOT drag estimate failed: {exc}",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+
+
+def _estimate_pressure_field_cp(
+    gaot_loader: Any,
+    gaot_version: int,
+    mesh: trimesh.Trimesh,
+) -> Tensor | None:
+    """Estimate GAOT pressure field (Cp) per vertex for visualization."""
+    if gaot_version != 3:
+        return None
+    if not hasattr(gaot_loader, "_preprocess") or not hasattr(gaot_loader, "_latent_tokens"):
+        return None
+    if not _mesh_has_valid_face_indices(mesh):
+        return None
+
+    try:
+        loader_device = torch.device(getattr(gaot_loader, "device", "cpu"))
+        verts_t = torch.tensor(mesh.vertices, dtype=torch.float32, device=loader_device)
+        faces_t = torch.tensor(mesh.faces, dtype=torch.long, device=loader_device)
+        with torch.no_grad(), _suppress_wandb_logging():
+            batch = gaot_loader._preprocess(verts_t, faces_t)
+            output = gaot_loader.gaot.forward(batch=batch, tokens_pos=gaot_loader._latent_tokens)
+            pressure_field = output["field"]
+        return pressure_field
+    except Exception as exc:
+        warnings.warn(
+            f"[latent_rollout] pressure-field estimate failed: {exc}",
             UserWarning,
             stacklevel=2,
         )
@@ -2110,6 +2160,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         help="Show/hide solar selection overlay on the aeroshell",
     )
     parser.add_argument(
+        "--show-pressure-field",
+        dest="show_pressure_field",
+        action=argparse.BooleanOptionalAction,
+        default=bool(_c("show_pressure_field", False)),
+        help="Show/hide GAOT pressure field on aeroshell (replaces aeroshell, windshield, and solar overlays)",
+    )
+    parser.add_argument(
         "--show-windshield",
         dest="show_windshield",
         action=argparse.BooleanOptionalAction,
@@ -2432,12 +2489,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         metrics_device = torch.device(metrics_device_str)
 
     gaot_loader: Any | None = None
-    if args.show_cse_overlay:
+    if args.show_cse_overlay or args.show_pressure_field:
         default_cfd_cfg = _load_wp4_default_cfd_config()
         gaot_model_id = args.gaot_model_id if args.gaot_model_id is not None else default_cfd_cfg.get("model_id")
         if gaot_model_id is None:
             warnings.warn(
-                "[latent_rollout] GAOT model_id missing; CSE overlay will show solar only.",
+                "[latent_rollout] GAOT model_id missing; GAOT-based overlays are unavailable.",
                 UserWarning,
                 stacklevel=2,
             )
@@ -2460,6 +2517,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 cfd_config=gaot_cfd_cfg,
                 device=metrics_device,
             )
+
+    if args.show_pressure_field and int(args.gaot_version) != 3:
+        warnings.warn(
+            "[latent_rollout] pressure-field view currently requires gaot_version=3. Falling back to standard mesh rendering.",
+            UserWarning,
+            stacklevel=2,
+        )
 
     active_mode = "epoch_gif" if args.epoch_gif else args.mode
     base_epoch_num = _parse_epoch_from_stem(args.checkpoint.stem)
@@ -2640,7 +2704,19 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         cse_overlay_lines: list[str] = []
         mesh_for_render = mesh
         mask_mesh = mesh
-        if args.show_windshield or args.show_solar_selection:
+        pressure_field_cp_t: Tensor | None = None
+        pressure_field_cp_np: np.ndarray | None = None
+        show_pressure_field_now = bool(args.show_pressure_field) and gaot_loader is not None and int(args.gaot_version) == 3
+        if show_pressure_field_now:
+            pressure_field_cp_t = _estimate_pressure_field_cp(
+                gaot_loader=gaot_loader,
+                gaot_version=int(args.gaot_version),
+                mesh=mesh,
+            )
+            if pressure_field_cp_t is not None:
+                pressure_field_cp_np = pressure_field_cp_t.detach().cpu().numpy().squeeze(-1)
+
+        if (not show_pressure_field_now) and (args.show_windshield or args.show_solar_selection):
             refine_subdiv = args.mask_refine_subdivisions
             if args.show_solar_selection:
                 refine_subdiv = max(refine_subdiv, args.solar_mask_refine_subdivisions)
@@ -2648,7 +2724,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             cone_face_mask = _compute_windshield_face_mask(
                 mask_mesh, args.windshield_assembly_id, device, precomputed_cone=_cached_cone_mesh
             )
-        if args.show_windshield and cone_face_mask is not None:
+        if (not show_pressure_field_now) and args.show_windshield and cone_face_mask is not None:
             cone_np = cone_face_mask.detach().cpu().numpy()
             cutout_mesh = _cutout_faces_from_mesh(mask_mesh, cone_np)
             if cutout_mesh is not None:
@@ -2665,7 +2741,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                     cone_np,
                     normal_offset_mm=1.5,
                 )
-        if args.show_solar_selection:
+        if (not show_pressure_field_now) and args.show_solar_selection:
             solar_mask = _compute_solar_selection_mask(
                 mask_mesh,
                 device=device,
@@ -2697,6 +2773,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                     sdf_model=model,
                     mesh=mesh,
                     frame_step=i,
+                    gaot_pressure_field=pressure_field_cp_t,
                 )
 
             solar_w, _solar_diag = _estimate_solar_power_watts(
@@ -2756,6 +2833,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             windshield_mesh=windshield_mesh,
             windshield_color=windshield_color_rgba,
             assembly_smooth_shading=assembly_smooth_shading,
+            pressure_field=pressure_field_cp_np,
+            pressure_field_enabled=show_pressure_field_now,
         )
         if active_mode == "epoch_gif":
             rgb_wide = render_mesh(
@@ -2779,6 +2858,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 windshield_mesh=windshield_mesh,
                 windshield_color=windshield_color_rgba,
                 assembly_smooth_shading=assembly_smooth_shading,
+                pressure_field=pressure_field_cp_np,
+                pressure_field_enabled=show_pressure_field_now,
             )
             aligned = align_epoch_frame_to_standard_view(
                 rgb_wide,

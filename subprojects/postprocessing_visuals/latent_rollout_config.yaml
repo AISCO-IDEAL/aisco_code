@@ -48,6 +48,7 @@ show_windshield: true
 windshield_assembly_id: 1
 windshield_color: "#86A9BD"
 windshield_alpha: 0.32
+show_pressure_field: false
 
 show_solar_selection: true
 solar_sun_dir: [-1.0, 0.0, 1.0]
