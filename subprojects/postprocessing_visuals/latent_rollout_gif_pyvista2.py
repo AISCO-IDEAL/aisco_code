@@ -113,16 +113,18 @@ def _ensure_wp4_model_imports() -> None:
     3. Directly load concat_baseclass, WIRE_v5, and concat_WIRE_v5 from their
        source files, bypassing the package import machinery entirely.
     """
+    base_dir = Path(__file__).parents[1]
+    package_paths = {
+        "subprojects.wp4_aeroshell_optimizer": base_dir / "wp4_aeroshell_optimizer",
+        "subprojects.wp4_aeroshell_optimizer.v2": base_dir / "wp4_aeroshell_optimizer" / "v2",
+        "subprojects.wp4_aeroshell_optimizer.v2.src": base_dir / "wp4_aeroshell_optimizer" / "v2" / "src",
+        "subprojects.wp4_aeroshell_optimizer.v2.src.models": base_dir / "wp4_aeroshell_optimizer" / "v2" / "src" / "models",
+    }
     # --- 1. Parent package stubs ---
-    for pkg in [
-        "subprojects.wp4_aeroshell_optimizer",
-        "subprojects.wp4_aeroshell_optimizer.v2",
-        "subprojects.wp4_aeroshell_optimizer.v2.src",
-        "subprojects.wp4_aeroshell_optimizer.v2.src.models",
-    ]:
+    for pkg, pkg_path in package_paths.items():
         if pkg not in sys.modules:
             m = types.ModuleType(pkg)
-            m.__path__ = []  # type: ignore[attr-defined]  # marks it as a package
+            m.__path__ = [str(pkg_path)]  # type: ignore[attr-defined]  # marks it as a package and keeps subpackage imports working
             sys.modules[pkg] = m
 
     # --- 2. Minimal model_baseclass stub (WIRE_v5 imports BaseModel from here) ---
@@ -414,33 +416,6 @@ def _load_windshield_from_wp2(assembly_id: int, tol: float = 2.0, atol: float = 
             stacklevel=2,
         )
         return None
-
-
-def _compute_windshield_face_mask_from_cone_mesh(
-    aeroshell_mesh: trimesh.Trimesh,
-    cone_mesh: trimesh.Trimesh,
-    device: torch.device,
-) -> Tensor | None:
-    """Fallback: compute windshield face mask via cone-mesh containment test.
-
-    This still returns an aeroshell face mask (intersection area), never the cone
-    geometry itself, matching aeroshell_png semantics.
-    """
-    try:
-        centers = aeroshell_mesh.triangles_center
-        inside = cone_mesh.contains(centers)
-        mask = torch.tensor(inside.astype(np.bool_), dtype=torch.bool, device=device)
-        n = int(mask.sum().item())
-        print(f"[latent_rollout] windshield cone_face_mask (fallback): {n} / {len(aeroshell_mesh.faces)} faces")
-    except Exception as exc:
-        warnings.warn(
-            f"[latent_rollout] windshield fallback mask failed: {exc}. Skipping.",
-            UserWarning,
-            stacklevel=2,
-        )
-        return None
-    else:
-        return mask
 
 
 def _compute_solar_selection_mask(
@@ -1437,10 +1412,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         prism_scale=float(args.outer_prism_scale),
     )
 
-    windshield_cone_mesh: trimesh.Trimesh | None = None
-    if args.show_windshield or args.show_solar_selection:
-        windshield_cone_mesh = _load_windshield_from_wp2(args.windshield_assembly_id)
-
     # --- Build z-vector sequence for selected traversal mode ---
     line_start_pt = (float(args.line_start[0]), float(args.line_start[1]))
     line_end_pt = (float(args.line_end[0]), float(args.line_end[1]))
@@ -1568,8 +1539,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         mesh_for_render = mesh
         if args.show_windshield or args.show_solar_selection:
             cone_face_mask = _compute_windshield_face_mask(mesh, args.windshield_assembly_id, device)
-            if cone_face_mask is None and windshield_cone_mesh is not None:
-                cone_face_mask = _compute_windshield_face_mask_from_cone_mesh(mesh, windshield_cone_mesh, device)
         if args.show_windshield and cone_face_mask is not None:
             cone_np = cone_face_mask.detach().cpu().numpy()
             if float(args.windshield_alpha) <= 0.0:
