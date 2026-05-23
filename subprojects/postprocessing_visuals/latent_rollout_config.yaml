@@ -44,7 +44,8 @@ windshield_alpha: 0.32
 solar_sun_dir: [-1.0, 0.0, 1.0]
 solar_area_budget_mm2: 4200000.0
 solar_binary_postprocess_iters: 2
-solar_contour_postprocess_iters: 8
+solar_contour_postprocess_iters: 4
+solar_contour_hole_fill_iters: 2
 solar_overlay_smooth_iters: 10
 # Clean-edge preset (no post-smoothing)
 mask_refine_subdivisions: 2

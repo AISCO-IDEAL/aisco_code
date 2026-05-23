@@ -426,6 +426,7 @@ def _compute_solar_selection_mask(
     cone_face_mask: Tensor | None = None,
     binary_postprocess_iters: int = 2,
     contour_postprocess_iters: int = 6,
+    contour_hole_fill_iters: int = 2,
     sigmoid_sharpness: float = 10.0,
     threshold: float = 0.5,
 ) -> Tensor | None:
@@ -499,6 +500,16 @@ def _compute_solar_selection_mask(
                     selected_np[order[:keep_count]] = True
                 binary_mask = torch.tensor(selected_np, dtype=torch.bool, device=device)
 
+        if contour_hole_fill_iters > 0:
+            valid_np = valid_mask.detach().cpu().numpy().astype(bool)
+            filled_np = _fill_binary_contour_holes(
+                mesh=aeroshell_mesh,
+                binary_mask=binary_mask.detach().cpu().numpy().astype(bool),
+                valid_mask=valid_np,
+                iterations=contour_hole_fill_iters,
+            )
+            binary_mask = torch.tensor(filled_np, dtype=torch.bool, device=device)
+
         # Post-op reallocation: if windshield exclusion removed selected area,
         # refill from best remaining valid faces to reach the max allowed area.
         target_area_m2 = torch.minimum(
@@ -506,6 +517,17 @@ def _compute_solar_selection_mask(
             face_area_m2[valid_mask].sum(),
         )
         selected_area_m2 = face_area_m2[binary_mask].sum()
+        if float(selected_area_m2.item()) > float(target_area_m2.item()):
+            selected_idx = torch.where(binary_mask & valid_mask)[0]
+            if selected_idx.numel() > 0:
+                order = selected_idx[torch.argsort(illumination[selected_idx], descending=False)]
+                running = selected_area_m2
+                for idx in order:
+                    if float(running.item()) <= float(target_area_m2.item()):
+                        break
+                    binary_mask[idx] = False
+                    running = running - face_area_m2[idx]
+                selected_area_m2 = running
         if float(selected_area_m2.item()) < float(target_area_m2.item()):
             candidates = torch.where(valid_mask & (~binary_mask))[0]
             if candidates.numel() > 0:
@@ -655,6 +677,54 @@ def _smooth_binary_contour_scores(
         scores[~valid_mask] = -1.0
 
     return scores
+
+
+def _fill_binary_contour_holes(
+    mesh: trimesh.Trimesh,
+    binary_mask: np.ndarray,
+    valid_mask: np.ndarray,
+    iterations: int,
+    min_positive_ratio: float = 0.7,
+    min_neighbor_count: int = 3,
+) -> np.ndarray:
+    """Fill small holes inside selected regions without blurring the outer contour."""
+    if iterations <= 0:
+        return binary_mask
+
+    adjacency = np.asarray(mesh.face_adjacency, dtype=np.int64)
+    if adjacency.size == 0:
+        return binary_mask
+
+    left = adjacency[:, 0]
+    right = adjacency[:, 1]
+    valid_edges = valid_mask[left] & valid_mask[right]
+    if not np.any(valid_edges):
+        return binary_mask
+
+    filled = binary_mask.astype(bool, copy=True)
+    for _ in range(int(iterations)):
+        pos_counts = np.zeros_like(filled, dtype=np.float32)
+        nbr_counts = np.zeros_like(filled, dtype=np.float32)
+
+        np.add.at(pos_counts, left[valid_edges], filled[right[valid_edges]].astype(np.float32))
+        np.add.at(pos_counts, right[valid_edges], filled[left[valid_edges]].astype(np.float32))
+        np.add.at(nbr_counts, left[valid_edges], 1.0)
+        np.add.at(nbr_counts, right[valid_edges], 1.0)
+
+        with np.errstate(invalid="ignore", divide="ignore"):
+            pos_ratio = np.divide(pos_counts, np.clip(nbr_counts, 1.0, None))
+
+        fill_candidates = (
+            (~filled)
+            & valid_mask
+            & (nbr_counts >= float(min_neighbor_count))
+            & (pos_ratio >= float(min_positive_ratio))
+        )
+        if not np.any(fill_candidates):
+            break
+        filled[fill_candidates] = True
+
+    return filled
 
 
 def _allocate_area_budget_binary_mask(
@@ -1574,8 +1644,14 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     parser.add_argument(
         "--solar_contour_postprocess_iters",
         type=int,
-        default=int(_c("solar_contour_postprocess_iters", 6)),
+        default=int(_c("solar_contour_postprocess_iters", 4)),
         help="Boundary-only postprocess iterations to smooth solar contour while preserving interior",
+    )
+    parser.add_argument(
+        "--solar_contour_hole_fill_iters",
+        type=int,
+        default=int(_c("solar_contour_hole_fill_iters", 2)),
+        help="Postprocess iterations to fill small holes inside the solar selection contour",
     )
     parser.add_argument(
         "--solar_overlay_smooth_iters",
@@ -1913,6 +1989,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 cone_face_mask=cone_face_mask,
                 binary_postprocess_iters=int(args.solar_binary_postprocess_iters),
                 contour_postprocess_iters=int(args.solar_contour_postprocess_iters),
+                contour_hole_fill_iters=int(args.solar_contour_hole_fill_iters),
             )
             if solar_mask is not None:
                 solar_selection_mesh_raw = _build_face_overlay_mesh(
