@@ -803,56 +803,44 @@ def _build_solar_cell_texture(
     cells_x: int = 8,
     cells_y: int = 5,
 ) -> pv.Texture:
-    """Create a procedural texture closely matching a framed blue PV module."""
-    bg_color = (238, 238, 238)
-    frame_color = (96, 96, 96)
-    module_bg = (236, 242, 248)
-    cell_a = (23, 72, 122)
-    cell_b = (20, 66, 114)
-    seam_color = (236, 242, 248)
-    finger_color = (154, 184, 218)
-    busbar_color = (224, 234, 246)
+    """Create a procedural texture matching a rectangular industrial PV array."""
+    cell_a = (9, 31, 58)
+    cell_b = (11, 44, 78)
+    seam_color = (150, 160, 170)
+    finger_color = (146, 166, 184)
+    busbar_color = (202, 206, 210)
 
-    image = Image.new("RGB", (texture_size, texture_size), color=bg_color)
+    image = Image.new("RGB", (texture_size, texture_size), color=cell_a)
     draw = ImageDraw.Draw(image)
 
-    frame_pad = int(texture_size * 0.04)
-    module_left = frame_pad
-    module_top = frame_pad
-    module_right = texture_size - frame_pad
-    module_bottom = texture_size - frame_pad
-    draw.rectangle([(module_left, module_top), (module_right, module_bottom)], outline=frame_color, width=max(2, texture_size // 320))
-
-    inner_pad = int(texture_size * 0.012)
-    panel_left = module_left + inner_pad
-    panel_top = module_top + inner_pad
-    panel_right = module_right - inner_pad
-    panel_bottom = module_bottom - inner_pad
-    draw.rectangle([(panel_left, panel_top), (panel_right, panel_bottom)], fill=module_bg)
+    panel_left = 0
+    panel_top = 0
+    panel_right = texture_size
+    panel_bottom = texture_size
 
     panel_w = panel_right - panel_left
     panel_h = panel_bottom - panel_top
-    gap = max(2, int(min(panel_w / cells_x, panel_h / cells_y) * 0.03))
-    cell_w = (panel_w - gap * (cells_x + 1)) / float(cells_x)
-    cell_h = (panel_h - gap * (cells_y + 1)) / float(cells_y)
-    radius = max(4, int(min(cell_w, cell_h) * 0.18))
-    finger_width = max(1, texture_size // 700)
-    busbar_width = max(1, texture_size // 420)
-    fingers_per_cell = 14
+    gap = max(1, int(min(panel_w / cells_x, panel_h / cells_y) * 0.016))
+    cell_w = (panel_w - gap * (cells_x - 1)) / float(cells_x)
+    cell_h = (panel_h - gap * (cells_y - 1)) / float(cells_y)
+    seam_width = max(1, texture_size // 900)
+    finger_width = max(1, texture_size // 900)
+    busbar_width = max(1, texture_size // 520)
+    fingers_per_cell = 18
+    horizontal_lines = 5
 
     for row in range(cells_y):
         for col in range(cells_x):
-            left = int(round(panel_left + gap + col * (cell_w + gap)))
-            top = int(round(panel_top + gap + row * (cell_h + gap)))
+            left = int(round(panel_left + col * (cell_w + gap)))
+            top = int(round(panel_top + row * (cell_h + gap)))
             right = int(round(left + cell_w))
             bottom = int(round(top + cell_h))
             fill = cell_a if (row + col) % 2 == 0 else cell_b
-            draw.rounded_rectangle(
+            draw.rectangle(
                 [(left, top), (right, bottom)],
-                radius=radius,
                 fill=fill,
                 outline=seam_color,
-                width=max(1, texture_size // 768),
+                width=seam_width,
             )
 
             inner_left = left + 2
@@ -860,7 +848,6 @@ def _build_solar_cell_texture(
             inner_top = top + 2
             inner_bottom = bottom - 2
             if inner_right > inner_left and inner_bottom > inner_top:
-                # Dense vertical metallization fingers like the reference module.
                 for k in range(1, fingers_per_cell + 1):
                     frac = k / float(fingers_per_cell + 1.0)
                     x = int(round(inner_left + frac * (inner_right - inner_left)))
@@ -869,19 +856,18 @@ def _build_solar_cell_texture(
                         fill=finger_color,
                         width=finger_width,
                     )
-                # Horizontal busbars.
-                y_top = int(round(inner_top + 0.20 * (inner_bottom - inner_top)))
-                y_bottom = int(round(inner_top + 0.80 * (inner_bottom - inner_top)))
+                for k in range(1, horizontal_lines + 1):
+                    frac = k / float(horizontal_lines + 1.0)
+                    y = int(round(inner_top + frac * (inner_bottom - inner_top)))
+                    draw.line(
+                        [(inner_left, y), (inner_right, y)],
+                        fill=(84, 112, 142),
+                        width=1,
+                    )
+                y_top = int(round(inner_top + 0.18 * (inner_bottom - inner_top)))
+                y_bottom = int(round(inner_top + 0.82 * (inner_bottom - inner_top)))
                 draw.line([(inner_left, y_top), (inner_right, y_top)], fill=busbar_color, width=busbar_width)
                 draw.line([(inner_left, y_bottom), (inner_right, y_bottom)], fill=busbar_color, width=busbar_width)
-
-    # Diamond seams between 4 neighboring cells.
-    d = max(3, texture_size // 180)
-    for row in range(1, cells_y):
-        for col in range(1, cells_x):
-            cx = int(round(panel_left + gap + col * (cell_w + gap) - gap / 2.0))
-            cy = int(round(panel_top + gap + row * (cell_h + gap) - gap / 2.0))
-            draw.polygon([(cx, cy - d), (cx + d, cy), (cx, cy + d), (cx - d, cy)], fill=seam_color)
 
     texture = pv.Texture(np.asarray(image))
     texture.repeat = True
@@ -1389,6 +1375,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         help="Subdivision steps for windshield/solar mask geometry (higher = cleaner edges, no post-smoothing)",
     )
     parser.add_argument(
+        "--solar_mask_refine_subdivisions",
+        type=int,
+        default=int(_c("solar_mask_refine_subdivisions", 6)),
+        help="Subdivision steps specifically for solar-selection mask geometry (higher = smoother solar corners)",
+    )
+    parser.add_argument(
         "--show-anchors",
         dest="show_anchors",
         action=argparse.BooleanOptionalAction,
@@ -1675,7 +1667,10 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         mesh_for_render = mesh
         mask_mesh = mesh
         if args.show_windshield or args.show_solar_selection:
-            mask_mesh = _subdivide_mesh_for_masks(mesh, args.mask_refine_subdivisions)
+            refine_subdiv = args.mask_refine_subdivisions
+            if args.show_solar_selection:
+                refine_subdiv = max(refine_subdiv, args.solar_mask_refine_subdivisions)
+            mask_mesh = _subdivide_mesh_for_masks(mesh, refine_subdiv)
             cone_face_mask = _compute_windshield_face_mask(mask_mesh, args.windshield_assembly_id, device)
         if args.show_windshield and cone_face_mask is not None:
             cone_np = cone_face_mask.detach().cpu().numpy()
