@@ -13,8 +13,8 @@ output_dir: /cluster/work/fuge/AISCO/wp9/pyvista_gif
 # ---------------------------------------------------------------------------
 # Animation / traversal
 # ---------------------------------------------------------------------------
-n_frames: 240
-resolution: 96
+n_frames: 360
+resolution: 60
 radius: null
 fps: 24
 device: auto
@@ -23,7 +23,7 @@ height: 2160
 panel_width: 1280
 azim: -60.0
 elev: 25.0
-mode: circle
+mode: spiral
 
 # ---------------------------------------------------------------------------
 # Colors / rendering
@@ -73,6 +73,7 @@ epoch_coords: [0.0, 0.0]
 # Spiral mode  (only active when mode: spiral)
 # ---------------------------------------------------------------------------
 spiral_turns: 3.0
+spiral_equal_distance: false
 spiral_radius_start: 0.0
 spiral_radius_end: null
 

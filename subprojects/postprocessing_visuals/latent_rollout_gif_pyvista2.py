@@ -1626,6 +1626,116 @@ def compose_epoch_frame(
 # ---------------------------------------------------------------------------
 
 
+def _resample_polyline_equal_arclength(
+    points: np.ndarray,
+    n_samples: int,
+) -> np.ndarray:
+    """Resample a 2D polyline to approximately equal arc-length spacing."""
+    if n_samples <= 1 or points.shape[0] <= 1:
+        return points[:1].copy()
+
+    diffs = points[1:] - points[:-1]
+    seg_len = np.linalg.norm(diffs, axis=1)
+    cum = np.concatenate(([0.0], np.cumsum(seg_len)))
+    total = float(cum[-1])
+    if total <= 1e-12:
+        return np.repeat(points[:1], repeats=n_samples, axis=0)
+
+    targets = np.linspace(0.0, total, n_samples)
+    out = np.empty((n_samples, 2), dtype=np.float64)
+
+    # Monotonic piecewise-linear interpolation along cumulative arc-length.
+    out[:, 0] = np.interp(targets, cum, points[:, 0])
+    out[:, 1] = np.interp(targets, cum, points[:, 1])
+    return out
+
+
+def _spiral_point(
+    t: float,
+    r_start: float,
+    r_end: float,
+    turns: float,
+) -> tuple[float, float]:
+    """Evaluate Archimedean spiral point for normalized parameter t in [0, 1]."""
+    tt = min(max(float(t), 0.0), 1.0)
+    r = r_start + (r_end - r_start) * tt
+    a = 2.0 * math.pi * turns * tt
+    return (r * math.cos(a), r * math.sin(a))
+
+
+def _build_spiral_equal_chord_coords(
+    n_frames: int,
+    r_start: float,
+    r_end: float,
+    turns: float,
+) -> list[tuple[float, float]]:
+    """Sample spiral with (approximately) equal Euclidean distance between neighbours."""
+    if n_frames <= 1:
+        return [_spiral_point(0.0, r_start, r_end, turns)]
+
+    def _dist_sq(t0: float, t1: float) -> float:
+        x0, y0 = _spiral_point(t0, r_start, r_end, turns)
+        x1, y1 = _spiral_point(t1, r_start, r_end, turns)
+        dx = x1 - x0
+        dy = y1 - y0
+        return dx * dx + dy * dy
+
+    def _advance_by_chord(t_prev: float, chord: float) -> tuple[float, bool]:
+        """Find t > t_prev such that ||p(t)-p(t_prev)|| = chord via bisection."""
+        if chord <= 0.0:
+            return t_prev, True
+
+        target_sq = chord * chord
+        max_sq = _dist_sq(t_prev, 1.0)
+        if max_sq < target_sq:
+            return 1.0, False
+
+        lo = t_prev
+        hi = 1.0
+        for _ in range(46):
+            mid = 0.5 * (lo + hi)
+            if _dist_sq(t_prev, mid) >= target_sq:
+                hi = mid
+            else:
+                lo = mid
+        return hi, True
+
+    # Search a chord length that lands the last sample near t=1 after n_frames-1 steps.
+    lo_d = 0.0
+    hi_d = math.sqrt(_dist_sq(0.0, 1.0))
+    best_ts = [0.0] * n_frames
+
+    for _ in range(36):
+        d_mid = 0.5 * (lo_d + hi_d)
+        ts = [0.0]
+        t_cur = 0.0
+        all_ok = True
+
+        for _k in range(n_frames - 1):
+            t_next, ok = _advance_by_chord(t_cur, d_mid)
+            ts.append(t_next)
+            t_cur = t_next
+            if not ok:
+                all_ok = False
+                break
+
+        # Pad to full length if we terminated early.
+        while len(ts) < n_frames:
+            ts.append(1.0)
+
+        best_ts = ts
+        if all_ok and ts[-1] < 1.0:
+            # Chord too small: did not reach end by final frame.
+            lo_d = d_mid
+        else:
+            # Chord too large or just enough: lower upper bound.
+            hi_d = d_mid
+
+    # Ensure exact final endpoint.
+    best_ts[-1] = 1.0
+    return [_spiral_point(t, r_start, r_end, turns) for t in best_ts]
+
+
 def _build_trajectory(  # noqa: PLR0912  # supports 4 traversal modes; branches are mode dispatches, not complexity
     mode: str,
     n_frames: int,
@@ -1633,6 +1743,7 @@ def _build_trajectory(  # noqa: PLR0912  # supports 4 traversal modes; branches 
     spiral_turns: float = 3.0,
     spiral_radius_start: float = 0.0,
     spiral_radius_end: float | None = None,
+    spiral_equal_distance: bool = False,
     line_start: tuple[float, float] = (0.0, -2.0),
     line_end: tuple[float, float] = (0.0, 2.0),
     line_bounces: int = 1,
@@ -1647,6 +1758,7 @@ def _build_trajectory(  # noqa: PLR0912  # supports 4 traversal modes; branches 
         spiral_turns: Full rotations for spiral mode.
         spiral_radius_start: Inner radius for spiral (0.0 = start at origin).
         spiral_radius_end: Outer radius for spiral (None → use z_radius).
+        spiral_equal_distance: If True, resample spiral to equal arc-length spacing.
         line_start: (z0, z1) start point for line mode.
         line_end: (z0, z1) end point for line mode.
         line_bounces: Complete back-and-forth oscillations for line mode.
@@ -1663,12 +1775,23 @@ def _build_trajectory(  # noqa: PLR0912  # supports 4 traversal modes; branches 
 
     if mode == "spiral":
         r_end = spiral_radius_end if spiral_radius_end is not None else z_radius
-        coords = []
-        for i in range(n_frames):
-            t = i / max(n_frames - 1, 1)
-            r = spiral_radius_start + (r_end - spiral_radius_start) * t
-            angle = 2.0 * math.pi * spiral_turns * t
-            coords.append((r * math.cos(angle), r * math.sin(angle)))
+        if n_frames <= 1:
+            return [(spiral_radius_start, 0.0)], max(r_end, 1e-6)
+
+        if spiral_equal_distance:
+            coords = _build_spiral_equal_chord_coords(
+                n_frames=n_frames,
+                r_start=spiral_radius_start,
+                r_end=r_end,
+                turns=spiral_turns,
+            )
+        else:
+            coords = []
+            for i in range(n_frames):
+                t = i / max(n_frames - 1, 1)
+                r = spiral_radius_start + (r_end - spiral_radius_start) * t
+                angle = 2.0 * math.pi * spiral_turns * t
+                coords.append((r * math.cos(angle), r * math.sin(angle)))
         return coords, max(r_end, 1e-6)
 
     if mode == "line":
@@ -2022,6 +2145,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     # Spiral-mode params
     parser.add_argument("--spiral_turns", type=float, default=_c("spiral_turns", 3.0), help="Full rotations in spiral mode")
     parser.add_argument(
+        "--spiral-equal-distance",
+        dest="spiral_equal_distance",
+        action=argparse.BooleanOptionalAction,
+        default=bool(_c("spiral_equal_distance", False)),
+        help="Use equal arc-length spacing for spiral samples (prevents visual speed-up)",
+    )
+    parser.add_argument(
         "--spiral_radius_start",
         type=float,
         default=_c("spiral_radius_start", 0.0),
@@ -2196,6 +2326,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             n_frames=args.n_frames,
             z_radius=z_radius,
             spiral_turns=args.spiral_turns,
+            spiral_equal_distance=bool(args.spiral_equal_distance),
             spiral_radius_start=args.spiral_radius_start,
             spiral_radius_end=args.spiral_radius_end,
             line_start=line_start_pt,
