@@ -1226,6 +1226,7 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
     _C = colors or {}
     bg = _C.get("bg", (35, 40, 62))
     bg_epoch = _C.get("bg_epoch", bg)
+    grid_col = _C.get("grid", (54, 66, 96))
     axis_col = _C.get("axis", (75, 85, 115))
     circle_col = _C.get("circle", (110, 125, 165))
     anchor_col = _C.get("anchor", (220, 90, 90))
@@ -1260,6 +1261,12 @@ def draw_latent_panel(  # noqa: PLR0915  # multi-mode rendering function; statem
     if mode == "epoch_gif":
         # epoch_gif: panel is plain background — no latent map content
         return np.asarray(img)
+
+    grid_step = max(28, int(40 * scale_factor))
+    for x in range(0, w + grid_step, grid_step):
+        draw.line([(x, 0), (x, h)], fill=grid_col, width=1)
+    for y in range(0, h + grid_step, grid_step):
+        draw.line([(0, y), (w, y)], fill=grid_col, width=1)
 
     cx, cy = w // 2, h // 2
 
@@ -1706,8 +1713,9 @@ def draw_metrics_box_on_frame(
     cse_speed_ms: float | None = None,
     show_tacho: bool = False,
     tacho_bg_color: tuple[int, int, int] = (35, 40, 62),
+    motion_phase: float = 0.0,
 ) -> np.ndarray:
-    """Draw a compact top-left metrics box on an RGB frame."""
+    """Draw a right-panel style metrics card (Drag/Solar/Tacho) on an RGB frame."""
     if not lines:
         return frame_rgb
 
@@ -1715,45 +1723,102 @@ def draw_metrics_box_on_frame(
     draw = ImageDraw.Draw(img, "RGBA")
     h = frame_rgb.shape[0]
     scale = h / 600.0
-    font = _get_font(max(10, int(12 * scale)))
-    line_gap = max(2, int(4 * scale))
-    pad_x = max(6, int(8 * scale))
-    pad_y = max(4, int(6 * scale))
-    tacho_radius = max(20, int(42 * scale))
-    tacho_extra_h = (2 * tacho_radius + max(4, int(6 * scale))) if show_tacho else 0
+    label_font = _get_font(max(10, int(11 * scale)))
+    value_font = _get_font(max(10, int(13 * scale)))
+    caption_font = _get_font(max(9, int(10 * scale)))
+    pad_x = max(8, int(12 * scale))
+    pad_y = max(6, int(10 * scale))
+    section_gap = max(6, int(8 * scale))
+    section_h = max(34, int(46 * scale))
+    tacho_radius = max(28, int(58 * scale))
     tacho_kmh_max = 120.0
+    section_outline = (195, 53, 49, 185)
+    grid_col = (130, 150, 195, 40)
 
-    max_w = 0
-    total_h = 0
+    drag_value = "n/a"
+    solar_value = "n/a"
     for line in lines:
-        l, t, r, b = draw.textbbox((0, 0), line, font=font)
-        max_w = max(max_w, r - l)
-        total_h += (b - t)
-    total_h += line_gap * (len(lines) - 1)
+        if line.lower().startswith("drag"):
+            drag_value = line.split(":", 1)[1].strip() if ":" in line else line
+        elif line.lower().startswith("solar"):
+            solar_value = line.split(":", 1)[1].strip() if ":" in line else line
 
     x0 = int(anchor_x)
-    y0 = int(anchor_y)
-    x1 = x0 + max_w + 2 * pad_x
-    y1 = y0 + total_h + 2 * pad_y + tacho_extra_h
+    card_w = max(max(210, int(258 * scale)), int((tacho_radius * 2) + 2 * pad_x + 8))
+    card_h = 2 * section_h + section_gap + 2 * pad_y
+    if show_tacho:
+        tacho_block_h = int((2 * tacho_radius) + max(40, int(52 * scale)))
+        card_h += section_gap + tacho_block_h
+
+    y_centered = (h - card_h) // 2
+    hover_px = int(round(math.sin(float(motion_phase)) * max(1, int(3 * scale)))) if show_tacho else 0
+    y0 = max(int(anchor_y), y_centered + hover_px)
+    x1 = x0 + card_w
+    y1 = y0 + card_h
     a = int(max(0.0, min(1.0, box_alpha)) * 255)
-    draw.rectangle([(x0, y0), (x1, y1)], fill=(box_color[0], box_color[1], box_color[2], a))
+
+    draw.rounded_rectangle(
+        [(x0, y0), (x1, y1)],
+        radius=max(8, int(10 * scale)),
+        fill=(box_color[0], box_color[1], box_color[2], a),
+        outline=None,
+    )
+
+    # Subtle local grid like the right workspace panel.
+    grid_step = max(18, int(26 * scale))
+    for gx in range(x0 + 1, x1, grid_step):
+        draw.line([(gx, y0 + 1), (gx, y1 - 1)], fill=grid_col, width=1)
+    for gy in range(y0 + 1, y1, grid_step):
+        draw.line([(x0 + 1, gy), (x1 - 1, gy)], fill=grid_col, width=1)
+
+    def _draw_section(y_top: int, title: str, value: str) -> int:
+        y_bot = y_top + section_h
+        draw.rounded_rectangle(
+            [(x0 + pad_x, y_top), (x1 - pad_x, y_bot)],
+            radius=max(6, int(8 * scale)),
+            fill=(box_color[0], box_color[1], box_color[2], int(0.30 * 255)),
+            outline=section_outline,
+            width=1,
+        )
+        draw.text((x0 + pad_x + max(8, int(10 * scale)), y_top + max(4, int(6 * scale))), title, fill=text_color, font=label_font)
+        draw.text((x0 + pad_x + max(8, int(10 * scale)), y_top + max(18, int(24 * scale))), value, fill=text_color, font=value_font)
+        return y_bot
 
     y = y0 + pad_y
-    for line in lines:
-        draw.text((x0 + pad_x, y), line, fill=text_color, font=font)
-        l, t, r, b = draw.textbbox((0, 0), line, font=font)
-        y += (b - t) + line_gap
+    y = _draw_section(y, "Drag", drag_value)
+    y += section_gap
+    y = _draw_section(y, "Solar", solar_value)
+
+    y += section_gap
 
     if show_tacho:
+        # Tacho section with explicit caption.
+        tacho_top = y
+        tacho_bottom = y1 - pad_y
+        draw.rounded_rectangle(
+            [(x0 + pad_x, tacho_top), (x1 - pad_x, tacho_bottom)],
+            radius=max(6, int(8 * scale)),
+            fill=(box_color[0], box_color[1], box_color[2], int(0.30 * 255)),
+            outline=section_outline,
+            width=1,
+        )
+        caption = "Cruising speed estimate"
+        cap_box = draw.textbbox((0, 0), caption, font=caption_font)
+        cap_w = cap_box[2] - cap_box[0]
+        draw.text((x0 + (card_w - cap_w) // 2, tacho_top + max(4, int(6 * scale))), caption, fill=text_color, font=caption_font)
+
         cx = x0 + (x1 - x0) // 2
-        cy = y + tacho_radius + max(2, int(2 * scale))
+        cy = tacho_top + max(20, int(26 * scale)) + tacho_radius
         dial_box = [(cx - tacho_radius, cy - tacho_radius), (cx + tacho_radius, cy + tacho_radius)]
-        draw.pieslice(dial_box, start=180, end=360, fill=tacho_bg_color)
-        draw.arc(dial_box, start=180, end=360, fill=text_color, width=max(1, int(2 * scale)))
+        arc_start_deg = 120.0
+        arc_end_deg = 360.0
+        arc_span_deg = arc_end_deg - arc_start_deg
+        draw.pieslice(dial_box, start=arc_start_deg, end=arc_end_deg, fill=tacho_bg_color)
+        draw.arc(dial_box, start=arc_start_deg, end=arc_end_deg, fill=text_color, width=max(1, int(2 * scale)))
 
         tick_col = tuple(int(0.75 * c) for c in text_color)
         for frac in (0.0, 0.25, 0.5, 0.75, 1.0):
-            angle = math.pi * (1.0 - frac)
+            angle = math.radians(arc_start_deg + (arc_span_deg * frac))
             x_in = cx + int((tacho_radius - max(5, int(6 * scale))) * math.cos(angle))
             y_in = cy - int((tacho_radius - max(5, int(6 * scale))) * math.sin(angle))
             x_out = cx + int(tacho_radius * math.cos(angle))
@@ -1763,7 +1828,7 @@ def draw_metrics_box_on_frame(
         if cse_speed_ms is not None and np.isfinite(cse_speed_ms):
             kmh = max(0.0, float(cse_speed_ms) * 3.6)
             frac = max(0.0, min(1.0, kmh / tacho_kmh_max))
-            angle = math.pi * (1.0 - frac)
+            angle = math.radians(arc_start_deg + (arc_span_deg * frac))
             nx = cx + int((tacho_radius - max(6, int(8 * scale))) * math.cos(angle))
             ny = cy - int((tacho_radius - max(6, int(8 * scale))) * math.sin(angle))
             needle_col = (235, 76, 66)
@@ -1774,7 +1839,7 @@ def draw_metrics_box_on_frame(
         else:
             speed_txt = "n/a"
 
-        font_tacho = _get_font(max(9, int(11 * scale)))
+        font_tacho = _get_font(max(12, int(16 * scale)))
         txt_box = draw.textbbox((0, 0), speed_txt, font=font_tacho)
         txt_w = txt_box[2] - txt_box[0]
         draw.text((cx - txt_w // 2, cy + max(4, int(6 * scale))), speed_txt, fill=text_color, font=font_tacho)
@@ -2148,7 +2213,14 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     parser.add_argument("--azim", type=float, default=_c("azim", -60.0), help="Camera azimuth in degrees")
     parser.add_argument("--elev", type=float, default=_c("elev", 25.0), help="Camera elevation in degrees")
     parser.add_argument("--mesh_color", default=_c("mesh_color", "#000000"), help="Aeroshell color (hex)")
-    parser.add_argument("--render_bg", default=_c("render_bg", "#ffffff"), help="3D render background color (hex)")
+    parser.add_argument("--render_bg", default=_c("render_bg", "#23283E"), help="3D render background color (hex)")
+    parser.add_argument(
+        "--transparent-background",
+        dest="transparent_background",
+        action=argparse.BooleanOptionalAction,
+        default=bool(_c("transparent_background", False)),
+        help="Export final PNG with transparent background when using aeroshell-only output",
+    )
     parser.add_argument(
         "--mesh_alpha", type=float, default=_c("mesh_alpha", 0.75), help="Aeroshell opacity 0.0-1.0 (1.0 = fully opaque)"
     )
@@ -2515,7 +2587,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     # Build panel colors dict (sourced from YAML cfg, with hardcoded fallbacks)
     panel_colors = {
         "bg": _parse_color_rgb(_c("panel_bg", "#23283E")),
-        "bg_epoch": _parse_color_rgb(args.render_bg),
+        "bg_epoch": _parse_color_rgb(_c("panel_bg", "#23283E")),
+        "grid": _parse_color_rgb(_c("panel_grid", "#36435F")),
         "axis": _parse_color_rgb(_c("panel_axis", "#4B5573")),
         "circle": _parse_color_rgb(_c("panel_circle", "#6E7DA5")),
         "anchor": _parse_color_rgb(_c("panel_anchor", "#DC5A5A")),
@@ -2897,13 +2970,14 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         if args.show_cse_overlay:
             cse_overlay_lines.append(f"Drag: {drag_n:.1f} N" if drag_n is not None else "Drag: n/a")
             cse_overlay_lines.append(f"Solar est.: {solar_w:.1f} W" if solar_w is not None else "Solar est.: n/a")
-            if cse_ms is not None:
-                cse_line = f"CSE: {cse_ms:.2f} m/s"
-                if bool(args.show_cse_kmh):
-                    cse_line = f"{cse_line} ({cse_ms * 3.6:.1f} km/h)"
-                cse_overlay_lines.append(cse_line)
-            else:
-                cse_overlay_lines.append("CSE: n/a")
+            if not bool(args.show_cse_tacho):
+                if cse_ms is not None:
+                    cse_line = f"CSE: {cse_ms:.2f} m/s"
+                    if bool(args.show_cse_kmh):
+                        cse_line = f"{cse_line} ({cse_ms * 3.6:.1f} km/h)"
+                    cse_overlay_lines.append(cse_line)
+                else:
+                    cse_overlay_lines.append("CSE: n/a")
 
         if locked_camera_position is None:
             locked_camera_position, locked_camera_focal_point, locked_camera_view_up = compute_camera_pose(
@@ -3010,6 +3084,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 cse_speed_ms=cse_ms,
                 show_tacho=bool(args.show_cse_tacho),
                 tacho_bg_color=panel_colors["bg"],
+                motion_phase=(2.0 * math.pi * float(i) / max(1, int(total_frames))),
             )
 
         frames.append(composite)
@@ -3085,8 +3160,15 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                     stacklevel=2,
                 )
         elif png_source_aeroshell is not None:
-            imageio.imwrite(png_out, png_source_aeroshell)
-            print(f"Saved final aeroshell PNG ({hold_source_label}): {png_out}")
+            if bool(args.transparent_background):
+                bg_rgb = np.array(_parse_color_rgb(args.render_bg), dtype=np.uint8)
+                alpha = np.where(np.all(png_source_aeroshell == bg_rgb[None, None, :], axis=-1), 0, 255).astype(np.uint8)
+                png_rgba = np.dstack([png_source_aeroshell, alpha])
+                imageio.imwrite(png_out, png_rgba)
+                print(f"Saved transparent final aeroshell PNG ({hold_source_label}): {png_out}")
+            else:
+                imageio.imwrite(png_out, png_source_aeroshell)
+                print(f"Saved final aeroshell PNG ({hold_source_label}): {png_out}")
         else:
             warnings.warn(
                 "[latent_rollout] final aeroshell frame missing; skipping PNG export.",
