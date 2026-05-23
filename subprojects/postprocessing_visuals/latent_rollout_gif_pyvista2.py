@@ -1370,6 +1370,21 @@ def _load_wp4_default_cfd_config() -> dict[str, Any]:
     return cfg.get("cfd", {}) if isinstance(cfg, dict) else {}
 
 
+def _mesh_has_valid_face_indices(mesh: trimesh.Trimesh) -> bool:
+    """Return True when all triangle indices are within vertex bounds."""
+    try:
+        faces = np.asarray(mesh.faces)
+        n_verts = int(len(mesh.vertices))
+    except Exception:
+        return False
+
+    if faces.ndim != 2 or faces.shape[1] != 3 or n_verts <= 0:
+        return False
+    if faces.size == 0:
+        return False
+    return int(faces.min()) >= 0 and int(faces.max()) < n_verts
+
+
 def _init_gaot_drag_estimator(
     gaot_version: int,
     cfd_config: dict[str, Any],
@@ -1377,13 +1392,16 @@ def _init_gaot_drag_estimator(
 ) -> Any | None:
     """Instantiate GAOT loader by version for drag estimation on extracted meshes."""
     try:
+        if gaot_version == 3:
+            from subprojects.postprocessing_visuals.cp_field_viz import GAOTPlyInference  # noqa: PLC0415
+
+            return GAOTPlyInference(cfd_config=cfd_config, device=str(device))
+
         _ensure_wp4_model_imports()
         if gaot_version == 1:
             from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.model_loader import ModelLoader as _GaotLoader  # noqa: PLC0415
         elif gaot_version == 2:
             from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.model_loader import ModelLoader as _GaotLoader  # noqa: PLC0415
-        elif gaot_version == 3:
-            from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.model_loader import ModelLoader as _GaotLoader  # noqa: PLC0415
         else:
             raise ValueError(f"Unsupported GAOT version: {gaot_version}")
         return _GaotLoader(cfd_config=cfd_config, device=str(device))
@@ -1405,21 +1423,48 @@ def _estimate_drag_newtons(
 ) -> float | None:
     """Estimate drag (N) from an already-extracted mesh via GAOT loss internals."""
     try:
+        if not _mesh_has_valid_face_indices(mesh):
+            warnings.warn(
+                "[latent_rollout] skipping GAOT drag estimate because mesh face indices are invalid.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return None
+
         loader_device = torch.device(getattr(gaot_loader, "device", "cpu"))
         verts_t = torch.tensor(mesh.vertices, dtype=torch.float32, device=loader_device)
         faces_t = torch.tensor(mesh.faces, dtype=torch.long, device=loader_device)
 
-        setattr(gaot_loader, "epoch_name", int(frame_step))
+        # GAOT3 uses the read-only postprocessing inference path to avoid SDF-model
+        # coupling and prevent CSE overlay failures from poisoning the render CUDA context.
+        if gaot_version == 3 and hasattr(gaot_loader, "_preprocess") and hasattr(gaot_loader, "_latent_tokens"):
+            from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.pressure_integration import cp_field_to_drag  # noqa: PLC0415
+
+            with torch.no_grad(), _suppress_wandb_logging():
+                batch = gaot_loader._preprocess(verts_t, faces_t)
+                output = gaot_loader.gaot.forward(batch=batch, tokens_pos=gaot_loader._latent_tokens)
+                pressure_field = output["field"]
+                integration_normals = batch.c_raw if hasattr(batch, "c_raw") and batch.c_raw is not None else batch.c
+                drag_tensor = cp_field_to_drag(
+                    cp_field=pressure_field,
+                    normals=integration_normals,
+                    face=faces_t.T,
+                    pos=verts_t * 1e-3,
+                    v_inf=float(gaot_loader.cfd_config["v_inf"]),
+                    rho=float(gaot_loader.cfd_config["rho"]),
+                )
+
+            drag_val = float(drag_tensor.detach().cpu().item())
+            return drag_val if np.isfinite(drag_val) else None
+
+        gaot_loader.epoch_name = int(frame_step)
         if gaot_version == 3:
-            setattr(gaot_loader, "sdf_model", sdf_model)
+            gaot_loader.sdf_model = sdf_model
 
         with _suppress_wandb_logging():
             drag_tensor = gaot_loader.loss_fn(verts_t, faces_t)
 
-        if torch.is_tensor(drag_tensor):
-            drag_val = float(drag_tensor.detach().cpu().item())
-        else:
-            drag_val = float(drag_tensor)
+        drag_val = float(drag_tensor.detach().cpu().item()) if torch.is_tensor(drag_tensor) else float(drag_tensor)
 
         diagnostics = getattr(gaot_loader, "_last_diagnostics", {})
         if isinstance(diagnostics, dict) and "drag_value" in diagnostics:
@@ -1447,6 +1492,14 @@ def _estimate_solar_power_watts(
 ) -> tuple[float | None, dict[str, Any]]:
     """Estimate solar power (W) with SR solar objective on the current mesh."""
     try:
+        if not _mesh_has_valid_face_indices(mesh):
+            warnings.warn(
+                "[latent_rollout] skipping solar estimate because mesh face indices are invalid.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return None, {}
+
         from subprojects.wp3_solar_estimator.rollout_losses.SR_SolarLoss import solar_loss_sr  # noqa: PLC0415
 
         verts = torch.tensor(mesh.vertices, dtype=torch.float32, device=device)
@@ -2037,6 +2090,11 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         help="GAOT model ID (or legacy key for v1) used by the selected GAOT version",
     )
     parser.add_argument(
+        "--cse_metrics_device",
+        default=str(_c("cse_metrics_device", "cpu")),
+        help="Device for CSE helper metrics (recommended: cpu, to avoid poisoning render CUDA context)",
+    )
+    parser.add_argument(
         "--gaot_v_inf",
         type=float,
         default=float(_c("gaot_v_inf", 25.0)),
@@ -2239,6 +2297,14 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     device = torch.device(args.device)
     print(f"Device: {device}")
 
+    metrics_device_str = str(args.cse_metrics_device).strip().lower()
+    if metrics_device_str == "render":
+        metrics_device = device
+    elif metrics_device_str == "auto":
+        metrics_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        metrics_device = torch.device(metrics_device_str)
+
     gaot_loader: Any | None = None
     if args.show_cse_overlay:
         default_cfd_cfg = _load_wp4_default_cfd_config()
@@ -2266,7 +2332,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             gaot_loader = _init_gaot_drag_estimator(
                 gaot_version=int(args.gaot_version),
                 cfd_config=gaot_cfd_cfg,
-                device=device,
+                device=metrics_device,
             )
 
     active_mode = "epoch_gif" if args.epoch_gif else args.mode
@@ -2279,6 +2345,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     epoch_checkpoints: list[tuple[int, Path]] = []
     if active_mode == "epoch_gif":
         epoch_checkpoints = _find_epoch_checkpoints(args.checkpoint)
+        if args.n_frames > 0:
+            epoch_checkpoints = epoch_checkpoints[: min(int(args.n_frames), len(epoch_checkpoints))]
         print(
             f"Traversal radius: {z_radius:.3f}  |  mode: {active_mode}  |  "
             f"frames: {len(epoch_checkpoints)}  |  resolution: {args.resolution}"
@@ -2497,7 +2565,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
 
             solar_w, _solar_diag = _estimate_solar_power_watts(
                 mesh=mask_mesh,
-                device=device,
+                device=metrics_device,
                 sun_dir_xyz=(float(args.solar_sun_dir[0]), float(args.solar_sun_dir[1]), float(args.solar_sun_dir[2])),
                 area_budget_mm2=float(args.solar_area_budget_mm2),
                 effective_irradiance_w_m2=float(args.solar_effective_irradiance_w_m2),
