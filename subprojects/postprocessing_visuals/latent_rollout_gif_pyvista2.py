@@ -31,6 +31,7 @@ import os
 import re
 import sys
 import types
+import warnings
 from dataclasses import replace as dc_replace
 from pathlib import Path
 from typing import Any
@@ -324,6 +325,138 @@ def load_inner_assembly(ckpt_path: Path, epoch_num: int) -> trimesh.Trimesh | No
 
 
 # ---------------------------------------------------------------------------
+# Optional visual layers (wheels, windshield, solar selection)
+# ---------------------------------------------------------------------------
+
+_ADD_WHEELS_PATH = (
+    Path(__file__).parents[1] / "wp2_assembler" / "version4" / "3D_printing_helpers" / "add_wheels.py"
+)
+
+
+def _apply_full_wheels(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+    """Replace cut-off wheel geometry with full wheel cylinders.
+
+    Returns the original mesh unchanged on any failure.
+    """
+    try:
+        spec = importlib.util.spec_from_file_location("_aw", _ADD_WHEELS_PATH)
+        if spec is None or spec.loader is None:
+            warnings.warn("[latent_rollout] add_wheels.py not found — skipping full-wheel replacement.", UserWarning, stacklevel=2)
+            return mesh
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+
+        centers = mod.infer_wheel_centers(mesh)
+        if not centers:
+            warnings.warn("[latent_rollout] No wheel-like components found — skipping full-wheel replacement.", UserWarning, stacklevel=2)
+            return mesh
+        base = mod.remove_cut_wheel_components(mesh, centers)
+        wheels = mod.make_full_wheels(centers)
+        if wheels is None:
+            return base
+        result = trimesh.util.concatenate([base, wheels])
+        print(f"[latent_rollout] full_wheels: {len(centers)} wheel(s) replaced")
+    except Exception as exc:
+        warnings.warn(f"[latent_rollout] full_wheels failed: {exc}. Using original mesh.", UserWarning, stacklevel=2)
+        return mesh
+    else:
+        return result
+
+
+def _compute_windshield_face_mask(
+    aeroshell_mesh: trimesh.Trimesh,
+    assembly_id: int,
+    device: torch.device,
+) -> Tensor | None:
+    """Return a bool tensor (F,) marking aeroshell faces inside the vision cone."""
+    try:
+        from subprojects.wp3_solar_estimator.utils.wp3_vision_cone import (  # noqa: PLC0415
+            get_vision_cone_face_mask,
+            get_vision_cone_mesh,
+        )
+
+        cone_verts, cone_faces = get_vision_cone_mesh(assembly_id, device=device)
+        aero_verts = torch.tensor(aeroshell_mesh.vertices, dtype=torch.float32, device=device)
+        aero_faces = torch.tensor(aeroshell_mesh.faces, dtype=torch.long, device=device)
+        mask = get_vision_cone_face_mask(cone_verts, cone_faces, aero_verts, aero_faces)
+        n = int(mask.sum().item())
+        print(f"[latent_rollout] windshield cone_face_mask: {n} / {len(aeroshell_mesh.faces)} faces")
+    except Exception as exc:
+        warnings.warn(
+            f"[latent_rollout] windshield face mask failed: {exc}. Skipping.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+    else:
+        return mask
+
+
+def _compute_solar_selection_mask(
+    aeroshell_mesh: trimesh.Trimesh,
+    device: torch.device,
+    sun_dir_xyz: tuple[float, float, float],
+    area_budget_mm2: float,
+    cone_face_mask: Tensor | None = None,
+    sigmoid_sharpness: float = 10.0,
+    threshold: float = 0.5,
+) -> Tensor | None:
+    """Compute a binary solar-selection face mask using SR_SolarLoss-style budgeting."""
+    try:
+        from subprojects.wp3_solar_estimator.utils.rollout_utils.mesh_area_normals import (  # noqa: PLC0415
+            compute_face_areas_and_normals,
+        )
+
+        epsilon = 1e-12
+        verts = torch.tensor(aeroshell_mesh.vertices, dtype=torch.float32, device=device)
+        faces = torch.tensor(aeroshell_mesh.faces, dtype=torch.long, device=device)
+        _, face_area_m2, face_normals_unit = compute_face_areas_and_normals(verts, faces)
+
+        sun_dir = torch.tensor(sun_dir_xyz, dtype=torch.float32, device=device)
+        sun_dir = sun_dir / torch.linalg.norm(sun_dir).clamp_min(epsilon)
+        illumination = (face_normals_unit * sun_dir).sum(-1)
+        if cone_face_mask is not None:
+            illumination = illumination.masked_fill(cone_face_mask.to(device), -1.0)
+
+        quality_order = torch.argsort(illumination, descending=True)
+        sorted_areas = face_area_m2[quality_order]
+        cumulative_area = torch.cumsum(sorted_areas.cpu(), dim=0).to(sorted_areas.device)
+        area_budget_m2 = area_budget_mm2 * 1e-6
+        distance_to_budget = (area_budget_m2 - cumulative_area) / max(area_budget_m2, epsilon)
+        soft_mask_sorted = torch.sigmoid(sigmoid_sharpness * distance_to_budget)
+        original_order = torch.argsort(quality_order)
+        soft_mask = soft_mask_sorted[original_order]
+        binary_mask = soft_mask > threshold
+    except Exception as exc:
+        warnings.warn(f"[latent_rollout] solar selection failed: {exc}. Skipping.", UserWarning, stacklevel=2)
+        return None
+    else:
+        return binary_mask
+
+
+def _build_face_overlay_mesh(
+    base_mesh: trimesh.Trimesh,
+    face_mask: np.ndarray,
+    normal_offset_mm: float,
+) -> trimesh.Trimesh | None:
+    """Build a submesh for selected faces and offset it slightly to avoid z-fighting."""
+    idx = np.flatnonzero(face_mask.astype(bool))
+    if idx.size == 0:
+        return None
+    try:
+        sub = base_mesh.submesh([idx], append=True, repair=False)
+        if sub is None or len(sub.vertices) == 0:
+            return None
+        if normal_offset_mm != 0.0:
+            vnorm = sub.vertex_normals
+            sub.vertices = sub.vertices + (vnorm * float(normal_offset_mm))
+    except Exception:
+        return None
+    else:
+        return sub
+
+
+# ---------------------------------------------------------------------------
 # Mesh extraction
 # ---------------------------------------------------------------------------
 
@@ -396,9 +529,13 @@ def render_mesh(
     camera_position: np.ndarray | None = None,
     camera_focal_point: np.ndarray | None = None,
     camera_view_up: np.ndarray | None = None,
+    solar_selection_mesh: trimesh.Trimesh | None = None,
+    solar_selection_color: tuple[float, float, float, float] = (1.0, 0.843, 0.0, 1.0),
+    windshield_mesh: trimesh.Trimesh | None = None,
+    windshield_color: tuple[float, float, float, float] = (0.31, 0.76, 0.97, 0.65),
+    assembly_smooth_shading: bool = True,
 ) -> np.ndarray:
     """Render mesh and inner assembly using PyVista with Order-Independent Transparency."""
-    print("!!!!width", width, "height", height, "!!!!")
     # 1. Initialize offscreen plotter (removing the multi_samples keyword argument)
     plotter = pv.Plotter(off_screen=True, window_size=[width, height])
     plotter.background_color = bg_color[:3]
@@ -417,9 +554,9 @@ def render_mesh(
             color=assembly_color[:3],
             ambient=0.3,
             diffuse=0.7,
-            smooth_shading=True,
-            specular=0.2,          # Slightly raise specular reflection highlight
-            specular_power=50,     # Tighten shine focus to accentuate smooth curvature
+            smooth_shading=assembly_smooth_shading,
+            specular=0.2,
+            specular_power=50,
         )
 
     # 4. Add Aeroshell (Semi-Transparent)
@@ -433,6 +570,28 @@ def render_mesh(
         specular=0.1,
         smooth_shading=True
     )
+
+    if solar_selection_mesh is not None:
+        pv_sol = pv.wrap(solar_selection_mesh)
+        plotter.add_mesh(
+            pv_sol,
+            color=solar_selection_color[:3],
+            opacity=solar_selection_color[3],
+            ambient=0.3,
+            diffuse=0.7,
+            smooth_shading=True,
+        )
+
+    if windshield_mesh is not None:
+        pv_ws = pv.wrap(windshield_mesh)
+        plotter.add_mesh(
+            pv_ws,
+            color=windshield_color[:3],
+            opacity=windshield_color[3],
+            ambient=0.3,
+            diffuse=0.7,
+            smooth_shading=True,
+        )
 
     # 5. Position camera
     if camera_position is not None and camera_focal_point is not None and camera_view_up is not None:
@@ -501,10 +660,9 @@ _FONT_PATHS = [
 def _get_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     for fp in _FONT_PATHS:
         try:
-            print(f"!!!Trying font: {fp}")
             return ImageFont.truetype(fp, size)
         except Exception:
-            print(f"!!!Trying font failed: {fp}")
+            continue
     return ImageFont.load_default()
 
 
@@ -801,7 +959,6 @@ def _build_trajectory(  # noqa: PLR0912  # supports 4 traversal modes; branches 
         return coords, z_radius
 
     if mode == "spiral":
-        print(f"!!!Building spiral trajectory with {n_frames} frames, radius {z_radius}, turns {spiral_turns}")
         r_end = spiral_radius_end if spiral_radius_end is not None else z_radius
         coords = []
         for i in range(n_frames):
@@ -942,6 +1099,56 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     )
     parser.add_argument("--assembly_color", default=_c("assembly_color", "#F39C12"), help="Inner assembly color (hex)")
     parser.add_argument(
+        "--show-solar-selection",
+        dest="show_solar_selection",
+        action=argparse.BooleanOptionalAction,
+        default=bool(_c("show_solar_selection", False)),
+        help="Show/hide solar selection overlay on the aeroshell",
+    )
+    parser.add_argument(
+        "--show-windshield",
+        dest="show_windshield",
+        action=argparse.BooleanOptionalAction,
+        default=bool(_c("show_windshield", False)),
+        help="Show/hide windshield (vision cone) overlay on the aeroshell",
+    )
+    parser.add_argument(
+        "--full-wheels",
+        dest="full_wheels",
+        action=argparse.BooleanOptionalAction,
+        default=bool(_c("full_wheels", True)),
+        help="Replace cut-off wheel geometry with full wheels in inner assembly",
+    )
+    parser.add_argument(
+        "--cutoff-wheel",
+        dest="cutoff_wheel",
+        action="store_true",
+        default=bool(_c("cutoff_wheel", False)),
+        help="Use cut-off wheel geometry (overrides --full-wheels)",
+    )
+    parser.add_argument(
+        "--windshield-assembly-id",
+        type=int,
+        default=int(_c("windshield_assembly_id", 1)),
+        help="WP2 assembly id used for windshield face-mask computation",
+    )
+    parser.add_argument("--solar_selection_color", default=_c("solar_selection_color", "#FFD700"), help="Solar selection color (hex)")
+    parser.add_argument("--windshield_color", default=_c("windshield_color", "#4FC3F7"), help="Windshield overlay color (hex)")
+    parser.add_argument(
+        "--solar_sun_dir",
+        type=float,
+        nargs=3,
+        default=_c("solar_sun_dir", [-1.0, 0.0, 1.0]),
+        metavar=("X", "Y", "Z"),
+        help="Sun direction for solar selection overlay",
+    )
+    parser.add_argument(
+        "--solar_area_budget_mm2",
+        type=float,
+        default=float(_c("solar_area_budget_mm2", 4_200_000.0)),
+        help="Solar area budget in mm^2",
+    )
+    parser.add_argument(
         "--show-anchors",
         dest="show_anchors",
         action=argparse.BooleanOptionalAction,
@@ -1016,6 +1223,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         help="Half-width of the X pattern in cross mode (default: use z_radius from checkpoint)",
     )
     args = parser.parse_args()
+    if args.cutoff_wheel:
+        args.full_wheels = False
 
     if args.checkpoint is None:
         sys.exit("ERROR: --checkpoint is required (or set 'checkpoint' in the YAML config)")
@@ -1034,6 +1243,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     mesh_color_rgba = _parse_color_rgba_float(args.mesh_color)
     render_bg_rgba = _parse_color_rgba_float(args.render_bg)
     assembly_color_rgba = _parse_color_rgba_float(args.assembly_color, 1.0)
+    solar_selection_color_rgba = _parse_color_rgba_float(args.solar_selection_color, 1.0)
+    windshield_color_rgba = _parse_color_rgba_float(args.windshield_color, 0.65)
 
     # Build panel colors dict (sourced from YAML cfg, with hardcoded fallbacks)
     panel_colors = {
@@ -1083,6 +1294,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         epoch_num = _parse_epoch_from_stem(args.checkpoint.stem)
         if epoch_num is not None:
             inner_assembly = load_inner_assembly(args.checkpoint, epoch_num)
+            if inner_assembly is not None and args.full_wheels:
+                inner_assembly = _apply_full_wheels(inner_assembly)
         else:
             print("[assembly] WARN: could not parse epoch from checkpoint stem, skipping")
 
@@ -1137,6 +1350,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     locked_camera_focal_point: np.ndarray | None = None
     locked_camera_view_up: np.ndarray | None = None
     render_width = args.width + args.panel_width if active_mode == "epoch_gif" else args.width
+    assembly_smooth_shading = not args.full_wheels
 
     if active_mode == "epoch_gif" and frame_checkpoints:
         # Lock camera from the user-selected checkpoint (not earliest epoch), so
@@ -1209,6 +1423,32 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                     frames.append(np.concatenate([last_valid_rgb, panel], axis=1))
             continue
 
+        cone_face_mask: Tensor | None = None
+        solar_selection_mesh: trimesh.Trimesh | None = None
+        windshield_mesh: trimesh.Trimesh | None = None
+        if args.show_windshield or args.show_solar_selection:
+            cone_face_mask = _compute_windshield_face_mask(mesh, args.windshield_assembly_id, device)
+        if args.show_windshield and cone_face_mask is not None:
+            windshield_mesh = _build_face_overlay_mesh(
+                mesh,
+                cone_face_mask.detach().cpu().numpy(),
+                normal_offset_mm=1.5,
+            )
+        if args.show_solar_selection:
+            solar_mask = _compute_solar_selection_mask(
+                mesh,
+                device=device,
+                sun_dir_xyz=(float(args.solar_sun_dir[0]), float(args.solar_sun_dir[1]), float(args.solar_sun_dir[2])),
+                area_budget_mm2=float(args.solar_area_budget_mm2),
+                cone_face_mask=cone_face_mask,
+            )
+            if solar_mask is not None:
+                solar_selection_mesh = _build_face_overlay_mesh(
+                    mesh,
+                    solar_mask.detach().cpu().numpy(),
+                    normal_offset_mm=1.0,
+                )
+
         if locked_camera_position is None:
             locked_camera_position, locked_camera_focal_point, locked_camera_view_up = compute_camera_pose(
                 mesh,
@@ -1232,6 +1472,11 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             camera_position=locked_camera_position,
             camera_focal_point=locked_camera_focal_point,
             camera_view_up=locked_camera_view_up,
+            solar_selection_mesh=solar_selection_mesh,
+            solar_selection_color=solar_selection_color_rgba,
+            windshield_mesh=windshield_mesh,
+            windshield_color=windshield_color_rgba,
+            assembly_smooth_shading=assembly_smooth_shading,
         )
         if active_mode == "epoch_gif":
             rgb_wide = render_mesh(
@@ -1249,6 +1494,11 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 camera_position=locked_camera_position,
                 camera_focal_point=locked_camera_focal_point,
                 camera_view_up=locked_camera_view_up,
+                solar_selection_mesh=solar_selection_mesh,
+                solar_selection_color=solar_selection_color_rgba,
+                windshield_mesh=windshield_mesh,
+                windshield_color=windshield_color_rgba,
+                assembly_smooth_shading=assembly_smooth_shading,
             )
             aligned = align_epoch_frame_to_standard_view(
                 rgb_wide,
