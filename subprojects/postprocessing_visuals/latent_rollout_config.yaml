@@ -28,8 +28,8 @@ mode: circle
 # ---------------------------------------------------------------------------
 # Colors / rendering
 # ---------------------------------------------------------------------------
-mesh_color: "#F2F4F7" # Aeroshell base color
-mesh_alpha: 1.0
+mesh_color: "#5DADE2" #"#F2F4F7" # Aeroshell base color
+mesh_alpha: 0.8
 render_bg: "#ffffff"
 show_assembly: true
 assembly_color: "#F39C12"
