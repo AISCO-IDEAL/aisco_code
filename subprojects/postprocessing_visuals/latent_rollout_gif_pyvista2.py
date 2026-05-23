@@ -1879,6 +1879,7 @@ def draw_left_box(  # noqa: PLR0915
     show_tacho: bool,
     text_color: tuple[int, int, int],
     show_kmh: bool = False,
+    tacho_max_kmh: float = 160.0,
 ) -> None:
     """Draw Drag / Solar / CSE (or tachometer) at local box coordinates (0, 0).
 
@@ -1903,7 +1904,7 @@ def draw_left_box(  # noqa: PLR0915
     section_gap = max(6, int(8 * scale))
     section_h = max(34, int(46 * scale))
     tacho_radius = max(28, int(58 * scale))
-    tacho_kmh_max = 150.0
+    tacho_kmh_max = tacho_max_kmh
 
     drag_str = f"{drag_n:.1f} N" if drag_n is not None else "n/a"
     solar_str = f"{solar_w:.1f} W" if solar_w is not None else "n/a"
@@ -2456,6 +2457,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         action=argparse.BooleanOptionalAction,
         default=bool(_c("show_cse_tacho", False)),
         help="Show an optional CSE speed tachometer in the overlay",
+    )
+    parser.add_argument(
+        "--cse-tacho-max-kmh",
+        dest="cse_tacho_max_kmh",
+        type=float,
+        default=float(_c("cse_tacho_max_kmh", 160.0)),
+        help="Fixed maximum speed (km/h) on the tachometer scale",
     )
     parser.add_argument(
         "--show-latent-panel",
@@ -3124,6 +3132,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 drag_n, solar_w, cse_ms,
                 bool(args.show_cse_tacho), cse_text_rgb,
                 show_kmh=bool(args.show_cse_kmh),
+                tacho_max_kmh=float(args.cse_tacho_max_kmh),
             )
             composite = _composite_box_on_frame(composite, left_img, lbox_x, box_y)
 

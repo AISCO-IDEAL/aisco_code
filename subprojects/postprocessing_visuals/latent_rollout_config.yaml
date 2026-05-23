@@ -24,7 +24,7 @@ height: 2160
 panel_width: 1280
 azim: -60.0
 elev: 25.0
-mesh_zoom: 1.0  # 1.0 = standard distance (distance_mult=1.6). Higher zooms closer (can distort proportions).
+mesh_zoom: 1.4
 mode: spiral
 
 show_anchors: false
@@ -44,7 +44,7 @@ render_bg: "#23283E"
 transparent_background: true
 
 mesh_color: "#5DADE2" #"#F2F4F7" # Aeroshell base color
-mesh_alpha: 0.85
+mesh_alpha: 1.0
 
 show_assembly: true
 assembly_color: "#F39C12"
@@ -74,6 +74,7 @@ show_cse_overlay: true
 save_cse_samples: true
 show_cse_kmh: true
 show_cse_tacho: true
+cse_tacho_max_kmh: 160
 show_latent_panel: true
 cse_text_color: "#EAF2F8"
 cse_box_color: "#27314A"
