@@ -120,7 +120,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     _sign: minimize
     _disabled_epochs: []
     null_loss_aero: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]  # weight=50.0 is the drag surrogate constant returned by the null loss; training weight is forced to 0.0 by TotalLossV2 (is_null_loss marker)
-    gaot_loss: [0, 5.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
+    gaot_loss: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
 
   bb_inner:
     _role: constraint
@@ -310,12 +310,12 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
     cap_z_tolerance_mm: 0.5          # BbInnerV1: ensures the bottom of the wheel is masked out from the inner bb
   # v4.3 analytic specific:
   analytic_options:
-    penalty: "softplus"  # "relu" (default) or "softplus"
-    softplus_beta: 2.0  # only used when penalty="softplus"
-    inner_margin: 25.0  # tighten upper bound: sdf_model <= sdf_inner - inner_margin
-    outer_margin: 25.0  # tighten lower bound: sdf_outer + outer_margin <= sdf_model
-    inner_tolerance: 10.0  # GINN-style "satisfied" deadband on aggregated bb_inner L2 loss: clamp(loss - tol, 0). Stops λ from drifting once practically satisfied. 0 = disabled.
-    outer_tolerance: 10.0  # same for bb_outer
+    penalty: "relu"  # "relu" (default) or "softplus"
+    softplus_beta: 3.0  # only used when penalty="softplus"
+    inner_margin: 50.0  # tighten upper bound: sdf_model <= sdf_inner - inner_margin
+    outer_margin: 50.0  # tighten lower bound: sdf_outer + outer_margin <= sdf_model
+    inner_tolerance: 25.0  # GINN-style "satisfied" deadband on aggregated bb_inner L2 loss: clamp(loss - tol, 0). Stops λ from drifting once practically satisfied. 0 = disabled.
+    outer_tolerance: 25.0  # same for bb_outer
     topk_fraction: 0.6  # (BbV5/BbV6) fraction of worst-violating points to include in loss reduction; 0.1 = top 10%
   # v4.sel nbz selection:
   nbz_selection: "both"  # "outer", or "both"
@@ -391,8 +391,8 @@ wheel_loss_config:
   sampling_density: 10 # points per edge of the rectangle
   weight_position: 0.33  # weight for position vs. gradient in the loss calculation
   threshold_huber: 10.0  # Huber loss threshold for wheel loss v3
-  threshold_relu: -0. # z-gradient threshold for wheel loss v3; gradients above this value are penalized linearly, while gradients below are not penalized (should be negative, e.g. -0.3 means z gradients above -0.3 are penalized, while z gradients of -0.3 or smaller are not penalized)
-  manual_z_shift: -15.0 # manual shift applied to z-coordinate of wheel loss sample points, to give more room for the SDF to find a solution
+  threshold_relu: -0.0 # z-gradient threshold for wheel loss v3; gradients above this value are penalized linearly, while gradients below are not penalized (should be negative, e.g. -0.3 means z gradients above -0.3 are penalized, while z gradients of -0.3 or smaller are not penalized)
+  manual_z_shift: -30.0 # manual shift applied to z-coordinate of wheel loss sample points, to give more room for the SDF to find a solution
   enforce_alignment_weight: 0.4 # wheel_loss_enforce_v2 only: weight on the ∇sdf ∥ ẑ ground-tangency aux relative to the primary projection-as-target loss
-  interface_tolerance: 50.0  # GINN-style "satisfied" deadband on aggregated wheel_interface L2 loss: clamp(loss - tol, 0). Stops λ from drifting once practically satisfied. 0 = disabled.
+  interface_tolerance: 75.0  # GINN-style "satisfied" deadband on aggregated wheel_interface L2 loss: clamp(loss - tol, 0). Stops λ from drifting once practically satisfied. 0 = disabled.
   alignment_tolerance: 0.3 # same for wheel_alignment
