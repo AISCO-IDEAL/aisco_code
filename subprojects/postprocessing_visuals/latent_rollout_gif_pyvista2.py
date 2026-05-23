@@ -1331,6 +1331,234 @@ def draw_epoch_label_on_frame(
     return np.asarray(img)
 
 
+@contextlib.contextmanager
+def _suppress_wandb_logging() -> Any:
+    """Temporarily silence wandb.log for postprocessing-only metric inference."""
+    try:
+        import wandb  # noqa: PLC0415
+    except Exception:
+        yield
+        return
+
+    original_log = getattr(wandb, "log", None)
+    if original_log is None:
+        yield
+        return
+
+    wandb.log = lambda *_args, **_kwargs: None  # type: ignore[method-assign, assignment]
+    try:
+        yield
+    finally:
+        wandb.log = original_log  # type: ignore[method-assign]
+
+
+def _load_wp4_default_cfd_config() -> dict[str, Any]:
+    """Load default CFD config from WP4 v2 losses config."""
+    cfg_path = Path(__file__).parents[1] / "wp4_aeroshell_optimizer" / "v2" / "configs" / "losses_v0_config.yaml"
+    if not cfg_path.exists():
+        return {}
+    try:
+        with open(cfg_path) as f:
+            cfg = yaml.safe_load(f) or {}
+    except Exception as exc:
+        warnings.warn(
+            f"[latent_rollout] failed to read default CFD config: {exc}",
+            UserWarning,
+            stacklevel=2,
+        )
+        return {}
+    return cfg.get("cfd", {}) if isinstance(cfg, dict) else {}
+
+
+def _init_gaot_drag_estimator(
+    gaot_version: int,
+    cfd_config: dict[str, Any],
+    device: torch.device,
+) -> Any | None:
+    """Instantiate GAOT loader by version for drag estimation on extracted meshes."""
+    try:
+        _ensure_wp4_model_imports()
+        if gaot_version == 1:
+            from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT_working.model_loader import ModelLoader as _GaotLoader  # noqa: PLC0415
+        elif gaot_version == 2:
+            from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT2.model_loader import ModelLoader as _GaotLoader  # noqa: PLC0415
+        elif gaot_version == 3:
+            from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.model_loader import ModelLoader as _GaotLoader  # noqa: PLC0415
+        else:
+            raise ValueError(f"Unsupported GAOT version: {gaot_version}")
+        return _GaotLoader(cfd_config=cfd_config, device=str(device))
+    except Exception as exc:
+        warnings.warn(
+            f"[latent_rollout] failed to initialize GAOT drag estimator: {exc}",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+
+
+def _estimate_drag_newtons(
+    gaot_loader: Any,
+    gaot_version: int,
+    sdf_model: Any,
+    mesh: trimesh.Trimesh,
+    frame_step: int,
+) -> float | None:
+    """Estimate drag (N) from an already-extracted mesh via GAOT loss internals."""
+    try:
+        loader_device = torch.device(getattr(gaot_loader, "device", "cpu"))
+        verts_t = torch.tensor(mesh.vertices, dtype=torch.float32, device=loader_device)
+        faces_t = torch.tensor(mesh.faces, dtype=torch.long, device=loader_device)
+
+        setattr(gaot_loader, "epoch_name", int(frame_step))
+        if gaot_version == 3:
+            setattr(gaot_loader, "sdf_model", sdf_model)
+
+        with _suppress_wandb_logging():
+            drag_tensor = gaot_loader.loss_fn(verts_t, faces_t)
+
+        if torch.is_tensor(drag_tensor):
+            drag_val = float(drag_tensor.detach().cpu().item())
+        else:
+            drag_val = float(drag_tensor)
+
+        diagnostics = getattr(gaot_loader, "_last_diagnostics", {})
+        if isinstance(diagnostics, dict) and "drag_value" in diagnostics:
+            drag_val = float(diagnostics["drag_value"])
+
+        if not np.isfinite(drag_val):
+            return None
+        return drag_val
+    except Exception as exc:
+        warnings.warn(
+            f"[latent_rollout] GAOT drag estimate failed: {exc}",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+
+
+def _estimate_solar_power_watts(
+    mesh: trimesh.Trimesh,
+    device: torch.device,
+    sun_dir_xyz: tuple[float, float, float],
+    area_budget_mm2: float,
+    effective_irradiance_w_m2: float,
+    cone_face_mask: Tensor | None = None,
+) -> tuple[float | None, dict[str, Any]]:
+    """Estimate solar power (W) with SR solar objective on the current mesh."""
+    try:
+        from subprojects.wp3_solar_estimator.rollout_losses.SR_SolarLoss import solar_loss_sr  # noqa: PLC0415
+
+        verts = torch.tensor(mesh.vertices, dtype=torch.float32, device=device)
+        faces = torch.tensor(mesh.faces, dtype=torch.long, device=device)
+        sun_dir = torch.tensor(sun_dir_xyz, dtype=torch.float32, device=device)
+        cone_mask = None
+        if cone_face_mask is not None and int(cone_face_mask.numel()) == int(faces.shape[0]):
+            cone_mask = cone_face_mask.to(device=device, dtype=torch.bool)
+
+        power_w, diagnostics = solar_loss_sr(
+            vertices=verts,
+            faces=faces,
+            sun_dir=sun_dir,
+            area_budget_mm2=float(area_budget_mm2),
+            effective_irradiance_W_m2=float(effective_irradiance_w_m2),
+            cone_face_mask=cone_mask,
+            epoch_name=None,
+        )
+        power_val = float(power_w.detach().cpu().item())
+        if not np.isfinite(power_val):
+            return None, diagnostics
+        return power_val, diagnostics
+    except Exception as exc:
+        warnings.warn(
+            f"[latent_rollout] solar estimate failed: {exc}",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None, {}
+
+
+def _compute_cse_speed_ms(
+    drag_force_newton: float,
+    solar_power_watts: float,
+    mass_kg: float,
+    constant_losses_w: float,
+    rolling_friction_coefficient: float,
+) -> float | None:
+    """Compute CSE cruising speed [m/s] from drag + solar estimates."""
+    if drag_force_newton <= 0.0:
+        return None
+    try:
+        from subprojects.wp4_aeroshell_optimizer.v1.src.losses.cruising_speed import cruising_speed  # noqa: PLC0415
+
+        drag_t = torch.tensor(float(drag_force_newton), dtype=torch.float32)
+        solar_t = torch.tensor(float(max(solar_power_watts, 0.0)), dtype=torch.float32)
+        speed_ms, _diag = cruising_speed(
+            solar_power=solar_t,
+            drag_force_at_25ms=drag_t,
+            mass=float(mass_kg),
+            c_losses=float(constant_losses_w),
+            rolling_friction_coefficient=float(rolling_friction_coefficient),
+            max_iter=12,
+            tol=1e-4,
+        )
+        speed_val = float(speed_ms.detach().cpu().item())
+        return speed_val if np.isfinite(speed_val) else None
+    except Exception as exc:
+        warnings.warn(
+            f"[latent_rollout] CSE computation failed: {exc}",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+
+
+def draw_metrics_box_on_frame(
+    frame_rgb: np.ndarray,
+    lines: list[str],
+    text_color: tuple[int, int, int] = (235, 240, 245),
+    box_color: tuple[int, int, int] = (20, 24, 30),
+    box_alpha: float = 0.72,
+    anchor_x: int = 12,
+    anchor_y: int = 12,
+) -> np.ndarray:
+    """Draw a compact top-left metrics box on an RGB frame."""
+    if not lines:
+        return frame_rgb
+
+    img = Image.fromarray(frame_rgb)
+    draw = ImageDraw.Draw(img, "RGBA")
+    h = frame_rgb.shape[0]
+    scale = h / 600.0
+    font = _get_font(max(10, int(12 * scale)))
+    line_gap = max(2, int(4 * scale))
+    pad_x = max(6, int(8 * scale))
+    pad_y = max(4, int(6 * scale))
+
+    max_w = 0
+    total_h = 0
+    for line in lines:
+        l, t, r, b = draw.textbbox((0, 0), line, font=font)
+        max_w = max(max_w, r - l)
+        total_h += (b - t)
+    total_h += line_gap * (len(lines) - 1)
+
+    x0 = int(anchor_x)
+    y0 = int(anchor_y)
+    x1 = x0 + max_w + 2 * pad_x
+    y1 = y0 + total_h + 2 * pad_y
+    a = int(max(0.0, min(1.0, box_alpha)) * 255)
+    draw.rectangle([(x0, y0), (x1, y1)], fill=(box_color[0], box_color[1], box_color[2], a))
+
+    y = y0 + pad_y
+    for line in lines:
+        draw.text((x0 + pad_x, y), line, fill=text_color, font=font)
+        l, t, r, b = draw.textbbox((0, 0), line, font=font)
+        y += (b - t) + line_gap
+
+    return np.asarray(img)
+
+
 def align_epoch_frame_to_standard_view(
     frame_rgb: np.ndarray,
     standard_width: int,
@@ -1660,6 +1888,96 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         help="Post-op Taubin smoothing iterations for rendered solar overlay edges",
     )
     parser.add_argument(
+        "--show-cse-overlay",
+        dest="show_cse_overlay",
+        action=argparse.BooleanOptionalAction,
+        default=bool(_c("show_cse_overlay", False)),
+        help="Show GAOT drag, solar estimate, and CSE speed in a top-left overlay",
+    )
+    parser.add_argument(
+        "--show-cse-kmh",
+        dest="show_cse_kmh",
+        action=argparse.BooleanOptionalAction,
+        default=bool(_c("show_cse_kmh", False)),
+        help="Also show CSE converted to km/h in the overlay",
+    )
+    parser.add_argument(
+        "--gaot_version",
+        type=int,
+        choices=[1, 2, 3],
+        default=int(_c("gaot_version", 3)),
+        help="GAOT version used for drag estimation",
+    )
+    parser.add_argument(
+        "--gaot_model_id",
+        default=_c("gaot_model_id"),
+        help="GAOT model ID (or legacy key for v1) used by the selected GAOT version",
+    )
+    parser.add_argument(
+        "--gaot_v_inf",
+        type=float,
+        default=float(_c("gaot_v_inf", 25.0)),
+        help="Freestream velocity for drag integration [m/s]",
+    )
+    parser.add_argument(
+        "--gaot_rho",
+        type=float,
+        default=float(_c("gaot_rho", 1.225)),
+        help="Air density for drag integration [kg/m^3]",
+    )
+    parser.add_argument(
+        "--gaot_mesh_resolution",
+        type=int,
+        default=int(_c("gaot_mesh_resolution", 50000)),
+        help="GAOT internal mesh target resolution (loader compatibility parameter)",
+    )
+    parser.add_argument(
+        "--gaot_gradient_max",
+        type=float,
+        default=float(_c("gaot_gradient_max", 0.001)),
+        help="GAOT gradient clipping parameter (loader compatibility parameter)",
+    )
+    parser.add_argument(
+        "--solar_effective_irradiance_w_m2",
+        type=float,
+        default=float(_c("solar_effective_irradiance_w_m2", 250.0)),
+        help="Effective irradiance used for SR solar power estimate [W/m^2]",
+    )
+    parser.add_argument(
+        "--cse_mass_kg",
+        type=float,
+        default=float(_c("cse_mass_kg", 210.0)),
+        help="Vehicle mass for CSE cruising speed estimate [kg]",
+    )
+    parser.add_argument(
+        "--cse_constant_losses_w",
+        type=float,
+        default=float(_c("cse_constant_losses_w", 20.0)),
+        help="Constant electrical losses for CSE [W]",
+    )
+    parser.add_argument(
+        "--cse_rolling_friction_coefficient",
+        type=float,
+        default=float(_c("cse_rolling_friction_coefficient", 0.006)),
+        help="Rolling friction coefficient for CSE",
+    )
+    parser.add_argument(
+        "--cse_text_color",
+        default=_c("cse_text_color", "#EAF2F8"),
+        help="CSE overlay text color (hex)",
+    )
+    parser.add_argument(
+        "--cse_box_color",
+        default=_c("cse_box_color", "#17202A"),
+        help="CSE overlay background box color (hex)",
+    )
+    parser.add_argument(
+        "--cse_box_alpha",
+        type=float,
+        default=float(_c("cse_box_alpha", 0.72)),
+        help="CSE overlay background opacity in [0,1]",
+    )
+    parser.add_argument(
         "--mask_refine_subdivisions",
         type=int,
         default=int(_c("mask_refine_subdivisions", 2)),
@@ -1785,9 +2103,41 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         "frame_text": _parse_color_rgb(_c("panel_frame_text", "#8C91AA")),
         "title": _parse_color_rgb(_c("panel_title", "#C8CDE6")),
     }
+    cse_text_rgb = _parse_color_rgb(args.cse_text_color)
+    cse_box_rgb = _parse_color_rgb(args.cse_box_color)
 
     device = torch.device(args.device)
     print(f"Device: {device}")
+
+    gaot_loader: Any | None = None
+    if args.show_cse_overlay:
+        default_cfd_cfg = _load_wp4_default_cfd_config()
+        gaot_model_id = args.gaot_model_id if args.gaot_model_id is not None else default_cfd_cfg.get("model_id")
+        if gaot_model_id is None:
+            warnings.warn(
+                "[latent_rollout] GAOT model_id missing; CSE overlay will show solar only.",
+                UserWarning,
+                stacklevel=2,
+            )
+        else:
+            gaot_cfd_cfg = {
+                "version": int(args.gaot_version),
+                "model_id": gaot_model_id,
+                "v_inf": float(args.gaot_v_inf),
+                "rho": float(args.gaot_rho),
+                "mesh_resolution": int(args.gaot_mesh_resolution),
+                "gradient_max": float(args.gaot_gradient_max),
+                "mesh_resolution_tolerance": float(default_cfd_cfg.get("mesh_resolution_tolerance", 0.1)),
+                "visualisations": False,
+                "pressure_backprop_mode": "full",
+                "pressure_integration_mode": "face",
+                "cp_smoothing": {"enabled": False},
+            }
+            gaot_loader = _init_gaot_drag_estimator(
+                gaot_version=int(args.gaot_version),
+                cfd_config=gaot_cfd_cfg,
+                device=device,
+            )
 
     active_mode = "epoch_gif" if args.epoch_gif else args.mode
     base_epoch_num = _parse_epoch_from_stem(args.checkpoint.stem)
@@ -1955,6 +2305,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         cone_face_mask: Tensor | None = None
         solar_selection_mesh: trimesh.Trimesh | None = None
         windshield_mesh: trimesh.Trimesh | None = None
+        cse_overlay_lines: list[str] = []
         mesh_for_render = mesh
         mask_mesh = mesh
         if args.show_windshield or args.show_solar_selection:
@@ -2001,6 +2352,46 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                     solar_selection_mesh_raw,
                     int(args.solar_overlay_smooth_iters),
                 )
+
+        if args.show_cse_overlay:
+            drag_n: float | None = None
+            if gaot_loader is not None:
+                drag_n = _estimate_drag_newtons(
+                    gaot_loader=gaot_loader,
+                    gaot_version=int(args.gaot_version),
+                    sdf_model=model,
+                    mesh=mesh,
+                    frame_step=i,
+                )
+
+            solar_w, _solar_diag = _estimate_solar_power_watts(
+                mesh=mask_mesh,
+                device=device,
+                sun_dir_xyz=(float(args.solar_sun_dir[0]), float(args.solar_sun_dir[1]), float(args.solar_sun_dir[2])),
+                area_budget_mm2=float(args.solar_area_budget_mm2),
+                effective_irradiance_w_m2=float(args.solar_effective_irradiance_w_m2),
+                cone_face_mask=cone_face_mask,
+            )
+
+            cse_ms: float | None = None
+            if drag_n is not None and solar_w is not None:
+                cse_ms = _compute_cse_speed_ms(
+                    drag_force_newton=drag_n,
+                    solar_power_watts=solar_w,
+                    mass_kg=float(args.cse_mass_kg),
+                    constant_losses_w=float(args.cse_constant_losses_w),
+                    rolling_friction_coefficient=float(args.cse_rolling_friction_coefficient),
+                )
+
+            cse_overlay_lines.append(f"GAOT v{int(args.gaot_version)} drag: {drag_n:.1f} N" if drag_n is not None else "GAOT drag: n/a")
+            cse_overlay_lines.append(f"Solar est.: {solar_w:.1f} W" if solar_w is not None else "Solar est.: n/a")
+            if cse_ms is not None:
+                cse_line = f"CSE: {cse_ms:.2f} m/s"
+                if bool(args.show_cse_kmh):
+                    cse_line = f"{cse_line} ({cse_ms * 3.6:.1f} km/h)"
+                cse_overlay_lines.append(cse_line)
+            else:
+                cse_overlay_lines.append("CSE: n/a")
 
         if locked_camera_position is None:
             locked_camera_position, locked_camera_focal_point, locked_camera_view_up = compute_camera_pose(
@@ -2092,6 +2483,15 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 epoch_num=frame_epoch_num,
             )
             composite = np.concatenate([rgb, panel], axis=1) 
+
+        if args.show_cse_overlay and cse_overlay_lines:
+            composite = draw_metrics_box_on_frame(
+                composite,
+                cse_overlay_lines,
+                text_color=cse_text_rgb,
+                box_color=cse_box_rgb,
+                box_alpha=float(args.cse_box_alpha),
+            )
 
         frames.append(composite)
         last_valid_rgb = rgb

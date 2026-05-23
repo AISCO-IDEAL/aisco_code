@@ -47,6 +47,21 @@ solar_binary_postprocess_iters: 2
 solar_contour_postprocess_iters: 4
 solar_contour_hole_fill_iters: 2
 solar_overlay_smooth_iters: 10
+show_cse_overlay: false
+show_cse_kmh: false
+gaot_version: 3
+gaot_model_id: 65531686
+gaot_v_inf: 25.0
+gaot_rho: 1.225
+gaot_mesh_resolution: 50000
+gaot_gradient_max: 0.001
+solar_effective_irradiance_w_m2: 250.0
+cse_mass_kg: 210.0
+cse_constant_losses_w: 20.0
+cse_rolling_friction_coefficient: 0.006
+cse_text_color: "#EAF2F8"
+cse_box_color: "#17202A"
+cse_box_alpha: 0.72
 # Clean-edge preset (no post-smoothing)
 mask_refine_subdivisions: 2
 solar_mask_refine_subdivisions: 0
