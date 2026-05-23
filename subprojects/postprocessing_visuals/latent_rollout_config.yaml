@@ -62,6 +62,7 @@ solar_overlay_smooth_iters: 10
 
 show_cse_overlay: false
 show_cse_kmh: false
+show_cse_tacho: true
 cse_text_color: "#EAF2F8"
 cse_box_color: "#17202A"
 cse_box_alpha: 0.72

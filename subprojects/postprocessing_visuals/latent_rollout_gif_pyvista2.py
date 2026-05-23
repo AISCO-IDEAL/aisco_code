@@ -1623,6 +1623,9 @@ def draw_metrics_box_on_frame(
     box_alpha: float = 0.72,
     anchor_x: int = 12,
     anchor_y: int = 12,
+    cse_speed_ms: float | None = None,
+    show_tacho: bool = False,
+    tacho_bg_color: tuple[int, int, int] = (35, 40, 62),
 ) -> np.ndarray:
     """Draw a compact top-left metrics box on an RGB frame."""
     if not lines:
@@ -1636,6 +1639,9 @@ def draw_metrics_box_on_frame(
     line_gap = max(2, int(4 * scale))
     pad_x = max(6, int(8 * scale))
     pad_y = max(4, int(6 * scale))
+    tacho_radius = max(20, int(42 * scale))
+    tacho_extra_h = (2 * tacho_radius + max(4, int(6 * scale))) if show_tacho else 0
+    tacho_kmh_max = 120.0
 
     max_w = 0
     total_h = 0
@@ -1648,7 +1654,7 @@ def draw_metrics_box_on_frame(
     x0 = int(anchor_x)
     y0 = int(anchor_y)
     x1 = x0 + max_w + 2 * pad_x
-    y1 = y0 + total_h + 2 * pad_y
+    y1 = y0 + total_h + 2 * pad_y + tacho_extra_h
     a = int(max(0.0, min(1.0, box_alpha)) * 255)
     draw.rectangle([(x0, y0), (x1, y1)], fill=(box_color[0], box_color[1], box_color[2], a))
 
@@ -1657,6 +1663,41 @@ def draw_metrics_box_on_frame(
         draw.text((x0 + pad_x, y), line, fill=text_color, font=font)
         l, t, r, b = draw.textbbox((0, 0), line, font=font)
         y += (b - t) + line_gap
+
+    if show_tacho:
+        cx = x0 + (x1 - x0) // 2
+        cy = y + tacho_radius + max(2, int(2 * scale))
+        dial_box = [(cx - tacho_radius, cy - tacho_radius), (cx + tacho_radius, cy + tacho_radius)]
+        draw.pieslice(dial_box, start=180, end=360, fill=tacho_bg_color)
+        draw.arc(dial_box, start=180, end=360, fill=text_color, width=max(1, int(2 * scale)))
+
+        tick_col = tuple(int(0.75 * c) for c in text_color)
+        for frac in (0.0, 0.25, 0.5, 0.75, 1.0):
+            angle = math.pi * (1.0 - frac)
+            x_in = cx + int((tacho_radius - max(5, int(6 * scale))) * math.cos(angle))
+            y_in = cy - int((tacho_radius - max(5, int(6 * scale))) * math.sin(angle))
+            x_out = cx + int(tacho_radius * math.cos(angle))
+            y_out = cy - int(tacho_radius * math.sin(angle))
+            draw.line([(x_in, y_in), (x_out, y_out)], fill=tick_col, width=max(1, int(1 * scale)))
+
+        if cse_speed_ms is not None and np.isfinite(cse_speed_ms):
+            kmh = max(0.0, float(cse_speed_ms) * 3.6)
+            frac = max(0.0, min(1.0, kmh / tacho_kmh_max))
+            angle = math.pi * (1.0 - frac)
+            nx = cx + int((tacho_radius - max(6, int(8 * scale))) * math.cos(angle))
+            ny = cy - int((tacho_radius - max(6, int(8 * scale))) * math.sin(angle))
+            needle_col = (235, 76, 66)
+            draw.line([(cx, cy), (nx, ny)], fill=needle_col, width=max(1, int(2 * scale)))
+            hub_r = max(2, int(3 * scale))
+            draw.ellipse([(cx - hub_r, cy - hub_r), (cx + hub_r, cy + hub_r)], fill=needle_col)
+            speed_txt = f"{kmh:.1f} km/h"
+        else:
+            speed_txt = "n/a"
+
+        font_tacho = _get_font(max(9, int(11 * scale)))
+        txt_box = draw.textbbox((0, 0), speed_txt, font=font_tacho)
+        txt_w = txt_box[2] - txt_box[0]
+        draw.text((cx - txt_w // 2, cy + max(4, int(6 * scale))), speed_txt, fill=text_color, font=font_tacho)
 
     return np.asarray(img)
 
@@ -2125,6 +2166,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         action=argparse.BooleanOptionalAction,
         default=bool(_c("show_cse_kmh", False)),
         help="Also show CSE converted to km/h in the overlay",
+    )
+    parser.add_argument(
+        "--show-cse-tacho",
+        dest="show_cse_tacho",
+        action=argparse.BooleanOptionalAction,
+        default=bool(_c("show_cse_tacho", False)),
+        help="Show an optional CSE speed tachometer in the overlay",
     )
     parser.add_argument(
         "--gaot_version",
@@ -2612,6 +2660,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
 
         if args.show_cse_overlay:
             drag_n: float | None = None
+            cse_ms: float | None = None
             if gaot_loader is not None:
                 drag_n = _estimate_drag_newtons(
                     gaot_loader=gaot_loader,
@@ -2630,7 +2679,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 cone_face_mask=cone_face_mask,
             )
 
-            cse_ms: float | None = None
             if drag_n is not None and solar_w is not None:
                 cse_ms = _compute_cse_speed_ms(
                     drag_force_newton=drag_n,
@@ -2640,7 +2688,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                     rolling_friction_coefficient=float(args.cse_rolling_friction_coefficient),
                 )
 
-            cse_overlay_lines.append(f"GAOT v{int(args.gaot_version)} drag: {drag_n:.1f} N" if drag_n is not None else "GAOT drag: n/a")
+            cse_overlay_lines.append(f"Drag: {drag_n:.1f} N" if drag_n is not None else "Drag: n/a")
             cse_overlay_lines.append(f"Solar est.: {solar_w:.1f} W" if solar_w is not None else "Solar est.: n/a")
             if cse_ms is not None:
                 cse_line = f"CSE: {cse_ms:.2f} m/s"
@@ -2748,6 +2796,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 text_color=cse_text_rgb,
                 box_color=cse_box_rgb,
                 box_alpha=float(args.cse_box_alpha),
+                cse_speed_ms=cse_ms,
+                show_tacho=bool(args.show_cse_tacho),
+                tacho_bg_color=panel_colors["bg"],
             )
 
         frames.append(composite)
