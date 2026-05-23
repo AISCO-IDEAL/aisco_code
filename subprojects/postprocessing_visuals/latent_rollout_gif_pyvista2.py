@@ -40,6 +40,7 @@ from typing import Any
 os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
 
 import argparse
+import csv
 
 import imageio
 import numpy as np
@@ -2113,6 +2114,18 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     parser.add_argument("--checkpoint", type=Path, default=_c("checkpoint"), help="Path to pretrained_latent_*.pth")
     parser.add_argument("--out", type=Path, default=_c("out"), help="Full output GIF path (overrides output_dir + auto-name)")
     parser.add_argument(
+        "--cse-samples-out",
+        type=Path,
+        default=_c("cse_samples_out"),
+        help="Optional CSV output path for per-frame CSE samples (default: next to --out)",
+    )
+    parser.add_argument(
+        "--final-png-out",
+        type=Path,
+        default=_c("final_png_out"),
+        help="Optional PNG output path for final aeroshell still (default: next to --out)",
+    )
+    parser.add_argument(
         "--output_dir",
         type=Path,
         default=_c("output_dir", "/cluster/work/fuge/AISCO/wp9/pyvista_gif"),
@@ -2122,6 +2135,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     parser.add_argument("--resolution", type=int, default=_c("resolution", 40), help="Marching-cubes grid resolution per axis")
     parser.add_argument("--radius", type=float, default=_c("radius"), help="Traversal radius (default: infer from checkpoint)")
     parser.add_argument("--fps", type=int, default=_c("fps", 24), help="GIF playback speed")
+    parser.add_argument(
+        "--final_hold_seconds",
+        type=float,
+        default=float(_c("final_hold_seconds", 5.0)),
+        help="Extra hold duration at the end of the animation [s] by repeating the final frame",
+    )
     parser.add_argument("--device", default=_dev_default, help="Compute device: cuda | cpu | auto")
     parser.add_argument("--width", type=int, default=_c("width", 4096), help="3D render width in px")
     parser.add_argument("--height", type=int, default=_c("height", 2160), help="3D render height in px")
@@ -2247,6 +2266,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         help="Show GAOT drag, solar estimate, and CSE speed in a top-left overlay",
     )
     parser.add_argument(
+        "--save-cse-samples",
+        dest="save_cse_samples",
+        action=argparse.BooleanOptionalAction,
+        default=bool(_c("save_cse_samples", True)),
+        help="Save drag/solar/CSE values for each explored latent point to CSV",
+    )
+    parser.add_argument(
         "--show-cse-kmh",
         dest="show_cse_kmh",
         action=argparse.BooleanOptionalAction,
@@ -2259,6 +2285,27 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         action=argparse.BooleanOptionalAction,
         default=bool(_c("show_cse_tacho", False)),
         help="Show an optional CSE speed tachometer in the overlay",
+    )
+    parser.add_argument(
+        "--export-final-png",
+        dest="export_final_png",
+        action=argparse.BooleanOptionalAction,
+        default=bool(_c("export_final_png", True)),
+        help="Export the final rendered aeroshell frame as a standalone PNG",
+    )
+    parser.add_argument(
+        "--final-png-include-composite",
+        dest="final_png_include_composite",
+        action=argparse.BooleanOptionalAction,
+        default=bool(_c("final_png_include_composite", False)),
+        help="When exporting final PNG, include full composite (panel + overlays) instead of aeroshell-only render",
+    )
+    parser.add_argument(
+        "--final-frame-use-best-cse",
+        dest="final_frame_use_best_cse",
+        action=argparse.BooleanOptionalAction,
+        default=bool(_c("final_frame_use_best_cse", True)),
+        help="Use the highest-CSE frame (instead of the last frame) for final hold and final PNG export",
     )
     parser.add_argument(
         "--gaot_version",
@@ -2451,6 +2498,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         args.out = Path(args.output_dir) / f"latent_rollout_{stem}_{ts}.gif"
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
 
+    if args.cse_samples_out is None:
+        args.cse_samples_out = args.out.with_name(f"{args.out.stem}_cse_samples.csv")
+    if args.final_png_out is None:
+        args.final_png_out = args.out.with_name(f"{args.out.stem}_final_aeroshell.png")
+    Path(args.cse_samples_out).parent.mkdir(parents=True, exist_ok=True)
+    Path(args.final_png_out).parent.mkdir(parents=True, exist_ok=True)
+
     # Parse render colors
     mesh_color_rgba = _parse_color_rgba_float(args.mesh_color)
     render_bg_rgba = _parse_color_rgba_float(args.render_bg)
@@ -2611,7 +2665,14 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         global_bounds[4] -= padding; global_bounds[5] += padding
 
     frames: list[Any] = []
+    cse_samples: list[dict[str, Any]] = []
     last_valid_rgb: np.ndarray | None = None
+    last_aeroshell_rgb: np.ndarray | None = None
+    last_composite_frame: np.ndarray | None = None
+    best_cse_ms: float | None = None
+    best_cse_frame_idx: int | None = None
+    best_cse_aeroshell_rgb: np.ndarray | None = None
+    best_cse_composite_frame: np.ndarray | None = None
     last_valid_epoch_base: np.ndarray | None = None
     locked_camera_position: np.ndarray | None = None
     locked_camera_focal_point: np.ndarray | None = None
@@ -2666,6 +2727,22 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         mesh = extract_mesh(model, extractor, z0, z1, z_dim, device)
         if mesh is None or len(mesh.vertices) == 0:
             print("  → SKIP (no mesh)")
+            if bool(args.save_cse_samples):
+                cse_samples.append(
+                    {
+                        "frame_index": i,
+                        "frame_number": i + 1,
+                        "epoch": frame_epoch_num,
+                        "checkpoint": frame_ckpt.name if frame_ckpt is not None else "",
+                        "z0": float(z0),
+                        "z1": float(z1),
+                        "mesh_valid": 0,
+                        "drag_n": np.nan,
+                        "solar_w": np.nan,
+                        "cse_ms": np.nan,
+                        "cse_kmh": np.nan,
+                    }
+                )
             if last_valid_rgb is not None:
                 if active_mode == "epoch_gif":
                     if last_valid_epoch_base is not None:
@@ -2702,6 +2779,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         solar_selection_mesh: trimesh.Trimesh | None = None
         windshield_mesh: trimesh.Trimesh | None = None
         cse_overlay_lines: list[str] = []
+        drag_n: float | None = None
+        solar_w: float | None = None
+        cse_ms: float | None = None
         mesh_for_render = mesh
         mask_mesh = mesh
         pressure_field_cp_t: Tensor | None = None
@@ -2763,9 +2843,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                     int(args.solar_overlay_smooth_iters),
                 )
 
-        if args.show_cse_overlay:
-            drag_n: float | None = None
-            cse_ms: float | None = None
+        need_best_cse_frame = (
+            bool(args.final_frame_use_best_cse)
+            and (float(args.final_hold_seconds) > 0.0 or bool(args.export_final_png))
+        )
+        need_cse_metrics = bool(args.show_cse_overlay) or bool(args.save_cse_samples) or need_best_cse_frame
+        if need_cse_metrics:
             if gaot_loader is not None:
                 drag_n = _estimate_drag_newtons(
                     gaot_loader=gaot_loader,
@@ -2794,6 +2877,24 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                     rolling_friction_coefficient=float(args.cse_rolling_friction_coefficient),
                 )
 
+        if bool(args.save_cse_samples):
+            cse_samples.append(
+                {
+                    "frame_index": i,
+                    "frame_number": i + 1,
+                    "epoch": frame_epoch_num,
+                    "checkpoint": frame_ckpt.name if frame_ckpt is not None else "",
+                    "z0": float(z0),
+                    "z1": float(z1),
+                    "mesh_valid": 1,
+                    "drag_n": float(drag_n) if drag_n is not None else np.nan,
+                    "solar_w": float(solar_w) if solar_w is not None else np.nan,
+                    "cse_ms": float(cse_ms) if cse_ms is not None else np.nan,
+                    "cse_kmh": (float(cse_ms) * 3.6) if cse_ms is not None else np.nan,
+                }
+            )
+
+        if args.show_cse_overlay:
             cse_overlay_lines.append(f"Drag: {drag_n:.1f} N" if drag_n is not None else "Drag: n/a")
             cse_overlay_lines.append(f"Solar est.: {solar_w:.1f} W" if solar_w is not None else "Solar est.: n/a")
             if cse_ms is not None:
@@ -2913,10 +3014,85 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
 
         frames.append(composite)
         last_valid_rgb = rgb
+        last_aeroshell_rgb = rgb
+        last_composite_frame = composite
+        if cse_ms is not None and np.isfinite(cse_ms):
+            cse_val = float(cse_ms)
+            if best_cse_ms is None or cse_val > best_cse_ms:
+                best_cse_ms = cse_val
+                best_cse_frame_idx = i
+                best_cse_aeroshell_rgb = rgb
+                best_cse_composite_frame = composite
         print(f"  → {len(mesh.vertices):,} verts")
 
     if not frames:
         sys.exit("ERROR: no valid frames were rendered — check model and checkpoint")
+
+    if bool(args.save_cse_samples):
+        cse_out = Path(args.cse_samples_out)
+        cse_fieldnames = [
+            "frame_index",
+            "frame_number",
+            "epoch",
+            "checkpoint",
+            "z0",
+            "z1",
+            "mesh_valid",
+            "drag_n",
+            "solar_w",
+            "cse_ms",
+            "cse_kmh",
+        ]
+        with open(cse_out, "w", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(fh, fieldnames=cse_fieldnames)
+            writer.writeheader()
+            writer.writerows(cse_samples)
+        print(f"Saved CSE samples: {cse_out}")
+
+    hold_source_label = "last"
+    hold_source_frame = frames[-1]
+    png_source_aeroshell = last_aeroshell_rgb
+    png_source_composite = last_composite_frame
+    if bool(args.final_frame_use_best_cse) and best_cse_aeroshell_rgb is not None and best_cse_composite_frame is not None:
+        hold_source_label = f"best CSE (frame {int(best_cse_frame_idx) + 1}, {float(best_cse_ms):.2f} m/s)"
+        hold_source_frame = best_cse_composite_frame
+        png_source_aeroshell = best_cse_aeroshell_rgb
+        png_source_composite = best_cse_composite_frame
+    elif bool(args.final_frame_use_best_cse):
+        warnings.warn(
+            "[latent_rollout] highest-CSE frame requested but unavailable; falling back to last frame.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    hold_frames = max(0, int(round(float(args.final_hold_seconds) * max(int(args.fps), 1))))
+    if hold_frames > 0:
+        frames.extend([hold_source_frame] * hold_frames)
+        print(
+            f"Appended final hold: {hold_frames} frame(s) ({float(args.final_hold_seconds):.2f}s) from {hold_source_label}"
+        )
+
+    if bool(args.export_final_png):
+        png_out = Path(args.final_png_out)
+        if bool(args.final_png_include_composite):
+            if png_source_composite is not None:
+                imageio.imwrite(png_out, png_source_composite)
+                print(f"Saved final composite PNG ({hold_source_label}): {png_out}")
+            else:
+                warnings.warn(
+                    "[latent_rollout] final composite frame missing; skipping PNG export.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+        elif png_source_aeroshell is not None:
+            imageio.imwrite(png_out, png_source_aeroshell)
+            print(f"Saved final aeroshell PNG ({hold_source_label}): {png_out}")
+        else:
+            warnings.warn(
+                "[latent_rollout] final aeroshell frame missing; skipping PNG export.",
+                UserWarning,
+                stacklevel=2,
+            )
 
     out_path = Path(args.out)
     print(f"\nWriting {len(frames)} frames \u2192 {out_path}  (fps={args.fps})")
