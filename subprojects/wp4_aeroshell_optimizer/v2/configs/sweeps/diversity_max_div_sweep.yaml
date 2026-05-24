@@ -1,0 +1,63 @@
+# ============================================================================
+# Sweep: leinster_temp (diversity-temperature eye-check sweep).
+#
+# Purpose:
+#   Find the leinster_temp that puts D in the informative middle of [1, N]
+#   instead of pinning at the ceiling (saturation, gradient dies) or the floor
+#   (nothing registers as diverse). Eye-check the resulting latent organisation
+#   across temperatures.
+#
+# Setup (fixed across runs):
+#   * population_size = 20 (via pretrain_population_size: false + population_size: 20)
+#   * max_div = -10 → δ_min = 10, comfortably below the N=20 ceiling so the
+#     constraint is reachable across all temps; differences come from how
+#     informative the Leinster signal is, not from whether the target is hit.
+#
+# Method:
+#   Grid, not Bayes — the verdict is the eye-check on latent rollouts, not a
+#   scalar metric. The metric below is W&B telemetry only.
+#
+# Range:
+#   Logarithmic ~50× span from current saturating value upward. exp(-d/T)
+#   needs to be in roughly [0.1, 0.5] for typical pairwise field distances to
+#   give a non-degenerate D. If d_typical ≈ 300-500 mm, the sweet spot is
+#   T ∈ [300, 1500] — sweep covers above and below to bracket it.
+#
+# Epoch budget:
+#   Same as the max_div sweep: ~10.6 s/epoch, 1500 epochs ≈ 4.4 h/run.
+#
+# Wall-clock for 6 runs:
+#   1 GPU sequential ≈ 26 h
+#   2 GPUs ≈ 13 h
+#   3 GPUs ≈ 9 h
+# ============================================================================
+
+program: subprojects/wp4_aeroshell_optimizer/v2/src/main_files/main_v2.py
+entity: aisco
+project: diversity-leinster-temp-sweep
+
+method: grid
+
+metric:
+  goal: minimize
+  name: raw_losses/bb_inner_v1
+
+parameters:
+  # Fixed run length for apples-to-apples comparison.
+  training_config.training_params.num_epochs:
+    value: 1500
+
+  # Force N=20 via the wired pretrain_population_size flag.
+  training_config.pretrain_population_size:
+    value: false
+  training_config.population_size:
+    value: 20
+
+  # Reachable target below the N=20 ceiling — isolates the temp effect.
+  losses_v0_config.field_diversity_surface_v0_config.max_div:
+    value: -3
+
+  # Sole axis — broad log-spaced range around the suspected sweet spot.
+  # 100 reproduces the current saturating regime as the bottom baseline.
+  training_config.diversity_leinster_temp:
+    values: [100,250, 500, 1000, 2000]

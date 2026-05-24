@@ -2,9 +2,9 @@
 # Training hyper-parameters (from training_v0_config.yaml)
 # ===========================================================================
 training_params:
-  learning_rate: 0.00001  # 0.000008 for WIREV5, 0.0005 for WIREV2 and ConcatWireV2, 0.0001 for basic MLP, 0.0005 for AISCOModel_v0
+  learning_rate: 0.000005  # 0.00001 for WIREV5, 0.0005 for WIREV2 and ConcatWireV2, 0.0001 for basic MLP, 0.0005 for AISCOModel_v0
   optimizer: "adam_fast"  # key from optimizers.json — adam | adamw | sgd_momentum | lbfgs
-  num_epochs: 8000 # basic_MLP_v1.py: training_config["training_params"].get("num_epochs", 1000)
+  num_epochs: 3000 # basic_MLP_v1.py: training_config["training_params"].get("num_epochs", 1000)
   mesh_save_interval: 20  # basic_MLP_v1.py: training_config["training_params"].get("mesh_save_interval", 50)
   marching_cubes_usage: "True"  # storage_utils.py: general_config["general_info"].get("marching_cubes_usage", "False") (if True, uses marching cubes with threads for mesh extraction, if False uses kaolin-based mesh extraction without threads, which is more stable but slower)
   gradient_conflict_cadence: 0  # Gradient conflict tracking cadence (0 = disabled, N = every N epochs). Stores per-component gradient vectors and cosine similarities to disk.
@@ -65,16 +65,19 @@ gradient_clip_norm: 100
 # GINN / Diversity parameters (merged from GINN.yaml)
 # ===========================================================================
 
-pretrain_population_size: false # optimisation loop uses same population size as pretraining
-population_size: 12 # used only when pretrain_population_size: false
+# pretrain_population_size: true  → optimisation loop uses N = Z_pretrained.shape[0] (full checkpoint)
+# pretrain_population_size: false → optimisation loop uses N = `population_size`; initial Z is the
+#                                    first `population_size` rows of Z_pretrained (simple slice).
+#                                    Errors if `population_size` > checkpoint size.
+pretrain_population_size: false
+population_size: 20
 
-# Initial Z placement when pretrain_population_size: false.
-#   z_init_mode: circle        → slots placed at evenly-spaced angles on the
-#                                 pretraining z-circle (same radius)
-#   z_init_mode: wider_circle  → slots randomly sampled within a circle of radius
-#                                 r_init_scale * r_pretraining (wider than training)
-z_init_mode: circle           # circle | wider_circle; used only when pretrain_population_size: false
-r_init_scale: 1.0             # radius multiplier for wider_circle mode
+# DEAD CONFIG — NOT WIRED. The original intent was to generate fresh Z codes when
+# pretrain_population_size=false (circle: evenly spaced on the pretraining radius;
+# wider_circle: random disk of radius r_init_scale * r_pretraining). The wire-up
+# was deferred — current behaviour is the simple slice described above.
+z_init_mode: circle           # NOT READ
+r_init_scale: 1.0             # NOT READ
 
 # ===========================================================================
 # Diversity loss sampling config
@@ -98,14 +101,6 @@ diversity_neighbor_agg_fn: "leinster"
 # calibrate from the D curve: D shooting to N = too small, D stuck near 1 = too large.
 diversity_leinster_temp: 100     # only used when agg_fn=leinster
 diversity_leinster_q: 2          # diversity order q; q=2 = inverse-Simpson effective shape count
-
-# Gradient-ratio balancer. A fixed diversity weight cannot keep pace with the ALM
-# constraints, whose gradients ramp over training. When this is > 0, the diversity
-# gradient is rescaled each epoch so its norm is this fraction of the Phase-1
-# (constraint) gradient norm — diversity then tracks the constraints automatically.
-#   0    → disabled: the fixed `weight` in losses_v0_config.yaml controls magnitude.
-#   >0   → balancer on: the fixed weight no longer sets magnitude, this ratio does.
-diversity_grad_ratio: 0.3
 
 # ===========================================================================
 # Latent population behaviour

@@ -155,8 +155,9 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
 
   smoothness:
     _role: aux
-    null_loss_smoothness: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    null_loss_smoothness: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     smoothness_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/smoothness_loss/smoothness_v0.py"]
+    curvature_v1: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/smoothness_loss/curvature_v1.py"]  # GINN-style strain energy on extracted surface points; weight is post-normalisation relative multiplier
 
 
   connectedness:
@@ -187,7 +188,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
   surface_area:
     _role: aux
     null_loss_surface_area: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
-    surface_loss_v0: [0, 5.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/surface_area_loss/surface_loss_v0.py"]
+    surface_loss_v0: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/surface_area_loss/surface_loss_v0.py"]
 
   solar:
     _role: objective
@@ -256,16 +257,30 @@ field_diversity_surface_v0_config:
   mc_bbox_scale: 1.0            # outer-prism bbox multiplier for the extractor
   # Diversity saturation threshold. D ≤ max_div is the ALM inequality; c_div = max(0, D - max_div).
   # Re-measure D on a Leinster run before tuning — GINN uses -0.1, our scale is larger (~-15 to -25).
-  max_div: -15.0
+  max_div: -7
   warmup_epochs: 0       # constraints-only warmup before diversity engages (tune; GINN start_div=500)
   # ALM dual-variable params for the diversity constraint (mirrors general_info ALM params)
   initial_lambda: 1.0
   initial_mu: 1.0
   initial_nu: 1.0
-  alpha: 0.8
-  gamma: 0.2
+  alpha: 0.9  # EMA decay factor for ν update
+  gamma: 0.01  # parameter for ALM penalty update
   gamma_aggressive: 1.1
-  alm_formula: "linear_augmented"  # quadratic_augmented | linear_augmented
+  alm_formula: "quadratic_augmented"  # quadratic_augmented | linear_augmented
+
+curvature_v1_config:
+  # Surface extraction (same machinery as field_diversity_surface_v0). Re-extracted on every
+  # _loss call — no cache, since the loss is invoked once per latent and caching across
+  # latents would silently mis-attribute surfaces.
+  surface_subsample_n: 4096      # max retained vertices per shape after MC extraction
+  mc_resolution: 50              # marching-cubes grid resolution
+  mc_bbox_scale: 1.0             # outer-prism bbox multiplier for the extractor
+  # Strain expression is (2H)^2 - 2K from GINN's compute_strain_curvatures; clip handles
+  # the rare high-curvature outliers from autograd Hessian noise at sharp edges.
+  strain_curvature_clip_max: 50.0
+  # Baseline subtraction: loss = max(0, mean(strain) - max_curv). 0 = penalise any curvature
+  # above floor; positive values allow shapes to carry some baseline curvature for free.
+  max_curv: 0.0
 
 field_diversity_hybrid_v0_config:
   w_vol: 0.1                 # weight on the masked-volumetric sub-loss
@@ -274,7 +289,7 @@ field_diversity_hybrid_v0_config:
   warmup_epochs: 0
 
 connectedness_config:
-  eval_period: 3  # evaluate PH loss every N epochs (expensive persistent homology computation)
+  eval_period: 7  # evaluate PH loss every N epochs (expensive persistent homology computation)
   return_cached_on_skip: "True"  # if True, reuse last computed scalar on skipped epochs
   grid_dim: 3
   grid_resolution: 64
@@ -402,7 +417,7 @@ developability_config:
   post_opt_output_dir: "postprocessed_meshes"  # Relative to storage_dir from general_config
 
 surface_area_config:
-  min_area_m2: 8   # loss is ~0 below this; penalizes area above (set to 0.0 to always penalize)
+  min_area_m2: 15   # loss is ~0 below this; penalizes area above (set to 0.0 to always penalize)
   softplus_k: 1.0     # sharpness of the softplus; ~1/k is the transition width in m²
 
 wheel_loss_config:
