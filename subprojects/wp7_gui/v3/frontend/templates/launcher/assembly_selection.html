@@ -544,6 +544,8 @@ endblock %}
         const body = document.getElementById("controls");
         body.innerHTML = "";
         const wheels = orderedParts().filter(([p]) => p.startsWith("wheel_"));
+        const removeBtn = document.getElementById("btnRemoveWheel");
+        if (removeBtn) removeBtn.disabled = _assemblyFrozen || wheels.length <= 3;
         for (const [part, vals] of orderedParts()) {
             const isWheel = part.startsWith("wheel_");
             const wIdx = wheels.findIndex(([p]) => p === part);
@@ -610,7 +612,11 @@ endblock %}
         if (!params[key]) {
             return;
         }
-        params[key][axis] = parseFloat(el.value || "0");
+        let v = parseFloat(el.value || "0");
+        if (axis === "x") v = Math.max(bounds.xmin, Math.min(bounds.xmax, v));
+        if (axis === "y") v = Math.max(bounds.ymin, Math.min(bounds.ymax, v));
+        el.value = v;
+        params[key][axis] = v;
         markAssemblyEdited();
         drawPreview();
         scheduleAutosave(800);
