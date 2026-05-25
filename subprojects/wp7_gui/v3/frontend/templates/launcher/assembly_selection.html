@@ -739,36 +739,44 @@ endblock %}
         ctx.textBaseline = "alphabetic";
         ctx.fillText("X \u2192", canvasDrawSize.width - 4, zero.y - 6);
 
-        // "FRONT" label on positive X axis, rotated 90° (reads +Y → -Y in world coords)
-        const frontPos = toCanvas(bounds.xmax * 0.98, 0);
-        ctx.save();
-        ctx.translate(frontPos.x, frontPos.y);
-        ctx.rotate(Math.PI / 2);
-        ctx.globalAlpha = 0.85;
-        ctx.strokeStyle = C_CANVAS_LABEL;
-        ctx.fillStyle = C_CANVAS_LABEL;
-        ctx.lineWidth = 2;
-        // Arrow in the driving direction (+x in rotated frame = downward on screen)
-        const arrowTip = -62;
-        const shaftStart = arrowTip - 20;
-        const headHalf = 5;
-        ctx.beginPath();
-        ctx.moveTo(shaftStart, -20);
-        ctx.lineTo(arrowTip - 8, -20);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(arrowTip, -20);
-        ctx.lineTo(arrowTip - 8, -20 - headHalf);
-        ctx.lineTo(arrowTip - 8, -20 + headHalf);
-        ctx.closePath();
-        ctx.fill();
-        // FRONT text
-        ctx.font = `bold 22px ${C_CANVAS_FONT}`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("FRONT", 0, -20);
-        ctx.restore();
-        ctx.globalAlpha = 1;
+        // "FRONT" label + arrow on the positive X axis (horizontal, parallel to X)
+        {
+            const fontSize = 30;
+            const shaftLen = 26;
+            const headLen = 12;
+            const headHalf = 7;
+            const gap = 6;
+            ctx.save();
+            ctx.globalAlpha = 0.85;
+            ctx.strokeStyle = C_CANVAS_LABEL;
+            ctx.fillStyle = C_CANVAS_LABEL;
+            ctx.lineWidth = 2.5;
+            ctx.font = `bold ${fontSize}px ${C_CANVAS_FONT}`;
+            const textWidth = ctx.measureText("FRONT").width;
+            const totalWidth = shaftLen + headLen + gap + textWidth;
+            const anchorP = toCanvas(bounds.xmax * 0.97, 0);
+            const x0 = anchorP.x - totalWidth;
+            const y0 = anchorP.y;
+            // Shaft
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.lineTo(x0 + shaftLen, y0);
+            ctx.stroke();
+            // Arrowhead
+            const tipX = x0 + shaftLen + headLen;
+            ctx.beginPath();
+            ctx.moveTo(tipX, y0);
+            ctx.lineTo(tipX - headLen, y0 - headHalf);
+            ctx.lineTo(tipX - headLen, y0 + headHalf);
+            ctx.closePath();
+            ctx.fill();
+            // Text
+            ctx.textAlign = "left";
+            ctx.textBaseline = "middle";
+            ctx.fillText("FRONT", tipX + gap, y0);
+            ctx.restore();
+            ctx.globalAlpha = 1;
+        }
 
         // Y axis (blue) + label
         ctx.strokeStyle = C_CANVAS_AXIS_Y;
