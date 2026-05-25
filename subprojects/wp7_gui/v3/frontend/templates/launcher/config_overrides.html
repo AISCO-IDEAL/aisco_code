@@ -38,6 +38,73 @@
       min-width: 78px;
     }
   }
+
+  /* ---- flat section header ---- */
+  .param-section-header {
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--theme-muted);
+    padding: 10px 12px 4px;
+    margin-top: 6px;
+  }
+  .param-section-header:first-child { margin-top: 0; }
+
+  /* ---- toggle switch ---- */
+  label.toggle-switch.param-input {
+    border: none;
+    padding: 0;
+    background: transparent;
+    display: inline-flex;
+    align-items: center;
+  }
+  .toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+  }
+  .toggle-slider {
+    position: absolute;
+    inset: 0;
+    background: color-mix(in srgb, var(--theme-surface-large) 80%, var(--theme-black) 20%);
+    border-radius: 24px;
+    transition: background 0.2s;
+    border: 1px solid var(--theme-surface-large);
+  }
+  .toggle-slider::before {
+    content: "";
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    left: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--theme-muted);
+    border-radius: 50%;
+    transition: transform 0.2s, background 0.2s;
+  }
+  .toggle-switch input:checked + .toggle-slider {
+    background: color-mix(in srgb, var(--theme-accent, #4fa) 35%, var(--theme-panel) 65%);
+    border-color: color-mix(in srgb, var(--theme-accent, #4fa) 50%, var(--theme-panel) 50%);
+  }
+  .toggle-switch input:checked + .toggle-slider::before {
+    transform: translateX(20px) translateY(-50%);
+    background: var(--theme-accent, #4fa);
+  }
+  .toggle-switch input:disabled + .toggle-slider {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
 </style>
 <div class="section-grid" style="grid-template-rows: auto auto minmax(220px, 0.62fr) {% if pipeline == 'live' %}auto {% endif %}minmax(120px, 0.38fr); height: 100%;">
 
@@ -69,19 +136,23 @@
   {% endif %}
 
   <!-- Config form -->
-  <div class="card" style="overflow-y: auto; min-height: 0;">
-    <div id="formArea">
+  <div class="card" style="display:flex; flex-direction:column; min-height:0; overflow:hidden;">
+    <div id="formArea" style="flex:1; overflow-y:auto; min-height:0;">
       <div style="color: var(--theme-muted); font-style: italic; text-align: center; padding: 40px 10px;">
         {% if pipeline == 'live' %}Loading session…{% else
         %}Select a session above to view its configuration.{% endif %}
       </div>
     </div>
+    {% if pipeline == 'live' %}
+    <div style="display:flex; justify-content:flex-end; padding:8px 12px; border-top:1px solid color-mix(in srgb, var(--theme-text-box) 55%, var(--theme-white) 45%);">
+      <button class="btn" id="btnSaveChanges" disabled style="background:var(--theme-sel-red); border-color:var(--theme-sel-red); color:#fff;">Save Changes</button>
+    </div>
+    {% endif %}
   </div>
 
   {% if pipeline == 'live' %}
   <!-- Run controls -->
   <div class="dark-card toolbar" style="gap: 10px; padding-top: 10px; padding-bottom: 10px;">
-    <button class="btn secondary" id="btnSaveChanges" disabled>Save Changes</button>
     <button class="btn" id="btnRun" disabled>&#9654; Run</button>
     <button class="btn secondary" id="btnStop" disabled>&#9632; Stop</button>
     <div style="flex:1; min-width:190px;">
@@ -193,10 +264,26 @@
   function makeInput(param, current) {
     const t = param.type;
     const isAssemblyIdParam = param.path === ASSEMBLY_ID_PATH;
-    if (t === "bool" || t === "enum") {
+    if (t === "bool") {
+      const label = document.createElement("label");
+      label.className = "toggle-switch param-input";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = (current === true || String(current) === "true");
+      if (isAssemblyIdParam) {
+        cb.disabled = true;
+        label.title = "Assembly ID is controlled from the assembly-selection page.";
+      }
+      const slider = document.createElement("span");
+      slider.className = "toggle-slider";
+      label.appendChild(cb);
+      label.appendChild(slider);
+      return label;
+    }
+    if (t === "enum") {
       const sel = document.createElement("select");
       sel.className = "param-input";
-      const choices = t === "bool" ? [true, false] : (param.choices || []);
+      const choices = param.choices || [];
       choices.forEach(v => {
         const opt = document.createElement("option");
         opt.value = String(v); opt.textContent = String(v);
@@ -314,7 +401,10 @@
       try {
         if (t === "int") { value = parseInt(inp.value, 10); if (isNaN(value)) throw new Error(); }
         else if (t === "float") { value = parseFloat(inp.value); if (isNaN(value)) throw new Error(); }
-        else if (t === "bool") { value = inp.value === "true"; }
+        else if (t === "bool") {
+          const cb = inp.querySelector ? inp.querySelector("input[type='checkbox']") : null;
+          value = cb ? cb.checked : (inp.value === "true");
+        }
         else { value = inp.value; }
       } catch { inp.classList.add("invalid"); invalid = true; return; }
       if (!updates[cfg]) updates[cfg] = {};
@@ -360,8 +450,17 @@
 
   // ── M3: Apply config freeze UI state ──────────────────────────────────────────
   function applyConfigFreeze() {
-    // Disable all param inputs
-    formArea.querySelectorAll(".param-input").forEach(inp => { inp.disabled = true; });
+    // Disable all param inputs (handles both regular inputs and toggle switches)
+    formArea.querySelectorAll(".param-input").forEach(inp => {
+      if (inp.tagName === "LABEL") {
+        const cb = inp.querySelector("input");
+        if (cb) cb.disabled = true;
+        inp.style.pointerEvents = "none";
+        inp.style.opacity = "0.45";
+      } else {
+        inp.disabled = true;
+      }
+    });
     // Hide Reset and Save & Run buttons
     if (btnReload) btnReload.style.display = "none";
     const _runBtn = document.getElementById("btnRun");
