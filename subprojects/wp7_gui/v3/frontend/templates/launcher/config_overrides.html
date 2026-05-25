@@ -138,7 +138,8 @@
       </div>
     </div>
     {% if pipeline == 'live' %}
-    <div style="display:flex; justify-content:flex-end; padding:8px 12px; border-top:1px solid color-mix(in srgb, var(--theme-text-box) 55%, var(--theme-white) 45%);">
+    <div style="display:flex; justify-content:space-between; padding:8px 12px; border-top:1px solid color-mix(in srgb, var(--theme-text-box) 55%, var(--theme-white) 45%);">
+      <button class="btn secondary" id="btnReload" disabled>&#8635; Reset to defaults</button>
       <button class="btn" id="btnSaveChanges" disabled style="background:var(--theme-sel-red); border-color:var(--theme-sel-red); color:#fff;">Save Changes</button>
     </div>
     {% endif %}

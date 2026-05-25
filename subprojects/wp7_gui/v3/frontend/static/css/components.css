@@ -78,7 +78,7 @@
   display: grid;
   grid-template-columns: 1fr 200px;
   gap: 12px;
-  padding: 8px 12px;
+  padding: 14px 12px;
   align-items: center;
   border-bottom: 1px solid color-mix(in srgb, var(--theme-text-box) 55%, var(--theme-white) 45%);
 }
