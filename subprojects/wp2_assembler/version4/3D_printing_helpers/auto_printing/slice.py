@@ -52,6 +52,7 @@ def get_profiles_dir() -> Path:
         cwd=str(CACHE_DIR.parent),
         capture_output=True,
         text=True,
+        check=False,
     )
     squashfs = CACHE_DIR.parent / "squashfs-root"
     if squashfs.is_dir():
@@ -97,7 +98,7 @@ def slice_3mf(input_3mf: Path, output_dir: Path) -> int:
     print("Output dir:", output_dir)
     print()
 
-    result = subprocess.run(cmd, text=True)
+    result = subprocess.run(cmd, text=True, check=False)
     return result.returncode
 
 
