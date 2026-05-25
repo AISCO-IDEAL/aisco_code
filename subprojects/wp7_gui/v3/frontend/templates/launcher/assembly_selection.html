@@ -796,6 +796,39 @@ endblock %}
         ctx.restore();
     }
 
+    function drawFrontIndicator() {
+        const cy = 12;
+        const cx = canvasDrawSize.width / 2;
+        const shaftLen = 38;
+        const headLen = 10;
+        const headHalf = 5;
+        const x1 = cx - shaftLen / 2;
+        const x2 = cx + shaftLen / 2;
+        ctx.save();
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = C_CANVAS_AXIS_X;
+        ctx.fillStyle = C_CANVAS_AXIS_X;
+        ctx.lineWidth = 2;
+        // shaft
+        ctx.beginPath();
+        ctx.moveTo(x1, cy);
+        ctx.lineTo(x2 - headLen, cy);
+        ctx.stroke();
+        // arrowhead
+        ctx.beginPath();
+        ctx.moveTo(x2, cy);
+        ctx.lineTo(x2 - headLen, cy - headHalf);
+        ctx.lineTo(x2 - headLen, cy + headHalf);
+        ctx.closePath();
+        ctx.fill();
+        // label
+        ctx.font = `bold 10px ${C_CANVAS_FONT}`;
+        ctx.textAlign = "right";
+        ctx.textBaseline = "middle";
+        ctx.fillText("FRONT", x1 - 6, cy);
+        ctx.restore();
+    }
+
     function drawLabel(text, x, y) {
         ctx.font = `12px ${C_CANVAS_FONT}`;
         ctx.textAlign = "center";
@@ -872,6 +905,7 @@ endblock %}
         syncCanvasResolution();
         ctx.clearRect(0, 0, canvasDrawSize.width, canvasDrawSize.height);
         drawGrid();
+        drawFrontIndicator();
         drawWheelPolygon();
         for (const [part, vals] of orderedParts()) {
             if (part === "seat") {
