@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from subprojects.wp7_gui.v3.core.settings import SETTINGS
 from subprojects.wp7_gui.v3.shared.artifact_index import list_artifacts
+from subprojects.wp7_gui.v3.shared.csv_metrics import CSVMetricsWriter
 from subprojects.wp7_gui.v3.shared.latent_explorer import (
     PRETRAINED_ROOT,
     extract_mesh_glb,
@@ -25,13 +26,12 @@ from subprojects.wp7_gui.v3.shared.latent_explorer import (
     resolve_pretrained_path,
 )
 from subprojects.wp7_gui.v3.shared.panel_visibility import load_panel_visibility_defaults
-from subprojects.wp7_gui.v3.shared.pretraining import PretrainingService
 from subprojects.wp7_gui.v3.shared.run_paths import default_storage_root, get_storage_root_for_session, list_all_runs
 from subprojects.wp7_gui.v3.shared.theme import build_template_theme_context, get_mesh_assembly_config, load_vis_config
 
 router = APIRouter(prefix="/viewer", tags=["viewer"])
 _templates = Jinja2Templates(directory=str(SETTINGS.templates_dir))
-_pretraining = PretrainingService(SETTINGS.pretraining_storage_root)
+_csv_metrics = CSVMetricsWriter(SETTINGS.logs_dir / "gui_runs_summary.csv")
 
 _OVERRIDE_PREFIX = "gui_override_"
 
@@ -65,21 +65,6 @@ def viewer_index(request: Request):
             "page_title": "Viewer — Runs",
             "panel_visibility_defaults_json": json.dumps(load_panel_visibility_defaults(SETTINGS.panel_visibility_defaults_path)),
             "mesh_priority_json": SETTINGS.mesh_priority_path.read_text(encoding="utf-8"),
-            **theme_ctx,
-        },
-    )
-
-
-@router.get("/pretraining")
-def viewer_pretraining(request: Request):
-    theme_ctx = build_template_theme_context()
-    return _templates.TemplateResponse(
-        request,
-        "viewer/pretraining.html",
-        {
-            "active_mode": "viewer",
-            "active_page": "pretraining",
-            "page_title": "Viewer — Pretraining GIFs",
             **theme_ctx,
         },
     )
@@ -127,17 +112,40 @@ def api_run_artifacts(run_id: str) -> dict[str, Any]:
     return list_artifacts(run_dir, storage_root)
 
 
-# ---------------------------------------------------------------------------
-# Pretraining API
-# ---------------------------------------------------------------------------
-@router.get("/api/pretraining/gifs")
-def api_pretraining_gifs() -> dict[str, Any]:
-    return _pretraining.list_gifs()
+@router.get("/api/runs/{run_id:path}/metrics")
+def api_run_metrics(run_id: str) -> dict[str, Any]:
+    """Return epoch metrics for a finished run (reads epoch_metrics.csv).
 
+    Returns latest values and full history arrays in the same format as the
+    launcher's /api/run/metrics/latest and /api/run/metrics/history endpoints.
 
-@router.get("/api/pretraining/gif-file")
-def api_pretraining_gif_file(path: str = "") -> FileResponse:
-    return _pretraining.get_gif_response(path)
+    Args:
+        run_id: URL-encoded relative path from storage_root.
+
+    Returns:
+        JSON with ``found``, ``run_dir``, ``latest`` (dict or null), and
+        ``history`` (dict with epoch/drag_value/solar_power_w/cruising_speed_ms arrays).
+    """
+    storage_root = default_storage_root()
+    run_dir = (storage_root / unquote(run_id)).resolve()
+    try:
+        run_dir.relative_to(storage_root.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail={"message": "run_id is outside storage root"}) from None
+    if not run_dir.is_dir():
+        raise HTTPException(status_code=404, detail={"message": "Run directory not found"})
+
+    _empty_history: dict[str, list[Any]] = {
+        "epoch": [],
+        "drag_value": [],
+        "solar_power_w": [],
+        "cruising_speed_ms": [],
+    }
+    latest = _csv_metrics.read_latest_metrics(run_dir)
+    if not latest:
+        return {"found": False, "run_dir": str(run_dir), "latest": None, "history": _empty_history}
+    history = _csv_metrics.read_metric_history(run_dir)
+    return {"found": True, "run_dir": str(run_dir), "latest": latest, "history": history}
 
 
 # ---------------------------------------------------------------------------

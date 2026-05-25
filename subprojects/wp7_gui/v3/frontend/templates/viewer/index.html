@@ -5,35 +5,216 @@
 <script type="importmap">
   {"imports": {"three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"}}
 </script>
+<style>
+    /* ── 3-column output layout ─────────────────────────────────────────────── */
+    .output-cols {
+        display: grid;
+        grid-template-columns: 2fr 1fr 2fr;
+        gap: 12px;
+        align-items: start;
+        min-width: 0;
+    }
+
+    .output-col {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-width: 0;
+    }
+
+    /* ── Metric cards (middle column) ───────────────────────────────────────── */
+    .metric-card {
+        border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent 30%);
+        border-radius: 8px;
+        padding: 12px 10px 10px;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        gap: 3px;
+        min-height: 152px;
+        text-align: left;
+        background: color-mix(in srgb, var(--theme-panel) 45%, transparent 55%);
+    }
+
+    .metric-card__name {
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        color: var(--theme-muted);
+        text-transform: uppercase;
+    }
+
+    .metric-card__value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: var(--theme-text);
+        font-family: var(--theme-font-mono, monospace);
+        line-height: 1;
+    }
+
+    .metric-card__graph {
+        width: 100%;
+        height: 62px;
+        border-radius: 6px;
+        margin-top: 6px;
+        background: color-mix(in srgb, var(--theme-panel-2) 30%, transparent 70%);
+    }
+
+    .metric-card__hint {
+        font-size: 0.64rem;
+        color: var(--theme-muted);
+        margin-top: 2px;
+    }
+
+    .metric-card[data-metric="speed"] {
+        border-color: var(--theme-metric-speed-border);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-metric-speed-border) 25%, transparent 75%);
+    }
+
+    .metric-card[data-metric="speed"] .metric-card__name,
+    .metric-card[data-metric="speed"] .metric-card__value {
+        color: var(--theme-metric-speed-text);
+    }
+
+    .metric-card[data-metric="drag"] {
+        border-color: var(--theme-metric-drag-border);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-metric-drag-border) 25%, transparent 75%);
+    }
+
+    .metric-card[data-metric="drag"] .metric-card__name,
+    .metric-card[data-metric="drag"] .metric-card__value {
+        color: var(--theme-metric-drag-text);
+    }
+
+    .metric-card[data-metric="solar"] {
+        border-color: var(--theme-metric-solar-border);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-metric-solar-border) 25%, transparent 75%);
+    }
+
+    .metric-card[data-metric="solar"] .metric-card__name,
+    .metric-card[data-metric="solar"] .metric-card__value {
+        color: var(--theme-metric-solar-text);
+    }
+
+    /* ── Run name in toolbar ────────────────────────────────────────────────── */
+    #runNameDisplay {
+        flex: 1;
+        text-align: center;
+        font-size: 0.8rem;
+        font-family: var(--theme-font-mono, monospace);
+        color: var(--theme-muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        padding: 0 8px;
+    }
+
+    /* ── Primary GLB mesh container (left panel) ───────────────────────────── */
+    #primaryGlbMeshBox {
+        width: 100%;
+        height: 420px;
+        border: 1px solid color-mix(in srgb, var(--theme-text-box) 58%, var(--theme-white) 42%);
+        border-radius: 8px;
+        background: var(--theme-mesh-bg);
+        overflow: hidden;
+        position: relative;
+    }
+
+    /* ── Priority panel mesh container (right column) ──────────────────────── */
+    .priority-mesh-box {
+        width: 100%;
+        height: 420px;
+        border: 1px solid color-mix(in srgb, var(--theme-text-box) 58%, var(--theme-white) 42%);
+        border-radius: 8px;
+        background: var(--theme-mesh-bg);
+        overflow: hidden;
+        position: relative;
+    }
+
+    /* ── Right panel source selector ────────────────────────────────────────── */
+    .right-selector {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 4px 2px 6px;
+        border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+        max-height: 130px;
+        overflow-y: auto;
+    }
+
+    .right-selector label {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 0.75rem;
+        color: var(--theme-muted);
+        cursor: pointer;
+        padding: 2px 4px;
+        border-radius: 4px;
+        transition: background 0.1s;
+    }
+
+    .right-selector label:hover {
+        background: color-mix(in srgb, var(--theme-title-2) 10%, transparent);
+    }
+
+    .right-selector label.active {
+        color: var(--theme-text);
+        font-weight: 600;
+    }
+
+    @media (max-width: 1100px) {
+        .output-cols {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .output-col:nth-child(2) {
+            grid-column: 1 / -1;
+            flex-direction: row;
+            flex-wrap: wrap;
+        }
+
+        .metric-card {
+            flex: 1;
+            min-width: 140px;
+        }
+    }
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="section-grid"
-    style="position:relative; grid-template-rows: auto auto auto; --panel-row-h: calc(50vh - 200px);">
+<div class="section-grid" style="grid-template-rows: auto auto 1fr;">
 
+    <!-- ── TOOLBAR ─────────────────────────────────────────────────────────── -->
     <div class="dark-card toolbar" style="position:relative;">
         <a id="archiveBackBtn" href="/" class="btn secondary">← Back to Home</a>
-                <button class="btn secondary" id="btnEditPanels">Edit Panels</button>
+
+        <span id="runNameDisplay">—</span>
+
+        <button class="btn secondary" id="btnEditPanels">Edit Panels</button>
+        <button class="btn" id="btnRefresh">Refresh</button>
+
+        <!-- Panel editor dropdown -->
+        <div class="dark-card" id="panelEditorCard"
+            style="display:none; position:absolute; top:calc(100% + 8px); right:0; z-index:20; width:min(420px, calc(100vw - 48px)); gap:10px; padding:10px 12px; box-shadow:0 18px 38px color-mix(in srgb, var(--theme-black) 22%, transparent);">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div style="font-size:0.82rem; color:var(--theme-warning-text); font-weight:700;">Priority Visualization
+                    Order</div>
                 <div style="flex:1;"></div>
-                <button class="btn" id="btnRefresh">Refresh</button>
-                <div class="dark-card" id="panelEditorCard"
-                    style="display:none; position:absolute; top:calc(100% + 8px); right:0; z-index:20; width:min(680px, calc(100vw - 48px)); gap:10px; min-height:0; padding:10px 12px; box-shadow:0 18px 38px color-mix(in srgb, var(--theme-black) 22%, transparent);">
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <div style="font-size:0.82rem; color:var(--theme-warning-text); font-weight:700;">Panel
-                            Visibility</div>
-                        <div style="font-size:0.75rem; color:var(--muted);">Session-only. Resets on reload.</div>
-                        <div style="flex:1;"></div>
-                        <button class="btn secondary" id="btnClosePanelEditor"
-                            style="padding:4px 10px; font-size:0.8rem;">Close</button>
-                    </div>
-                    <div id="panelEditorList"
-                        style="display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:8px;"></div>
-                    <div id="panelEmptyState" style="display:none; font-size:0.78rem; color:var(--muted);">No panels
-                        selected. Use
-                        Edit Panels to choose what to display.</div>
-                </div>
+                <button class="btn secondary" id="btnClosePanelEditor"
+                    style="padding:4px 10px; font-size:0.8rem;">Close</button>
+            </div>
+            <div style="font-size:0.74rem; color:var(--theme-muted); line-height:1.6;">
+                The right panel searches for available meshes in the priority order below.
+                Select which to display using the radio buttons on the right column.
+                Edit <code>MESH_PRIORITY</code> in the page source to change the search order.
+            </div>
+            <div id="priorityListPreview" style="display:flex; flex-direction:column; gap:3px; margin-top:4px;"></div>
+        </div>
     </div>
 
+    <!-- ── RUN SELECTOR ───────────────────────────────────────────────────── -->
     <div class="dark-card" style="display:grid; gap:8px; min-height:0; padding:10px 12px;">
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <div style="font-size:0.82rem; color:var(--theme-warning-text); font-weight:700;">Finished Runs</div>
@@ -49,19 +230,105 @@
             </select>
             <label
                 style="display:flex; align-items:center; gap:6px; font-size:0.78rem; color:var(--muted); margin-left:8px;">
-                <input type="checkbox" id="cameraSyncToggle">
-                Sync camera across mesh boxes
+                <input type="checkbox" id="cameraSyncToggle"> Sync camera
             </label>
         </div>
     </div>
 
-    <div id="meshGroupsSection" style="display:none;">
-        <div style="font-size:0.82rem; color:var(--theme-warning-text); font-weight:600; margin-bottom:6px;">Mesh
-            Outputs</div>
-        <div class="visuals-grid visuals-grid--two-col visuals-grid--four-up" id="meshGroupsGrid"></div>
+    <!-- ── MAIN 3-COLUMN CONTENT ──────────────────────────────────────────── -->
+    <div style="overflow:auto; min-height:0; padding:2px 0;">
+        <div class="output-cols">
+
+            <!-- LEFT: Primary GLB mesh -->
+            <div class="output-col">
+                <div class="visual-card" style="grid-template-rows: auto 1fr auto auto auto;">
+                    <div class="visual-title">Aeroshell Mesh (GLB)</div>
+
+                    <div id="primaryGlbMeshBox">
+                        <span id="primaryGlbPlaceholder"
+                            style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--theme-muted);font-size:0.82rem;z-index:1;text-align:center;pointer-events:none;">Select
+                            a run to view</span>
+                        <div id="primaryGlbStatus" class="mesh-status" style="display:none;"></div>
+                    </div>
+
+                    <div id="primaryGlbControls"
+                        style="display:none; padding:6px 8px; border:1px solid color-mix(in srgb, var(--theme-text-box) 65%, var(--theme-white) 35%); border-radius:6px; background:color-mix(in srgb, var(--theme-text-box) 24%, var(--theme-white) 76%); gap:6px;">
+                    </div>
+
+                    <div
+                        style="display:flex; gap:8px; align-items:center; font-size:0.78rem; color:var(--theme-muted);">
+                        <span style="white-space:nowrap;">Epoch</span>
+                        <input type="range" id="primaryGlbSlider" min="0" max="0" value="0" disabled style="flex:1;">
+                    </div>
+
+                    <div>
+                        <button id="primaryGlbPlay" class="btn secondary" style="font-size:0.78rem; padding:5px 14px;"
+                            disabled>&#9654; Play</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MIDDLE: Metric cards -->
+            <div class="output-col">
+                <div class="metric-card" data-metric="speed">
+                    <div class="metric-card__name">Speed (km/h)</div>
+                    <div class="metric-card__value" id="metricCS">&#x2014;</div>
+                    <canvas class="metric-card__graph" id="metricSpeedGraph" width="420" height="96"></canvas>
+                    <div class="metric-card__hint">Final epoch metrics from run</div>
+                </div>
+                <div class="metric-card" data-metric="drag">
+                    <div class="metric-card__name">Drag</div>
+                    <div class="metric-card__value" id="metricDrag">&#x2014;</div>
+                    <canvas class="metric-card__graph" id="metricDragGraph" width="420" height="96"></canvas>
+                    <div class="metric-card__hint">Force in Newtons (N)</div>
+                </div>
+                <div class="metric-card" data-metric="solar">
+                    <div class="metric-card__name">Solar</div>
+                    <div class="metric-card__value" id="metricSolar">&#x2014;</div>
+                    <canvas class="metric-card__graph" id="metricSolarGraph" width="420" height="96"></canvas>
+                    <div class="metric-card__hint">Output power in Watts (W)</div>
+                </div>
+            </div>
+
+            <!-- RIGHT: Single visualization with radio selection -->
+            <div class="output-col">
+                <div class="visual-card" style="grid-template-rows: auto auto 1fr auto auto auto;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <div class="visual-title">Secondary Visualization</div>
+                    </div>
+
+                    <div id="rightPanelSelector" class="right-selector">
+                        <span style="font-size:0.72rem; color:var(--theme-muted);">Select a run to view artifacts&#x2026;</span>
+                    </div>
+
+                    <div id="rightPanelMeshBox" class="priority-mesh-box">
+                        <span id="rightPanelPlaceholder"
+                            style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--theme-muted);font-size:0.82rem;z-index:1;text-align:center;pointer-events:none;">No
+                            visualization selected</span>
+                        <div id="rightPanelStatus" class="mesh-status" style="display:none;"></div>
+                    </div>
+
+                    <div id="rightPanelGlbControls"
+                        style="display:none; padding:6px 8px; border:1px solid color-mix(in srgb, var(--theme-text-box) 65%, var(--theme-white) 35%); border-radius:6px; background:color-mix(in srgb, var(--theme-text-box) 24%, var(--theme-white) 76%); gap:6px;">
+                    </div>
+
+                    <div
+                        style="display:flex; gap:8px; align-items:center; font-size:0.78rem; color:var(--theme-muted);">
+                        <span style="white-space:nowrap;">Epoch</span>
+                        <input type="range" id="rightPanelSlider" min="0" max="0" value="0" disabled style="flex:1;">
+                    </div>
+
+                    <div>
+                        <button id="rightPanelPlay" class="btn secondary" style="font-size:0.78rem; padding:5px 14px;"
+                            disabled>&#9654; Play</button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
     </div>
 
-    <div id="statusLabel" hidden>Loading runs...</div>
+    <div id="statusLabel" hidden>Loading runs&#x2026;</div>
 
 </div>
 
@@ -69,29 +336,89 @@
     const VIEWER_API = "/viewer/api";
     const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260521_1";
     const PANEL_VISIBILITY_DEFAULTS = {{ panel_visibility_defaults_json | safe }};
-    const DISCOVERED_DEFAULT_VISIBLE = !!PANEL_VISIBILITY_DEFAULTS.discovered_default_visible;
     const PANEL_DEFAULTS = PANEL_VISIBILITY_DEFAULTS.viewer;
 
+    // ── Priority list (loaded from schema/mesh_priority.json via server) ────────
+    (function () {
+        var _cfg = {{ mesh_priority_json | safe }};
+        var _raw = Array.isArray(_cfg.priority) ? _cfg.priority : [];
+        window._MESH_PRIORITY_MAX_SHOWN = typeof _cfg.max_shown === "number" ? _cfg.max_shown : 5;
+        window._MESH_PRIORITY = _raw.map(function (e) {
+            return {
+                type: e.type,
+                label: e.label,
+                match: (e.type === "extra_group" && e.match) ? new RegExp(e.match, "i") : null,
+            };
+        });
+    }());
+    var MESH_PRIORITY = window._MESH_PRIORITY;
+    var MESH_PRIORITY_MAX_SHOWN = window._MESH_PRIORITY_MAX_SHOWN;
+
+    // ── DOM references ─────────────────────────────────────────────────────────
     const runSelectEl = document.getElementById("runSelect");
     const runCountEl = document.getElementById("runCount");
     const selectedMetaEl = document.getElementById("selectedMeta");
     const statusLabel = document.getElementById("statusLabel");
-    const cameraSyncToggleEl = document.getElementById("cameraSyncToggle");
-    const meshGroupsSection = document.getElementById("meshGroupsSection");
-    const meshGroupsGrid = document.getElementById("meshGroupsGrid");
+    const runNameDisplay = document.getElementById("runNameDisplay");
+    const cameraSyncToggle = document.getElementById("cameraSyncToggle");
     const btnEditPanels = document.getElementById("btnEditPanels");
     const panelEditorCard = document.getElementById("panelEditorCard");
-    const panelEditorList = document.getElementById("panelEditorList");
-    const panelEmptyState = document.getElementById("panelEmptyState");
     const btnClosePanelEditor = document.getElementById("btnClosePanelEditor");
+    const priorityListPreview = document.getElementById("priorityListPreview");
 
+    const primaryGlbMeshBox = document.getElementById("primaryGlbMeshBox");
+    const primaryGlbPlaceholder = document.getElementById("primaryGlbPlaceholder");
+    const primaryGlbStatus = document.getElementById("primaryGlbStatus");
+    const primaryGlbControls = document.getElementById("primaryGlbControls");
+    const primaryGlbSlider = document.getElementById("primaryGlbSlider");
+    const primaryGlbPlayBtn = document.getElementById("primaryGlbPlay");
+
+    const rightPanelSelector = document.getElementById("rightPanelSelector");
+    const rightPanelMeshBox = document.getElementById("rightPanelMeshBox");
+    const rightPanelPlaceholder = document.getElementById("rightPanelPlaceholder");
+    const rightPanelStatus = document.getElementById("rightPanelStatus");
+    const rightPanelGlbControls = document.getElementById("rightPanelGlbControls");
+    const rightPanelSlider = document.getElementById("rightPanelSlider");
+    const rightPanelPlayBtn = document.getElementById("rightPanelPlay");
+
+    const metricSpeedValue = document.getElementById("metricCS");
+    const metricDragValue = document.getElementById("metricDrag");
+    const metricSolarValue = document.getElementById("metricSolar");
+    const metricSpeedGraph = document.getElementById("metricSpeedGraph");
+    const metricDragGraph = document.getElementById("metricDragGraph");
+    const metricSolarGraph = document.getElementById("metricSolarGraph");
+
+    // ── URL params ─────────────────────────────────────────────────────────────
     const urlParams = new URLSearchParams(window.location.search);
     const cfgSession = urlParams.get("cfg_session") || null;
     const preSelectRunId = urlParams.get("run_id") || null;
 
-    // ── Smart back button ── M5: localStorage return URL takes priority ───────────
+    // ── State ──────────────────────────────────────────────────────────────────
+    let runsByPath = new Map();
+    let selectedRunPath = null;
+
+    let primaryGlbFiles = [];
+    let primaryGlbIdx = 0;
+    let primaryGlbViewer = null;
+    let primaryGlbPlaying = false;
+    let primaryGlbPlayInterval = null;
+
+    let rightPanelFiles = [];
+    let rightPanelIdx = 0;
+    let rightPanelViewer = null;
+    let rightPanelPlaying = false;
+    let rightPanelPlayInterval = null;
+
+    let syncPlayInterval = null;
+    let primaryUserView = null;
+    let rightPanelUserView = null;
+
+    let availableItems = [];
+    let activeRightLabel = null;
+
+    // ── Smart back button ── localStorage return URL takes priority ───────────
     (function () {
-        const backBtn   = document.getElementById("archiveBackBtn");
+        const backBtn = document.getElementById("archiveBackBtn");
         const returnUrl = localStorage.getItem("aiscoReturnUrlV3") || "";
         if (returnUrl) {
             backBtn.textContent = "\u2190 Back to run";
@@ -101,7 +428,7 @@
                 localStorage.removeItem("aiscoReturnUrlV3");
                 window.location.href = returnUrl;
             });
-            return;  // skip referrer logic
+            return;
         }
         const ref = document.referrer;
         if (!ref) return;
@@ -117,462 +444,620 @@
                 backBtn.textContent = "\u2190 Back";
                 backBtn.href = ref;
             }
-        } catch (_) {
-            // invalid referrer URL — keep default
-        }
+        } catch (_) { /* invalid referrer */ }
     }());
 
-    let runsByPath = new Map();
-    let selectedRunPath = null;
-    let plyGroupState = {};
-    let latestSyncedViewState = null;
-    const panelDefs = {};
-    const panelVisibility = {};
-
-    function slugifyPanelPart(text) {
-        return String(text || "")
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "_")
-            .replace(/^_+|_+$/g, "");
+    // ── Utilities ──────────────────────────────────────────────────────────────
+    function bust(url) {
+        const sep = url.includes("?") ? "&" : "?";
+        return url + sep + "t=" + Date.now();
     }
 
-    function panelIdForArchiveGroup(label) {
-        return `panel_archive_discovered_${slugifyPanelPart(label)}`;
-    }
-
-    function setPanelDefault(panelId, label, defaultVisible, element) {
-        panelDefs[panelId] = {
-            id: panelId,
-            label,
-            defaultVisible,
-            element,
-        };
-        panelVisibility[panelId] = !!defaultVisible;
-        if (element) {
-            element.style.display = defaultVisible ? "" : "none";
-        }
-    }
-
-    function refreshPanelEmptyState() {
-        const availableDefs = Object.values(panelDefs).filter((def) => !!def.element);
-        const visibleCount = availableDefs.filter((def) => !!panelVisibility[def.id]).length;
-        panelEmptyState.style.display = visibleCount === 0 ? "block" : "none";
-    }
-
-    function setPanelVisibility(panelId, visible) {
-        const def = panelDefs[panelId];
-        if (!def) {
-            return;
-        }
-        panelVisibility[panelId] = !!visible;
-        if (def.element) {
-            def.element.style.display = visible ? "" : "none";
-        }
-        Object.entries(plyGroupState).forEach(([label, state]) => {
-            if (state.panelId !== panelId) {
-                return;
-            }
-            if (!visible && state.playing) {
-                state.playing = false;
-                clearInterval(state.playInterval);
-                const playBtn = state.card ? state.card.querySelector(".play-btn") : null;
-                if (playBtn) {
-                    playBtn.textContent = "Play";
-                }
-            }
-            if (visible && !state.loadedOnce) {
-                loadPlyForGroup(label, state.container, state.placeholder, state.statusDiv);
-            }
-        });
-        refreshPanelEmptyState();
-    }
-
-    function renderPanelEditor() {
-        panelEditorList.innerHTML = "";
-        Object.values(panelDefs).forEach((def) => {
-            if (!def.element) {
-                return;
-            }
-            const row = document.createElement("label");
-            row.style.display = "flex";
-            row.style.alignItems = "center";
-            row.style.gap = "8px";
-            row.style.fontSize = "0.78rem";
-            row.style.color = "var(--muted)";
-            const checkbox = document.createElement("input");
-            checkbox.type = "checkbox";
-            checkbox.checked = !!panelVisibility[def.id];
-            checkbox.addEventListener("change", () => {
-                setPanelVisibility(def.id, checkbox.checked);
-            });
-            row.appendChild(checkbox);
-            const text = document.createElement("span");
-            text.textContent = def.label;
-            row.appendChild(text);
-            panelEditorList.appendChild(row);
-        });
-        refreshPanelEmptyState();
+    function paintSlider(slider) {
+        if (!slider) return;
+        const accent = getComputedStyle(document.documentElement)
+            .getPropertyValue("--theme-slider-accent").trim();
+        if (accent) slider.style.accentColor = accent;
     }
 
     function fmtTime(ts) {
         return new Date(ts * 1000).toLocaleString();
     }
 
-    function bust(url) {
-        const sep = url.includes("?") ? "&" : "?";
-        return `${url}${sep}t=${Date.now()}`;
+    function _metricColor(cssVarName, fallback) {
+        var value = getComputedStyle(document.documentElement).getPropertyValue(cssVarName).trim();
+        return value || fallback;
     }
 
-    function paintSliderBar(slider) {
-        if (!slider) {
-            return;
+    function _formatMetric(value, decimals, suffix) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) return "\u2014";
+        return Number(value).toFixed(decimals) + "\u00a0" + suffix;
+    }
+
+    function drawMetricTrend(canvas, values, strokeColor) {
+        if (!canvas) return;
+        var ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        var w = canvas.width;
+        var h = canvas.height;
+        ctx.clearRect(0, 0, w, h);
+
+        ctx.strokeStyle = "rgba(255,255,255,0.16)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, h - 1);
+        ctx.lineTo(w, h - 1);
+        ctx.stroke();
+
+        var series = (values || [])
+            .filter(function (v) { return v !== null && v !== undefined && Number.isFinite(Number(v)); })
+            .map(function (v) { return Number(v); });
+        if (series.length < 2) return;
+
+        var minVal = Math.min.apply(null, series);
+        var maxVal = Math.max.apply(null, series);
+        var span = Math.max(1e-9, maxVal - minVal);
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (var i = 0; i < series.length; i++) {
+            var x = (i / (series.length - 1)) * (w - 2) + 1;
+            var y = h - 2 - ((series[i] - minVal) / span) * (h - 6);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
         }
-        slider.style.accentColor = getComputedStyle(document.documentElement).getPropertyValue("--theme-slider-accent").trim();
-        slider.style.height = "14px";
-        slider.style.background = "transparent";
-        slider.style.padding = "0";
-        slider.style.margin = "0";
+        ctx.stroke();
     }
 
-    function clearMeshGroups() {
-        Object.values(plyGroupState).forEach((state) => {
-            if (state.playInterval) {
-                clearInterval(state.playInterval);
-            }
-        });
-        plyGroupState = {};
-        latestSyncedViewState = null;
-        meshGroupsGrid.innerHTML = "";
-        meshGroupsSection.style.display = "none";
-        Object.keys(panelDefs).forEach((panelId) => {
-            delete panelDefs[panelId];
-            delete panelVisibility[panelId];
-        });
-        renderPanelEditor();
+    function applyMetricDisplays(latest, history) {
+        var speedMs = latest ? latest.cruising_speed_ms : null;
+        var speedKmh = speedMs == null ? null : Number(speedMs) * 3.6;
+        if (metricSpeedValue) metricSpeedValue.textContent = _formatMetric(speedKmh, 2, "km/h");
+        if (metricDragValue) metricDragValue.textContent = _formatMetric(latest ? latest.drag_value : null, 2, "N");
+        if (metricSolarValue) metricSolarValue.textContent = _formatMetric(latest ? latest.solar_power_w : null, 1, "W");
+
+        var speedSeriesKmh = (history && history.cruising_speed_ms ? history.cruising_speed_ms : [])
+            .map(function (v) { return v == null ? null : Number(v) * 3.6; });
+        drawMetricTrend(metricSpeedGraph, speedSeriesKmh, _metricColor("--theme-metric-speed-border", "#66CC99"));
+        drawMetricTrend(metricDragGraph, history ? history.drag_value : [], _metricColor("--theme-metric-drag-border", "#66A3FF"));
+        drawMetricTrend(metricSolarGraph, history ? history.solar_power_w : [], _metricColor("--theme-metric-solar-border", "#FFD966"));
     }
 
-    function broadcastViewState(sourceLabel, viewState) {
-        if (!cameraSyncToggleEl.checked || !viewState) {
-            return;
-        }
-        latestSyncedViewState = viewState;
-        Object.entries(plyGroupState).forEach(([label, state]) => {
-            if (label === sourceLabel || !state.viewer) {
-                return;
-            }
-            state.viewer.setViewState(viewState);
-        });
+    function clearMetrics() {
+        applyMetricDisplays(null, null);
     }
 
-    function applyViewStateToAll(viewState) {
-        if (!viewState) {
-            return;
-        }
-        Object.values(plyGroupState).forEach((state) => {
-            if (state.viewer) {
-                state.viewer.setViewState(viewState);
-            }
-        });
-    }
+    // ── Primary GLB (left panel) ───────────────────────────────────────────────
+    function loadPrimaryGlb() {
+        if (!primaryGlbFiles.length) return;
+        const file = primaryGlbFiles[primaryGlbIdx];
 
-    function getAnyExistingViewState() {
-        const states = Object.values(plyGroupState);
-        for (let i = 0; i < states.length; i += 1) {
-            if (states[i].viewer) {
-                return states[i].viewer.getViewState();
-            }
-        }
-        return null;
-    }
-
-    function loadPlyForGroup(label, container, placeholder, statusDiv) {
-        const state = plyGroupState[label];
-        if (!state || state.idx < 0 || state.idx >= state.files.length) {
-            return;
-        }
-
-        const file = state.files[state.idx];
-        const previousViewState = state.viewer?.getViewState();
-        const previousGlbState = state.viewer?.getMeshComponents ? state.viewer.getMeshComponents() : [];
-
-        import(MESH_VIEWER_MODULE)
-            .then(({ initMeshViewer }) => {
-                if (!state.viewer) {
-                    state.viewer = initMeshViewer(container);
-                    state.viewer.setGlbControlsHost(state.glbControlsDiv);
-                    state.viewer.setOnControlsChange((viewState) => {
-                        broadcastViewState(label, viewState);
-                    });
-                    if (cameraSyncToggleEl.checked && latestSyncedViewState) {
-                        state.viewer.setViewState(latestSyncedViewState);
+        import(MESH_VIEWER_MODULE).then(function (mod) {
+            if (!primaryGlbViewer) {
+                primaryGlbViewer = mod.initMeshViewer(primaryGlbMeshBox, { controlMode: "turntable" });
+                primaryGlbViewer.setGlbControlsHost(primaryGlbControls);
+                primaryGlbViewer.setOnControlsChange(function (vs) {
+                    primaryUserView = vs;
+                    if (cameraSyncToggle.checked && rightPanelViewer) {
+                        rightPanelUserView = vs;
+                        rightPanelViewer.setViewState(vs);
                     }
-                }
-                state.viewer.loadMesh(
-                    bust(file.url),
-                    (info) => {
-                        state.loadedOnce = true;
-                        placeholder.style.display = "none";
-                        statusDiv.style.display = "block";
-                        const vc = info && info.hasVertexColors ? "yes" : "no";
-                        statusDiv.textContent = `${file.name} (${state.idx + 1}/${state.files.length}) - VC:${vc}`;
-
-                        // Restore camera view if user had panned/rotated
-                        if (previousViewState) {
-                            state.viewer.setViewState(previousViewState);
-                        }
-
-                        // Restore GLB component opacity/visibility by mesh name
-                        if (previousGlbState.length && info.meshComponents && info.meshComponents.length) {
-                            const stateByName = {};
-                            previousGlbState.forEach((comp) => {
-                                stateByName[comp.name] = comp;
-                            });
-                            info.meshComponents.forEach((comp) => {
-                                const saved = stateByName[comp.name];
-                                if (saved) {
-                                    state.viewer.setMeshComponentState(comp.key, {
-                                        visible: saved.visible,
-                                        opacity: saved.opacity,
-                                    });
-                                }
-                            });
-                            // Refresh controls to show restored opacity values in sliders
-                            if (state.viewer.refreshGlbControls) {
-                                state.viewer.refreshGlbControls();
-                            }
-                        }
-
-                        if (cameraSyncToggleEl.checked) {
-                            const stateToApply = latestSyncedViewState || state.viewer.getViewState();
-                            latestSyncedViewState = stateToApply;
-                            broadcastViewState(label, stateToApply);
-                        }
-                    },
-                    (err) => {
-                        placeholder.style.display = "none";
-                        statusDiv.style.display = "block";
-                        statusDiv.textContent = `Load failed for ${file.name}: ${err?.message || err}`;
-                    },
-                );
-            })
-            .catch((e) => {
-                statusDiv.style.display = "block";
-                statusDiv.textContent = `Viewer error: ${e.message}`;
-            });
+                });
+            }
+            primaryGlbViewer.loadMesh(
+                bust(file.url),
+                function (info) {
+                    primaryGlbPlaceholder.style.display = "none";
+                    primaryGlbStatus.style.display = "block";
+                    const vc = info && info.hasVertexColors ? "yes" : "no";
+                    primaryGlbStatus.textContent =
+                        file.name + " (" + (primaryGlbIdx + 1) + "/" + primaryGlbFiles.length + ") \u00b7 VC:" + vc;
+                    if (primaryUserView) primaryGlbViewer.setViewState(primaryUserView);
+                },
+                function (err) {
+                    primaryGlbPlaceholder.style.display = "none";
+                    primaryGlbStatus.style.display = "block";
+                    primaryGlbStatus.textContent = "Load failed: " + (err && err.message ? err.message : String(err));
+                },
+            );
+        }).catch(function (e) {
+            primaryGlbStatus.style.display = "block";
+            primaryGlbStatus.textContent = "Viewer error: " + e.message;
+        });
     }
 
-    function createPlyGroup(group) {
-        const label = group.label;
-        const panelId = group.panel_id;
-        const defaultVisible = !!group.default_visible;
-        const files = group.ply_files || [];
-        if (!files.length) {
+    function updatePrimaryGlb(files) {
+        primaryGlbFiles = Array.isArray(files) ? files : [];
+
+        if (!primaryGlbFiles.length) {
+            primaryGlbSlider.disabled = true;
+            primaryGlbSlider.max = "0";
+            primaryGlbSlider.value = "0";
+            primaryGlbPlayBtn.disabled = true;
+            primaryGlbPlaceholder.style.display = "block";
+            primaryGlbStatus.style.display = "none";
             return;
         }
 
-        const state = {
-            files: files,
-            idx: files.length > 1 ? files.length - 1 : 0,
-            viewer: null,
-            playing: false,
-            playInterval: null,
-            panelId,
-            card: null,
-            container: null,
-            placeholder: null,
-            statusDiv: null,
-            glbControlsDiv: null,
-            loadedOnce: false,
-        };
-        plyGroupState[label] = state;
+        primaryGlbIdx = primaryGlbFiles.length - 1;
+        primaryGlbSlider.disabled = false;
+        primaryGlbSlider.max = String(primaryGlbFiles.length - 1);
+        primaryGlbSlider.value = String(primaryGlbIdx);
+        primaryGlbPlayBtn.disabled = primaryGlbFiles.length <= 1;
+        paintSlider(primaryGlbSlider);
+        loadPrimaryGlb();
+    }
 
-        const card = document.createElement("div");
-        card.className = "visual-card";
-        card.dataset.label = label;
-        card.dataset.panelId = panelId;
-        card.innerHTML = `
-      <div class="visual-title">${label}</div>
-    <div class="mesh-container mesh-container--four-up" style="position:relative; background:var(--theme-mesh-bg); border-radius:8px; overflow:hidden;">
-        <span class="placeholder-text" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--theme-muted);font-size:0.9rem;z-index:1;">Loading...</span>
-        <div class="mesh-status" style="position:absolute;bottom:8px;left:8px;font-size:0.75rem;color:var(--theme-muted);z-index:2;background:color-mix(in srgb, var(--theme-white) 80%, transparent);padding:2px 6px;border-radius:4px;display:none;"></div>
-      </div>
-            <div class="glb-controls" style="display:none; margin-top:8px; padding:6px 8px; border:1px solid color-mix(in srgb, var(--theme-text-box) 65%, var(--theme-white) 35%); border-radius:6px; background:color-mix(in srgb, var(--theme-text-box) 24%, var(--theme-white) 76%); gap:6px;"></div>
-      <div style="display:flex; gap:8px; align-items:center; font-size:0.82rem;">
-        <input type="range" class="epoch-slider" min="0" max="${files.length - 1}" value="${state.idx}" style="flex:1;">
-        <button class="play-btn" style="font-size:0.8rem;padding:4px 8px; width:54px;" ${files.length > 1 ? "" : "disabled"}>Play</button>
-      </div>
-    `;
+    function syncRightEpochToPrimary() {
+        if (!cameraSyncToggle.checked || !rightPanelFiles.length || !primaryGlbFiles.length) return;
+        var pct = primaryGlbFiles.length > 1 ? primaryGlbIdx / (primaryGlbFiles.length - 1) : 0;
+        rightPanelIdx = Math.round(pct * (rightPanelFiles.length - 1));
+        rightPanelSlider.value = String(rightPanelIdx);
+        paintSlider(rightPanelSlider);
+        if (primaryGlbViewer) {
+            var vs = primaryGlbViewer.getViewState();
+            if (vs) rightPanelUserView = vs;
+        }
+        loadRightPanel();
+    }
 
-        const slider = card.querySelector(".epoch-slider");
-        const playBtn = card.querySelector(".play-btn");
-        const container = card.querySelector(".mesh-container");
-        const placeholder = card.querySelector(".placeholder-text");
-        const statusDiv = card.querySelector(".mesh-status");
-        const glbControlsDiv = card.querySelector(".glb-controls");
-        state.card = card;
-        state.container = container;
-        state.placeholder = placeholder;
-        state.statusDiv = statusDiv;
-        state.glbControlsDiv = glbControlsDiv;
-        paintSliderBar(slider);
+    function syncPrimaryEpochToRight() {
+        if (!cameraSyncToggle.checked || !primaryGlbFiles.length || !rightPanelFiles.length) return;
+        var pct = rightPanelFiles.length > 1 ? rightPanelIdx / (rightPanelFiles.length - 1) : 0;
+        primaryGlbIdx = Math.round(pct * (primaryGlbFiles.length - 1));
+        primaryGlbSlider.value = String(primaryGlbIdx);
+        paintSlider(primaryGlbSlider);
+        loadPrimaryGlb();
+    }
 
-        slider.addEventListener("input", (e) => {
-            if (state.playing) {
-                state.playing = false;
-                clearInterval(state.playInterval);
-                playBtn.textContent = "Play";
+    function stopSyncedPlay() {
+        if (syncPlayInterval) { clearInterval(syncPlayInterval); syncPlayInterval = null; }
+        primaryGlbPlaying = false; rightPanelPlaying = false;
+        primaryGlbPlayBtn.textContent = "\u25b6 Play";
+        rightPanelPlayBtn.textContent = "\u25b6 Play";
+    }
+
+    function startSyncedPlay() {
+        stopSyncedPlay();
+        if (!primaryGlbFiles.length) return;
+        primaryGlbPlaying = true; rightPanelPlaying = true;
+        primaryGlbPlayBtn.textContent = "\u23f8 Pause";
+        rightPanelPlayBtn.textContent = "\u23f8 Pause";
+        syncPlayInterval = setInterval(function () {
+            primaryGlbIdx = (primaryGlbIdx + 1) % primaryGlbFiles.length;
+            primaryGlbSlider.value = String(primaryGlbIdx);
+            paintSlider(primaryGlbSlider);
+            loadPrimaryGlb();
+            if (rightPanelFiles.length) {
+                var pct = primaryGlbFiles.length > 1 ? primaryGlbIdx / (primaryGlbFiles.length - 1) : 0;
+                rightPanelIdx = Math.round(pct * (rightPanelFiles.length - 1));
+                rightPanelSlider.value = String(rightPanelIdx);
+                paintSlider(rightPanelSlider);
+                loadRightPanel();
             }
-            state.idx = parseInt(e.target.value, 10);
-            paintSliderBar(slider);
-            loadPlyForGroup(label, container, placeholder, statusDiv);
-        });
+            if (primaryGlbIdx === 0) { stopSyncedPlay(); }
+        }, 500);
+    }
 
-        playBtn.addEventListener("click", () => {
-            if (state.playing) {
-                state.playing = false;
-                clearInterval(state.playInterval);
-                playBtn.textContent = "Play";
-                return;
-            }
+    primaryGlbSlider.addEventListener("input", function (e) {
+        if (primaryGlbPlaying) {
+            primaryGlbPlaying = false;
+            clearInterval(primaryGlbPlayInterval);
+            primaryGlbPlayBtn.textContent = "\u25b6 Play";
+        }
+        primaryGlbIdx = parseInt(e.target.value, 10);
+        paintSlider(primaryGlbSlider);
+        loadPrimaryGlb();
+        syncRightEpochToPrimary();
+    });
 
-            state.playing = true;
-            playBtn.textContent = "Pause";
-            state.playInterval = setInterval(() => {
-                state.idx = (state.idx + 1) % state.files.length;
-                slider.value = String(state.idx);
-                paintSliderBar(slider);
-                loadPlyForGroup(label, container, placeholder, statusDiv);
-                if (state.idx === state.files.length - 1) {
-                    state.playing = false;
-                    clearInterval(state.playInterval);
-                    playBtn.textContent = "Play";
+    primaryGlbPlayBtn.addEventListener("click", function () {
+        if (cameraSyncToggle.checked) {
+            if (primaryGlbPlaying) { stopSyncedPlay(); } else { startSyncedPlay(); }
+            return;
+        }
+        if (primaryGlbPlaying) {
+            primaryGlbPlaying = false;
+            clearInterval(primaryGlbPlayInterval);
+            primaryGlbPlayBtn.textContent = "\u25b6 Play";
+        } else {
+            primaryGlbPlaying = true;
+            primaryGlbPlayBtn.textContent = "\u23f8 Pause";
+            primaryGlbPlayInterval = setInterval(function () {
+                primaryGlbIdx = (primaryGlbIdx + 1) % primaryGlbFiles.length;
+                primaryGlbSlider.value = String(primaryGlbIdx);
+                paintSlider(primaryGlbSlider);
+                loadPrimaryGlb();
+                if (primaryGlbIdx === 0) {
+                    primaryGlbPlaying = false;
+                    clearInterval(primaryGlbPlayInterval);
+                    primaryGlbPlayBtn.textContent = "\u25b6 Play";
                 }
             }, 500);
-        });
-
-        meshGroupsGrid.appendChild(card);
-        setPanelDefault(panelId, label, defaultVisible, card);
-        renderPanelEditor();
-        if (panelVisibility[panelId]) {
-            loadPlyForGroup(label, container, placeholder, statusDiv);
         }
+    });
+
+    // ── Right panel (priority selector) ──────────────────────────────────────
+    function buildPriorityFileList(data) {
+        var result = [];
+        var usedExtras = {};
+        var extras = Array.isArray(data.extra_ply_groups) ? data.extra_ply_groups : [];
+
+        for (var i = 0; i < MESH_PRIORITY.length; i++) {
+            if (result.length >= MESH_PRIORITY_MAX_SHOWN) break;
+            var entry = MESH_PRIORITY[i];
+
+            if (entry.type === "glb_cone") {
+                var files = Array.isArray(data.meshes_glb_cone) ? data.meshes_glb_cone : [];
+                if (files.length) result.push({ label: entry.label, files: files });
+
+            } else if (entry.type === "ply") {
+                var files = Array.isArray(data.meshes) ? data.meshes : [];
+                if (files.length) result.push({ label: entry.label, files: files });
+
+            } else if (entry.type === "extra_group") {
+                for (var j = 0; j < extras.length; j++) {
+                    if (result.length >= MESH_PRIORITY_MAX_SHOWN) break;
+                    var group = extras[j];
+                    if (usedExtras[group.label]) continue;
+                    var testStr = group.label || "";
+                    if (!entry.match || entry.match.test(testStr)) {
+                        usedExtras[group.label] = true;
+                        result.push({ label: group.label, files: group.ply_files || [] });
+                    }
+                }
+            }
+        }
+        return result;
     }
 
-    function renderMeshGroups(data, runName) {
-        clearMeshGroups();
+    function loadRightPanel() {
+        if (!rightPanelFiles.length) return;
+        var file = rightPanelFiles[rightPanelIdx] || rightPanelFiles[0];
 
-        const groups = [];
-        let cpAssigned = false;
-        const baseMeshes = data.meshes || [];
-        if (baseMeshes.length) {
-            groups.push({
-                label: "Aeroshell Mesh (PLY)",
-                ply_files: baseMeshes,
-                panel_id: "panel_mesh_shape",
-                default_visible: !!PANEL_DEFAULTS.runs.panel_mesh_shape?.defaultVisible,
-            });
-        }
-
-        const baseGlbMeshes = data.meshes_glb || [];
-        if (baseGlbMeshes.length) {
-            groups.push({
-                label: "Aeroshell Mesh (GLB)",
-                ply_files: baseGlbMeshes,
-                panel_id: "panel_mesh_shape_glb",
-                default_visible: !!PANEL_DEFAULTS.runs.panel_mesh_shape_glb?.defaultVisible,
-            });
-        }
-
-        const coneGlbMeshes = data.meshes_glb_cone || [];
-        if (coneGlbMeshes.length) {
-            groups.push({
-                label: "Aeroshell Mesh (GLB, Vision Cone)",
-                ply_files: coneGlbMeshes,
-                panel_id: "panel_mesh_shape_glb_cone",
-                default_visible: !!PANEL_DEFAULTS.runs.panel_mesh_shape_glb_cone?.defaultVisible,
-            });
-        }
-
-        const extraGroups = data.extra_ply_groups || [];
-        extraGroups.forEach((g) => {
-            const looksLikeCp = /\bcp\b|pressure/i.test(g.label || "");
-            if (looksLikeCp && !cpAssigned) {
-                cpAssigned = true;
-                groups.push({
-                    ...g,
-                    panel_id: "panel_cp_field",
-                    default_visible: !!PANEL_DEFAULTS.runs.panel_cp_field?.defaultVisible,
+        import(MESH_VIEWER_MODULE).then(function (mod) {
+            if (!rightPanelViewer) {
+                rightPanelViewer = mod.initMeshViewer(rightPanelMeshBox, { controlMode: "turntable" });
+                rightPanelViewer.setGlbControlsHost(rightPanelGlbControls);
+                rightPanelViewer.setOnControlsChange(function (vs) {
+                    rightPanelUserView = vs;
+                    if (cameraSyncToggle.checked && primaryGlbViewer) {
+                        primaryUserView = vs;
+                        primaryGlbViewer.setViewState(vs);
+                    }
                 });
-                return;
+                if (cameraSyncToggle.checked && primaryGlbViewer) {
+                    var vs = primaryGlbViewer.getViewState();
+                    if (vs) {
+                        rightPanelViewer.setViewState(vs);
+                        rightPanelUserView = vs;
+                    }
+                }
             }
-            groups.push({
-                ...g,
-                panel_id: panelIdForArchiveGroup(g.label),
-                default_visible: DISCOVERED_DEFAULT_VISIBLE,
-            });
+            rightPanelViewer.loadMesh(
+                bust(file.url),
+                function (info) {
+                    rightPanelPlaceholder.style.display = "none";
+                    rightPanelStatus.style.display = "block";
+                    var vc = info && info.hasVertexColors ? "yes" : "no";
+                    rightPanelStatus.textContent =
+                        file.name + " (" + (rightPanelIdx + 1) + "/" + rightPanelFiles.length + ") \u00b7 VC:" + vc;
+                    if (rightPanelUserView) rightPanelViewer.setViewState(rightPanelUserView);
+                },
+                function (err) {
+                    rightPanelPlaceholder.style.display = "none";
+                    rightPanelStatus.style.display = "block";
+                    rightPanelStatus.textContent = "Load failed: " + (err && err.message ? err.message : String(err));
+                },
+            );
+        }).catch(function (e) {
+            rightPanelStatus.style.display = "block";
+            rightPanelStatus.textContent = "Viewer error: " + e.message;
+        });
+    }
+
+    function setActiveRightPanel(label) {
+        if (activeRightLabel === label) return;
+
+        if (rightPanelPlaying) {
+            rightPanelPlaying = false;
+            clearInterval(rightPanelPlayInterval);
+            rightPanelPlayBtn.textContent = "\u25b6 Play";
+        }
+
+        activeRightLabel = label;
+
+        Array.from(rightPanelSelector.querySelectorAll("label")).forEach(function (lbl) {
+            var r = lbl.querySelector("input[type=radio]");
+            var isActive = r && r.value === activeRightLabel;
+            lbl.className = isActive ? "active" : "";
+            if (r) r.checked = !!isActive;
         });
 
-        if (!groups.length) {
-            statusLabel.textContent = `${runName}: no mesh outputs found.`;
+        var item = availableItems.find(function (it) { return it.label === label; });
+        rightPanelFiles = item ? item.files : [];
+        rightPanelIdx = rightPanelFiles.length > 0 ? rightPanelFiles.length - 1 : 0;
+
+        if (!rightPanelFiles.length) {
+            rightPanelSlider.disabled = true;
+            rightPanelSlider.max = "0";
+            rightPanelSlider.value = "0";
+            rightPanelPlayBtn.disabled = true;
+            rightPanelPlaceholder.style.display = "block";
+            rightPanelStatus.style.display = "none";
             return;
         }
 
-        meshGroupsSection.style.display = "block";
-        groups.forEach((group) => createPlyGroup(group));
-        statusLabel.textContent = `${runName}: showing ${groups.length} mesh box(es).`;
+        rightPanelSlider.disabled = false;
+        rightPanelSlider.max = String(rightPanelFiles.length - 1);
+        rightPanelSlider.value = String(rightPanelIdx);
+        rightPanelPlayBtn.disabled = rightPanelFiles.length <= 1;
+        paintSlider(rightPanelSlider);
+        rightPanelPlaceholder.style.display = "block";
+        rightPanelStatus.style.display = "none";
+        loadRightPanel();
     }
 
+    function renderPrioritySelector() {
+        rightPanelSelector.innerHTML = "";
+
+        if (!availableItems.length) {
+            rightPanelSelector.innerHTML =
+                "<span style=\"font-size:0.72rem;color:var(--theme-muted);\">No visualizations available.</span>";
+            return;
+        }
+
+        availableItems.forEach(function (item) {
+            var lbl = document.createElement("label");
+            lbl.className = item.label === activeRightLabel ? "active" : "";
+
+            var radio = document.createElement("input");
+            radio.type = "radio";
+            radio.name = "rightPanelChoice";
+            radio.value = item.label;
+            radio.checked = item.label === activeRightLabel;
+            radio.addEventListener("change", function () {
+                if (radio.checked) setActiveRightPanel(item.label);
+            });
+
+            var span = document.createElement("span");
+            span.textContent = item.label;
+
+            lbl.appendChild(radio);
+            lbl.appendChild(span);
+            rightPanelSelector.appendChild(lbl);
+        });
+    }
+
+    function renderPriorityListPreview() {
+        priorityListPreview.innerHTML = "";
+        MESH_PRIORITY.forEach(function (entry, i) {
+            var hasData = availableItems.some(function (it) { return it.label === entry.label; });
+            var isActive = entry.label === activeRightLabel;
+            var el = document.createElement("div");
+            el.style.cssText =
+                "font-size:0.72rem;color:var(--theme-muted);display:flex;gap:6px;align-items:center;";
+            var badge = isActive
+                ? "<span style=\"background:color-mix(in srgb,var(--theme-title-2) 25%,transparent);color:var(--theme-warning-text);border-radius:3px;padding:0 4px;font-size:0.65rem;font-weight:700;\">shown</span>"
+                : (hasData
+                    ? "<span style=\"color:var(--theme-muted);font-size:0.65rem;\">available</span>"
+                    : "");
+            el.innerHTML =
+                "<span style=\"color:var(--theme-warning-text);font-weight:700;min-width:16px;\">" + (i + 1) + ".</span>" +
+                "<span style=\"flex:1;\">" + entry.label + "</span>" + badge;
+            priorityListPreview.appendChild(el);
+        });
+    }
+
+    function updatePriorityPanels(data) {
+        availableItems = buildPriorityFileList(data);
+        renderPrioritySelector();
+        renderPriorityListPreview();
+
+        if (!availableItems.length) return;
+
+        if (!activeRightLabel || !availableItems.find(function (it) { return it.label === activeRightLabel; })) {
+            setActiveRightPanel(availableItems[0].label);
+            return;
+        }
+
+        var activeItem = availableItems.find(function (it) { return it.label === activeRightLabel; });
+        if (activeItem) {
+            rightPanelFiles = activeItem.files;
+            rightPanelIdx = rightPanelFiles.length > 0 ? rightPanelFiles.length - 1 : 0;
+            rightPanelSlider.max = String(Math.max(0, rightPanelFiles.length - 1));
+            rightPanelSlider.value = String(rightPanelIdx);
+            rightPanelSlider.disabled = rightPanelFiles.length <= 1;
+            rightPanelPlayBtn.disabled = rightPanelFiles.length <= 1;
+            paintSlider(rightPanelSlider);
+        }
+    }
+
+    rightPanelSlider.addEventListener("input", function (e) {
+        if (rightPanelPlaying) {
+            rightPanelPlaying = false;
+            clearInterval(rightPanelPlayInterval);
+            rightPanelPlayBtn.textContent = "\u25b6 Play";
+        }
+        rightPanelIdx = parseInt(e.target.value, 10);
+        paintSlider(rightPanelSlider);
+        loadRightPanel();
+        syncPrimaryEpochToRight();
+    });
+
+    rightPanelPlayBtn.addEventListener("click", function () {
+        if (cameraSyncToggle.checked) {
+            if (rightPanelPlaying) { stopSyncedPlay(); } else { startSyncedPlay(); }
+            return;
+        }
+        if (rightPanelPlaying) {
+            rightPanelPlaying = false;
+            clearInterval(rightPanelPlayInterval);
+            rightPanelPlayBtn.textContent = "\u25b6 Play";
+        } else {
+            rightPanelPlaying = true;
+            rightPanelPlayBtn.textContent = "\u23f8 Pause";
+            rightPanelPlayInterval = setInterval(function () {
+                rightPanelIdx = (rightPanelIdx + 1) % rightPanelFiles.length;
+                rightPanelSlider.value = String(rightPanelIdx);
+                paintSlider(rightPanelSlider);
+                loadRightPanel();
+                if (rightPanelIdx === 0) {
+                    rightPanelPlaying = false;
+                    clearInterval(rightPanelPlayInterval);
+                    rightPanelPlayBtn.textContent = "\u25b6 Play";
+                }
+            }, 500);
+        }
+    });
+
+    cameraSyncToggle.addEventListener("change", function () {
+        if (!cameraSyncToggle.checked) {
+            if (syncPlayInterval) { stopSyncedPlay(); }
+            return;
+        }
+        if (primaryGlbViewer && rightPanelViewer) {
+            var vs = primaryGlbViewer.getViewState();
+            if (vs) {
+                rightPanelViewer.setViewState(vs);
+                rightPanelUserView = vs;
+            }
+        }
+        syncRightEpochToPrimary();
+    });
+
+    // ── Panel editor ───────────────────────────────────────────────────────────
+    btnEditPanels.addEventListener("click", function () {
+        panelEditorCard.style.display =
+            panelEditorCard.style.display === "none" ? "grid" : "none";
+        if (panelEditorCard.style.display === "grid") {
+            renderPriorityListPreview();
+        }
+    });
+    btnClosePanelEditor.addEventListener("click", function () {
+        panelEditorCard.style.display = "none";
+    });
+
+    // ── Reset viewers when changing runs ──────────────────────────────────────
+    function resetViewers() {
+        if (primaryGlbPlaying) {
+            primaryGlbPlaying = false;
+            clearInterval(primaryGlbPlayInterval);
+            primaryGlbPlayBtn.textContent = "\u25b6 Play";
+        }
+        if (rightPanelPlaying) {
+            rightPanelPlaying = false;
+            clearInterval(rightPanelPlayInterval);
+            rightPanelPlayBtn.textContent = "\u25b6 Play";
+        }
+        if (syncPlayInterval) { stopSyncedPlay(); }
+
+        primaryGlbViewer = null;
+        rightPanelViewer = null;
+        primaryUserView = null;
+        rightPanelUserView = null;
+        primaryGlbFiles = [];
+        rightPanelFiles = [];
+        availableItems = [];
+        activeRightLabel = null;
+
+        primaryGlbMeshBox.innerHTML =
+            "<span id=\"primaryGlbPlaceholder\" style=\"position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--theme-muted);font-size:0.82rem;z-index:1;text-align:center;pointer-events:none;\">Select a run to view</span>" +
+            "<div id=\"primaryGlbStatus\" class=\"mesh-status\" style=\"display:none;\"></div>";
+        rightPanelMeshBox.innerHTML =
+            "<span id=\"rightPanelPlaceholder\" style=\"position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--theme-muted);font-size:0.82rem;z-index:1;text-align:center;pointer-events:none;\">No visualization selected</span>" +
+            "<div id=\"rightPanelStatus\" class=\"mesh-status\" style=\"display:none;\"></div>";
+
+        rightPanelSelector.innerHTML =
+            "<span style=\"font-size:0.72rem; color:var(--theme-muted);\">Select a run to view artifacts\u2026</span>";
+
+        primaryGlbSlider.disabled = true;
+        primaryGlbSlider.max = "0";
+        primaryGlbSlider.value = "0";
+        primaryGlbPlayBtn.disabled = true;
+        rightPanelSlider.disabled = true;
+        rightPanelSlider.max = "0";
+        rightPanelSlider.value = "0";
+        rightPanelPlayBtn.disabled = true;
+
+        primaryGlbControls.style.display = "none";
+        primaryGlbControls.innerHTML = "";
+        rightPanelGlbControls.style.display = "none";
+        rightPanelGlbControls.innerHTML = "";
+
+        clearMetrics();
+        renderPriorityListPreview();
+    }
+
+    // ── Run selection ──────────────────────────────────────────────────────────
     async function selectRun(path) {
         const run = runsByPath.get(path);
         if (!run) {
-            clearMeshGroups();
+            resetViewers();
+            runNameDisplay.textContent = "\u2014";
             selectedMetaEl.textContent = "";
-            statusLabel.textContent = "Select a run to inspect artifacts.";
             return;
         }
 
         selectedRunPath = path;
-        selectedMetaEl.textContent = `${run.model_hash} - ${fmtTime(run.mtime)}`;
-        statusLabel.textContent = "Loading artifacts...";
+        selectedMetaEl.textContent = run.model_hash ? run.model_hash + " \u00b7 " + fmtTime(run.mtime) : fmtTime(run.mtime);
+        runNameDisplay.textContent = run.name || "\u2014";
+        resetViewers();
 
         const runId = run.run_id.split("/").map(encodeURIComponent).join("/");
         try {
-            const data = await (await fetch(`${VIEWER_API}/runs/${runId}/artifacts`)).json();
-            renderMeshGroups(data, run.name);
+            const [artData, metricsData] = await Promise.all([
+                fetch(VIEWER_API + "/runs/" + runId + "/artifacts").then(function (r) { return r.json(); }),
+                fetch(VIEWER_API + "/runs/" + runId + "/metrics").then(function (r) { return r.json(); }),
+            ]);
+
+            // Re-grab DOM refs after resetViewers re-created them
+            const newPrimaryPlaceholder = document.getElementById("primaryGlbPlaceholder");
+            const newPrimaryStatus = document.getElementById("primaryGlbStatus");
+            const newRightPlaceholder = document.getElementById("rightPanelPlaceholder");
+            const newRightStatus = document.getElementById("rightPanelStatus");
+            if (newPrimaryPlaceholder) primaryGlbMeshBox._placeholder = newPrimaryPlaceholder;
+            if (newPrimaryStatus) primaryGlbMeshBox._status = newPrimaryStatus;
+
+            updatePrimaryGlb(artData.meshes_glb || []);
+            updatePriorityPanels(artData);
+
+            if (metricsData && metricsData.found) {
+                applyMetricDisplays(metricsData.latest, metricsData.history);
+            }
         } catch (err) {
-            clearMeshGroups();
-            statusLabel.textContent = `Failed to load artifacts: ${err.message}`;
+            statusLabel.textContent = "Failed to load artifacts: " + err.message;
         }
     }
 
+    // ── Load runs list ─────────────────────────────────────────────────────────
     async function loadRuns() {
-        clearMeshGroups();
-        runSelectEl.innerHTML = '<option value="">Loading...</option>';
+        resetViewers();
+        runNameDisplay.textContent = "\u2014";
+        runSelectEl.innerHTML = "<option value=\"\">Loading\u2026</option>";
         selectedMetaEl.textContent = "";
-        statusLabel.textContent = "Loading runs...";
 
         try {
             const runsUrl = cfgSession
-                ? `${VIEWER_API}/runs?cfg_session=${encodeURIComponent(cfgSession)}`
-                : `${VIEWER_API}/runs`;
+                ? VIEWER_API + "/runs?cfg_session=" + encodeURIComponent(cfgSession)
+                : VIEWER_API + "/runs";
             const d = await (await fetch(runsUrl)).json();
             const runs = d.runs || [];
 
             runsByPath = new Map();
-            runCountEl.textContent = `${runs.length} run(s)`;
+            runCountEl.textContent = runs.length + " run(s)";
 
             if (!runs.length) {
-                runSelectEl.innerHTML = '<option value="">No runs found</option>';
-                statusLabel.textContent = "No archived runs found.";
+                runSelectEl.innerHTML = "<option value=\"\">No runs found</option>";
                 return;
             }
 
-            runSelectEl.innerHTML = '<option value="">-- Select a finished run --</option>';
-            runs.forEach((r) => {
+            runSelectEl.innerHTML = "<option value=\"\">-- Select a finished run --</option>";
+            runs.forEach(function (r) {
                 runsByPath.set(r.path, r);
                 const option = document.createElement("option");
                 option.value = r.path;
-                option.textContent = `${r.name} (${fmtTime(r.mtime)})`;
+                option.textContent = r.name + " (" + fmtTime(r.mtime) + ")";
                 runSelectEl.appendChild(option);
             });
 
@@ -582,9 +1067,8 @@
                 return;
             }
 
-            // Pre-select by leaderboard run_id (short folder name, e.g. "56_226781_rose-haze")
             if (preSelectRunId) {
-                const match = runs.find((r) => r.name === preSelectRunId);
+                const match = runs.find(function (r) { return r.name === preSelectRunId; });
                 if (match) {
                     selectedRunPath = match.path;
                     runSelectEl.value = match.path;
@@ -596,38 +1080,18 @@
             if (cfgSession && runs.length === 1) {
                 runSelectEl.value = runs[0].path;
                 selectRun(runs[0].path);
-            } else {
-                statusLabel.textContent = "Runs loaded. Select one to display all mesh outputs.";
             }
         } catch (err) {
-            runSelectEl.innerHTML = '<option value="">Failed to load runs</option>';
-            statusLabel.textContent = `Failed to load runs: ${err.message}`;
+            runSelectEl.innerHTML = "<option value=\"\">Failed to load runs</option>";
+            statusLabel.textContent = "Failed to load runs: " + err.message;
         }
     }
 
-    runSelectEl.addEventListener("change", (e) => {
+    runSelectEl.addEventListener("change", function (e) {
         selectRun(e.target.value);
     });
 
-    cameraSyncToggleEl.addEventListener("change", () => {
-        if (!cameraSyncToggleEl.checked) {
-            return;
-        }
-        const initialState = latestSyncedViewState || getAnyExistingViewState();
-        if (initialState) {
-            latestSyncedViewState = initialState;
-            applyViewStateToAll(initialState);
-        }
-    });
-
     document.getElementById("btnRefresh").addEventListener("click", loadRuns);
-
-    btnEditPanels.addEventListener("click", () => {
-        panelEditorCard.style.display = panelEditorCard.style.display === "none" ? "grid" : "none";
-    });
-    btnClosePanelEditor.addEventListener("click", () => {
-        panelEditorCard.style.display = "none";
-    });
 
     loadRuns();
 </script>

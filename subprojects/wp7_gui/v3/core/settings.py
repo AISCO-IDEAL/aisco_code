@@ -42,7 +42,6 @@ class Settings:
 
     default_local_storage_dir: Path
     default_bulk_storage_dir: Path
-    pretraining_storage_root: Path
 
     templates_dir: Path
     static_dir: Path
@@ -132,7 +131,6 @@ def build_settings() -> Settings:
         general_config_path=wp4_configs_dir / "general_config.yaml",
         default_local_storage_dir=repo_root.parent / "local_storage_dir",
         default_bulk_storage_dir=Path("/cluster/work/fuge/AISCO/bulk_storage"),
-        pretraining_storage_root=Path("/cluster/work/fuge/AISCO/latent_pretraining/runs/14f323b3fc/pretraining_latent_gifs"),
         templates_dir=gui_root / "frontend" / "templates",
         static_dir=gui_root / "frontend" / "static",
         schema_path=gui_root / "schema" / "gui_schema.json",
