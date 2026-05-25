@@ -3,42 +3,6 @@
 
 {% block content %}
 <style>
-  .run-metric-label {
-    font-size: 0.88rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-  }
-
-  .run-metric-value {
-    font-size: 1.12rem;
-    font-family: var(--theme-font-mono, monospace);
-    font-weight: 700;
-    white-space: nowrap;
-    min-width: 92px;
-  }
-
-  .run-metric-speed {
-    color: var(--theme-metric-speed-text);
-  }
-
-  .run-metric-drag {
-    color: var(--theme-metric-drag-text);
-  }
-
-  .run-metric-solar {
-    color: var(--theme-metric-solar-text);
-  }
-
-  @media (max-width: 1080px) {
-    .run-metric-label {
-      font-size: 0.8rem;
-    }
-    .run-metric-value {
-      font-size: 0.98rem;
-      min-width: 78px;
-    }
-  }
-
   /* ---- larger param labels ---- */
   #formArea .param-label {
     font-size: 0.96rem;
@@ -171,12 +135,6 @@
         </div>
         <div id="progressLabel" style="font-size:0.9rem; color:var(--theme-muted); font-weight:600; margin-top:5px;">Idle</div>
       </div>
-      <span class="run-metric-label run-metric-drag">Drag</span>
-      <span id="runDragValue" class="run-metric-value run-metric-drag">&#8212;</span>
-      <span class="run-metric-label run-metric-solar">Solar</span>
-      <span id="runSolarValue" class="run-metric-value run-metric-solar">&#8212;</span>
-      <span class="run-metric-label run-metric-speed">Speed</span>
-      <span id="runSpeedValue" class="run-metric-value run-metric-speed">&#8212;</span>
     </div>
   </div>
 
@@ -342,33 +300,6 @@
   function renderForm(schema, values) {
     formArea.innerHTML = "";
 
-    const nameSection = document.createElement("details");
-    nameSection.className = "config-section"; nameSection.open = true;
-    const nameSummary = document.createElement("summary");
-    nameSummary.textContent = `${sectionIndex++} - Session`;
-    nameSection.appendChild(nameSummary);
-    const nameRow = document.createElement("div"); nameRow.className = "param-row";
-    const nameLabelWrap = document.createElement("div");
-    const nameLabelEl = document.createElement("div"); nameLabelEl.className = "param-label";
-    nameLabelEl.textContent = "RUN NAME"; nameLabelWrap.appendChild(nameLabelEl);
-    const nameMetaEl = document.createElement("span"); nameMetaEl.className = "param-meta";
-    nameLabelWrap.appendChild(nameMetaEl);
-    const nameInp = document.createElement("input");
-    nameInp.id = "runNameFormInput"; nameInp.className = "param-input";
-    nameInp.type = "text"; nameInp.placeholder = "(no custom name)";
-    nameInp.value = extractRunName(activeFolder);
-    nameInp.addEventListener("input", checkValidity);
-    nameRow.appendChild(nameLabelWrap); nameRow.appendChild(nameInp);
-    nameSection.appendChild(nameRow);
-    formArea.appendChild(nameSection);
-
-    const mergedSection = document.createElement("details");
-    mergedSection.className = "config-section";
-    const mergedSummary = document.createElement("div");
-    mergedSummary.className = "param-section-header";
-    mergedSummary.textContent = "1 - Config Overrides";
-    mergedSection.appendChild(mergedSummary);
-
     for (const [cfgName, cfgEntry] of Object.entries(schema.configs || {})) {
       const cfgVals = (values && values[cfgName]) || {};
       for (const param of (cfgEntry.params || [])) {
@@ -384,11 +315,9 @@
         labelEl.textContent = _labelText; labelWrap.appendChild(labelEl);
         const inp = makeInput(param, cfgVals[param.path]);
         inp.dataset.cfg = cfgName; inp.dataset.path = param.path; inp.dataset.type = param.type;
-        row.appendChild(labelWrap); row.appendChild(inp); mergedSection.appendChild(row);
+        row.appendChild(labelWrap); row.appendChild(inp); formArea.appendChild(row);
       }
     }
-
-    formArea.appendChild(mergedSection);
     checkValidity();
   }
 

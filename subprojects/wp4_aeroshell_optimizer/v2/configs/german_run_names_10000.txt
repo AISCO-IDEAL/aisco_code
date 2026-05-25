@@ -3439,7 +3439,6 @@ frostklar-impuls
 frostklar-insel
 frostklar-jagd
 frostklar-juwel
-frostklar-kamm
 frostklar-kante
 frostklar-kern
 frostklar-kiesel
