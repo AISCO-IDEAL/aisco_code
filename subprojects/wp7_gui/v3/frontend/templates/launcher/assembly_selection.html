@@ -71,6 +71,12 @@ endblock %}
         font-size: 13px;
         color: var(--sel-text);
         background: var(--theme-panel);
+        -moz-appearance: textfield;
+    }
+    .map-load-row input::-webkit-inner-spin-button,
+    .map-load-row input::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
     }
 
     .map-load-row button {
@@ -743,7 +749,7 @@ endblock %}
         // Arrow: parallel to X axis, to the right of the text, pointing in +X (driving) direction
         {
             const fontSize = 22;
-            const frontTextPos = toCanvas(bounds.xmax * 0.93, 0);
+            const frontTextPos = toCanvas(bounds.xmax * 1.00, 0);
             // Draw perpendicular FRONT text
             ctx.save();
             ctx.translate(frontTextPos.x, frontTextPos.y);
@@ -992,6 +998,7 @@ endblock %}
     window.addEventListener("resize", drawPreview);
 
     function updateAddToMapButton() {
+        if (_assemblyFrozen) { btnAddToMap.disabled = true; return; }
         const loadedButUnchanged = loadedAssemblyMapId !== null && !hasUnsavedMapCloneChanges;
         if (addToMapInFlight) {
             btnAddToMap.disabled = true;
