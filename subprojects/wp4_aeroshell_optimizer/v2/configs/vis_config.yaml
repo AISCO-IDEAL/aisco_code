@@ -154,7 +154,7 @@ gif:
 #   solid_color_rgb:    [r,g,b] floats in [0,1] — fallback color when colormap/scalars are unavailable
 visual_types:
   mesh_shape:
-    enabled: true
+    enabled: false
     colormap: null          # uniform dark-blue — shape is the information
     interval: 1
     alpha_enabled: true
@@ -175,7 +175,7 @@ visual_types:
       solid_color_rgb: [1.0, 0.3137, 0.3020]     # #FF504D highlight red
 
     gradient:
-      enabled: false       # aalthaus: did this ever work?
+      enabled: true       # aalthaus: did this ever work?
       colormap: "RdBu_r"
       interval: 1
       alpha_enabled: null
@@ -185,7 +185,7 @@ visual_types:
       solid_color_rgb: [1.0, 0.3137, 0.3020]
 
     sdf_influence:
-      enabled: true
+      enabled: false
       colormap: "inferno"  # SDF colormap
       interval: 1
       alpha_enabled: null
@@ -253,7 +253,7 @@ visual_types:
       vmax: 1.0
 
     vision_cone_mask:
-      enabled: true
+      enabled: false
       colormap: "RdYlGn"  # 0=selectable (green), 1=excluded by vision cone (red)
       interval: 1
       alpha_enabled: null

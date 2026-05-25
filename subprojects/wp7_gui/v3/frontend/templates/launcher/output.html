@@ -194,7 +194,17 @@
         <a href="/launcher/config-overrides?pipeline=completed" class="btn secondary">&larr; Back</a>
         {% endif %}
 
+        {% if pipeline == 'live' %}
+        <div style="flex:1; padding:0 10px;">
+            <div class="progress-bar-wrap" id="progressWrap">
+                <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+            </div>
+            <div id="progressLabel" style="font-size:0.78rem; color:var(--theme-muted); font-weight:600; margin-top:3px;">Loading...</div>
+        </div>
+        <span id="runNameDisplay" style="display:none;"></span>
+        {% else %}
         <span id="runNameDisplay">&#x2014;</span>
+        {% endif %}
 
         <a href="/launcher/leaderboard?pipeline={{ pipeline }}" id="leaderboardBtn" class="btn">Next &rarr;</a>
     </div>
@@ -1033,8 +1043,63 @@
         }
     }
 
+    // ── Progress bar (live pipeline only) ──────────────────────────────────────
+    var _progressFill = isLive ? document.getElementById("progressFill") : null;
+    var _progressLabel = isLive ? document.getElementById("progressLabel") : null;
+    var _progressEventSource = null;
+    var _progressReconnectTimer = null;
+    var _progressCompleted = false;
+
+    function _startProgressSSE() {
+        if (_progressEventSource) { _progressEventSource.close(); _progressEventSource = null; }
+        if (_progressReconnectTimer) { clearTimeout(_progressReconnectTimer); _progressReconnectTimer = null; }
+        _progressCompleted = false;
+        _progressEventSource = new EventSource(LAUNCHER_API + "/run/stream/logs");
+        _progressEventSource.addEventListener("epoch", function (ev) {
+            var d = JSON.parse(ev.data);
+            var pct = d.total > 0 ? Math.min(100, ((d.epoch + 1) / d.total) * 100) : 0;
+            if (_progressFill) _progressFill.style.width = pct + "%";
+            if (_progressLabel) _progressLabel.textContent = "Epoch " + (d.epoch + 1) + " / " + d.total + " (" + pct.toFixed(1) + "%)";
+        });
+        _progressEventSource.addEventListener("done", function (ev) {
+            var d = JSON.parse(ev.data);
+            if (_progressFill) _progressFill.style.width = "100%";
+            if (_progressLabel) _progressLabel.textContent = d.return_code === 0 ? "Completed." : "Finished (code " + d.return_code + ")";
+            if (_progressEventSource) { _progressEventSource.close(); _progressEventSource = null; }
+            _progressCompleted = true;
+        });
+        _progressEventSource.onerror = function () {
+            if (_progressReconnectTimer) clearTimeout(_progressReconnectTimer);
+            _progressReconnectTimer = setTimeout(function () {
+                _progressReconnectTimer = null;
+                if (_progressCompleted) return;
+                fetch(LAUNCHER_API + "/run/state").then(function (r) { return r.json(); }).then(function (s) {
+                    if (!s.running && s.return_code !== null) {
+                        if (_progressFill) _progressFill.style.width = "100%";
+                        if (_progressLabel) _progressLabel.textContent = s.return_code === 0 ? "Completed." : "Finished (code " + s.return_code + ")";
+                        _progressCompleted = true;
+                    } else if (s.running) {
+                        _startProgressSSE();
+                    }
+                }).catch(function () {});
+            }, 5000);
+        };
+    }
+
     // ── Boot ───────────────────────────────────────────────────────────────────
     if (isLive) {
+        // Seed progress bar from last known run state
+        fetch(LAUNCHER_API + "/run/progress").then(function (r) { return r.json(); }).then(function (prog) {
+            if (prog.completed) {
+                if (_progressFill) _progressFill.style.width = "100%";
+                if (_progressLabel) _progressLabel.textContent = "Completed.";
+                _progressCompleted = true;
+            } else if (prog.current_epoch >= 0) {
+                if (_progressFill) _progressFill.style.width = prog.progress_percent + "%";
+                if (_progressLabel) _progressLabel.textContent = "Epoch " + (prog.current_epoch + 1) + " / " + prog.num_epochs + " (" + prog.progress_percent.toFixed(1) + "%)";
+            }
+        }).catch(function () {});
+
         fetch(LAUNCHER_API + "/run/state")
             .then(function (r) { return r.json(); })
             .then(function (state) {
@@ -1043,9 +1108,15 @@
                 if (state.running) {
                     artifactPollTimer = setInterval(fetchLiveArtifacts, 3000);
                     metricsPollTimer = setInterval(refreshLiveMetrics, 1000);
+                    _startProgressSSE();
                 } else {
                     statusLabel.textContent = "Run complete \u2014 showing final artifacts.";
                     metricsPollTimer = setInterval(refreshLiveMetrics, 3000);
+                    if (!_progressCompleted) {
+                        if (_progressFill) _progressFill.style.width = "100%";
+                        if (_progressLabel) _progressLabel.textContent = "Completed.";
+                        _progressCompleted = true;
+                    }
                 }
             })
             .catch(function () {

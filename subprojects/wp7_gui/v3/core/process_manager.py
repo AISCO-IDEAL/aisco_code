@@ -98,12 +98,13 @@ class ProcessManager:
         with self._lock:
             if self._process is None or self._process.poll() is not None:
                 return {"status": "not_running", "message": "No active run to stop"}
+            pid = self._process.pid
             try:
-                os.killpg(self._process.pid, signal.SIGTERM)
+                os.killpg(pid, signal.SIGKILL)
             except Exception:
                 with contextlib.suppress(Exception):
-                    self._process.terminate()
-            return {"status": "stopping", "pid": self._process.pid, "message": "Sent termination signal"}
+                    self._process.kill()
+            return {"status": "killed", "pid": pid, "message": "Sent SIGKILL to process group"}
 
     def get_state(self) -> RunState:
         with self._lock:
