@@ -46,7 +46,7 @@ render_bg: "#23283E"
 transparent_background: true
 show_latent_panel: true
 show_epoch_label: true
-show_cse_overlay: true 
+show_cse_overlay: true
 cse_box_alpha: 0.72
 latent_box_alpha: 0.72
 
@@ -68,6 +68,8 @@ windshield_alpha: 0.32
 show_solar_selection: false
 show_solar_quality_mask: false
 solar_quality_cmap: "magma"
+solar_quality_cmap_min: 0.35
+solar_quality_cmap_max: 1.0
 solar_sun_dir: [-1.0, 0.0, 1.0]
 solar_area_budget_mm2: 4200000.0
 solar_selection_color: "#F0D33E"

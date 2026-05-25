@@ -70,6 +70,31 @@ def _parse_color_rgba_float(c: str | list, alpha: float = 1.0) -> tuple[float, f
     return (r / 255.0, g / 255.0, b / 255.0, alpha)
 
 
+def _build_truncated_cmap(
+    cmap_name: str,
+    cmap_min: float,
+    cmap_max: float,
+    n: int = 256,
+) -> Any:
+    """Return a truncated matplotlib colormap for [cmap_min, cmap_max].
+
+    Falls back to the original cmap name if matplotlib is unavailable.
+    """
+    lo = float(min(max(cmap_min, 0.0), 1.0))
+    hi = float(min(max(cmap_max, 0.0), 1.0))
+    if hi <= lo:
+        hi = min(lo + 1e-3, 1.0)
+
+    try:
+        from matplotlib import cm  # noqa: PLC0415
+        from matplotlib.colors import ListedColormap  # noqa: PLC0415
+
+        base = cm.get_cmap(cmap_name)
+        return ListedColormap(base(np.linspace(lo, hi, int(max(16, n)))))
+    except Exception:
+        return cmap_name
+
+
 # ---------------------------------------------------------------------------
 # Domain constants — prism bounds (mm) matching the wp2 assembler definition
 # ---------------------------------------------------------------------------
@@ -1027,6 +1052,8 @@ def render_mesh(
     solar_quality_face: np.ndarray | None = None,
     solar_quality_enabled: bool = False,
     solar_quality_cmap: str = "viridis",
+    solar_quality_cmap_min: float = 0.0,
+    solar_quality_cmap_max: float = 1.0,
 ) -> np.ndarray:
     """Render mesh and inner assembly using PyVista with Order-Independent Transparency."""
     # 1. Initialize offscreen plotter (removing the multi_samples keyword argument)
@@ -1067,10 +1094,15 @@ def render_mesh(
             show_scalar_bar=False,
         )
     elif solar_quality_enabled and solar_quality_face is not None and len(solar_quality_face) == len(mesh.faces):
+        quality_cmap = _build_truncated_cmap(
+            cmap_name=solar_quality_cmap,
+            cmap_min=solar_quality_cmap_min,
+            cmap_max=solar_quality_cmap_max,
+        )
         plotter.add_mesh(
             pv_mesh,
             scalars=np.asarray(solar_quality_face, dtype=np.float32),
-            cmap=solar_quality_cmap,
+            cmap=quality_cmap,
             clim=[0.0, 1.0],
             opacity=1.0,
             ambient=0.3,
@@ -2468,6 +2500,20 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         help="Matplotlib colormap used for the solar quality mask",
     )
     parser.add_argument(
+        "--solar-quality-cmap-min",
+        dest="solar_quality_cmap_min",
+        type=float,
+        default=float(_c("solar_quality_cmap_min", 0.0)),
+        help="Lower bound of sampled colormap range in [0,1] for solar quality mask",
+    )
+    parser.add_argument(
+        "--solar-quality-cmap-max",
+        dest="solar_quality_cmap_max",
+        type=float,
+        default=float(_c("solar_quality_cmap_max", 1.0)),
+        help="Upper bound of sampled colormap range in [0,1] for solar quality mask",
+    )
+    parser.add_argument(
         "--show-pressure-field",
         dest="show_pressure_field",
         action=argparse.BooleanOptionalAction,
@@ -3269,6 +3315,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             solar_quality_face=solar_quality_face_np,
             solar_quality_enabled=show_solar_quality_mask_now,
             solar_quality_cmap=str(args.solar_quality_cmap),
+            solar_quality_cmap_min=float(args.solar_quality_cmap_min),
+            solar_quality_cmap_max=float(args.solar_quality_cmap_max),
         )
         composite = np.array(rgb, copy=True)
         lbox_x, box_y, rbox_x, _ = box_position(
@@ -3458,14 +3506,25 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 rgba_frames.append(np.dstack([f, alpha]))
             gif_frames = rgba_frames
 
-        # Force imageio to calculate an optimized palette per frame rather than a single blurry global palette
-        imageio.mimsave(
+        # Use PIL writer with disposal=2 so transparent GIF frames do not stack/ghost.
+        frame_duration_ms = round(1000.0 / max(int(args.fps), 1))
+        pil_frames: list[Image.Image] = []
+        for f in gif_frames:
+            arr = np.asarray(f, dtype=np.uint8)
+            if arr.ndim == 3 and arr.shape[2] == 4:
+                pil_frames.append(Image.fromarray(arr, mode="RGBA"))
+            else:
+                pil_frames.append(Image.fromarray(arr, mode="RGB"))
+        if not pil_frames:
+            sys.exit("ERROR: GIF encoding failed because no frames were available")
+        pil_frames[0].save(
             out_path,
-            gif_frames,
-            fps=args.fps,
+            save_all=True,
+            append_images=pil_frames[1:],
+            duration=frame_duration_ms,
             loop=0,
-            quantizer="nq",  # NeuQuant high-quality neural network quantizer
-            palettesize=256,
+            disposal=2,
+            optimize=False,
         )
         print(f"Done.  GIF saved to: {out_path}")
 
