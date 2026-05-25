@@ -540,7 +540,12 @@
             _metricsHistory = history;
             if (_epochLocked) {
                 var _lf = primaryGlbFiles[primaryGlbIdx];
-                if (_lf && _lf.epoch != null) applyMetricDisplaysForEpoch(_lf.epoch);
+                if (_lf && _lf.epoch != null) {
+                    applyMetricDisplaysForEpoch(_lf.epoch);
+                } else {
+                    var _rf = rightPanelFiles[rightPanelIdx];
+                    if (_rf && _rf.epoch != null) applyMetricDisplaysForEpoch(_rf.epoch);
+                }
             } else {
                 applyMetricDisplays(latestMetrics, history);
             }
@@ -948,6 +953,13 @@
         paintSlider(rightPanelSlider);
         loadRightPanel();
         syncPrimaryEpochToRight();
+        var _f = rightPanelFiles[rightPanelIdx];
+        if (_f && _f.epoch != null) {
+            _epochLocked = rightPanelIdx < rightPanelFiles.length - 1;
+            applyMetricDisplaysForEpoch(_f.epoch);
+        } else {
+            _epochLocked = false;
+        }
     });
 
     rightPanelPlayBtn.addEventListener("click", function () {
