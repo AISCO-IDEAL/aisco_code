@@ -169,7 +169,12 @@ def collect_run_dirs(storage_root: Path) -> list[Path]:
             run_dirs.extend(
                 child
                 for child in model_dir.iterdir()
-                if child.is_dir() and ((child / "meshes").exists() or find_mesh_assembly_dir(child) is not None)
+                if child.is_dir()
+                and (
+                    (child / "meshes").exists()
+                    or find_mesh_assembly_dir(child) is not None
+                    or (child / "gui_cfg_session.txt").exists()
+                )
             )
         except OSError as exc:
             LOGGER.warning("Cannot list model dir %s: %s", model_dir, exc)
