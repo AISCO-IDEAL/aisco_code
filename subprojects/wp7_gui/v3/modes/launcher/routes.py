@@ -266,7 +266,7 @@ def run_home_reset() -> JSONResponse:
 
     Called when the user navigates home from any live-pipeline wizard page.
     Clears the active config folder (so the output page shows no stale artifacts)
-    and resets the live assembly params to map entry 1 (the default starting point).
+    and resets the live assembly params and PLY to map entry 0 (the default starting point).
 
     Returns:
         JSON with ``{"status": "ok"}``.
@@ -274,7 +274,7 @@ def run_home_reset() -> JSONResponse:
     _process_manager.stop()
     _runtime_state["active_cfg_folder"] = ""
     _runtime_state["run_started_at"] = None
-    _assembly_service_live.reset_to_default()
+    _assembly_service_live.reset_to_default(assembly_id=0)
     return JSONResponse({"status": "ok"})
 
 

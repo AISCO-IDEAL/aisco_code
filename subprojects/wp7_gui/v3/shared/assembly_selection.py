@@ -191,9 +191,10 @@ class AssemblySelectionService:
         }
 
     def reset_to_default(self, assembly_id: int = 1) -> None:
-        """Reset parameters.yaml to a map entry without triggering a mesh rebuild.
+        """Reset parameters.yaml to a map entry and rebuild assembly.ply.
 
-        Called on home-reset so the next wizard run starts from a clean assembly.
+        Called on home-reset so the next wizard run starts from a clean assembly
+        with the PLY already rendered at the default position.
         Silently no-ops if the map entry does not exist or any error occurs.
 
         Args:
@@ -203,6 +204,7 @@ class AssemblySelectionService:
             params = self._read_map_entry(assembly_id)
             with self._lock:
                 self._write_params(params)
+                self._rebuild()
         except Exception:
             pass
 
