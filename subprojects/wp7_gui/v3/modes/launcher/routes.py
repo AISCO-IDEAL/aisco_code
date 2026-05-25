@@ -42,7 +42,10 @@ LOGGER = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 _process_manager = ProcessManager(SETTINGS.logs_dir)
 _csv_metrics = CSVMetricsWriter(SETTINGS.logs_dir / "gui_runs_summary.csv")
-_runtime_state: dict[str, str] = {"active_cfg_folder": ""}  # updated on each run/start so progress/SSE can resolve epochs
+_runtime_state: dict[str, Any] = {
+    "active_cfg_folder": "",
+    "run_started_at": None,
+}  # updated on run start so progress/SSE resolve only the current run
 _config_manager = ConfigOverrideManager(
     root=SETTINGS.config_overrides_root,
     schema_path=SETTINGS.schema_path,
@@ -137,6 +140,27 @@ def _get_total_epochs(cfg_folder: str = "") -> int:
         return 100
 
 
+def _is_prestart_run_dir(run_dir: Path) -> bool:
+    """Return True when *run_dir* predates the current live run start."""
+    started_at = _runtime_state.get("run_started_at")
+    if not isinstance(started_at, (int, float)):
+        return False
+    try:
+        return run_dir.stat().st_mtime < float(started_at)
+    except OSError:
+        return False
+
+
+def _resolve_active_run_dir(storage_root: Path, cfg_session: str | None) -> Path | None:
+    """Resolve the active run dir, excluding stale dirs from previous runs."""
+    run_dir = detect_current_run_dir(storage_root, preferred_cfg_session=cfg_session or None)
+    if run_dir is None:
+        return None
+    if _is_prestart_run_dir(run_dir):
+        return None
+    return run_dir
+
+
 # ---------------------------------------------------------------------------
 # Page routes
 # ---------------------------------------------------------------------------
@@ -184,6 +208,8 @@ def launcher_subpage(request: Request, page_key: str, pipeline: str = "live"):
 # ---------------------------------------------------------------------------
 @router.post("/api/run/start")
 def run_start(payload: RunStartRequest) -> JSONResponse:
+    was_running = _process_manager.get_state()["running"]
+
     assembly_id: int | None = None
     if payload.assembly_id not in (None, ""):
         try:
@@ -212,6 +238,10 @@ def run_start(payload: RunStartRequest) -> JSONResponse:
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=500, detail={"message": str(exc)}) from exc
+
+    # Mark the freshness boundary only when a new process has actually started.
+    if not was_running:
+        _runtime_state["run_started_at"] = time.time()
 
     # Spawn a background thread that writes the final epoch CSV when the run
     # completes, ensuring coverage even when no SSE client is connected.
@@ -243,6 +273,7 @@ def run_home_reset() -> JSONResponse:
     """
     _process_manager.stop()
     _runtime_state["active_cfg_folder"] = ""
+    _runtime_state["run_started_at"] = None
     _assembly_service_live.reset_to_default()
     return JSONResponse({"status": "ok"})
 
@@ -320,7 +351,7 @@ def _write_epoch_csv(
     session_dir = Path(cfg_folder) if cfg_folder else None
     storage_root = get_storage_root_for_session(session_dir)
     cfg_session = Path(cfg_folder).name if cfg_folder else ""
-    run_dir = detect_current_run_dir(storage_root, preferred_cfg_session=cfg_session or None)
+    run_dir = _resolve_active_run_dir(storage_root, cfg_session or None)
     if run_dir is None:
         return False
     _csv_metrics.write_epoch_row(
@@ -356,7 +387,7 @@ def run_metrics_latest() -> dict[str, Any]:
     session_dir = Path(active_cfg_folder) if active_cfg_folder else None
     storage_root = get_storage_root_for_session(session_dir)
     cfg_session = Path(active_cfg_folder).name if active_cfg_folder else None
-    run_dir = detect_current_run_dir(storage_root, preferred_cfg_session=cfg_session or None)
+    run_dir = _resolve_active_run_dir(storage_root, cfg_session or None)
     if run_dir is None:
         return {
             "found": False,
@@ -397,7 +428,7 @@ def run_metrics_history(limit: int = 120) -> dict[str, Any]:
     session_dir = Path(active_cfg_folder) if active_cfg_folder else None
     storage_root = get_storage_root_for_session(session_dir)
     cfg_session = Path(active_cfg_folder).name if active_cfg_folder else None
-    run_dir = detect_current_run_dir(storage_root, preferred_cfg_session=cfg_session or None)
+    run_dir = _resolve_active_run_dir(storage_root, cfg_session or None)
     if run_dir is None:
         return {
             "found": False,
@@ -422,7 +453,7 @@ def run_artifacts() -> dict[str, Any]:
     session_dir = Path(active_cfg_folder) if active_cfg_folder else None
     storage_root = get_storage_root_for_session(session_dir)
     active_cfg_session = Path(active_cfg_folder).name if active_cfg_folder else None
-    run_dir = detect_current_run_dir(storage_root, preferred_cfg_session=active_cfg_session)
+    run_dir = _resolve_active_run_dir(storage_root, active_cfg_session)
     if run_dir is None:
         return {
             "run_dir": None,
@@ -655,7 +686,7 @@ def _sse_init_last_written_epoch(active_cfg_folder: str) -> int:
             storage_root = get_storage_root_for_session(session_dir)
             cfg_session = session_dir.name
             all_run_dirs = collect_run_dirs(storage_root)
-            tagged = [p for p in all_run_dirs if read_cfg_session(p) == cfg_session]
+            tagged = [p for p in all_run_dirs if read_cfg_session(p) == cfg_session and not _is_prestart_run_dir(p)]
             if not tagged:
                 return -1
             run_dir = max(tagged, key=lambda p: p.stat().st_mtime)
@@ -765,7 +796,7 @@ async def run_stream_artifacts() -> StreamingResponse:
             session_dir = Path(active_cfg_folder) if active_cfg_folder else None
             storage_root = get_storage_root_for_session(session_dir)
             active_cfg_session = Path(active_cfg_folder).name if active_cfg_folder else None
-            run_dir = detect_current_run_dir(storage_root, preferred_cfg_session=active_cfg_session)
+            run_dir = _resolve_active_run_dir(storage_root, active_cfg_session)
             if run_dir is not None:
                 new_events, seen = fs_poller.poll_once(run_dir, seen)
                 for ev in new_events:
