@@ -120,7 +120,7 @@
     cursor: not-allowed;
   }
 </style>
-<div class="section-grid" style="grid-template-rows: auto minmax(220px, 0.62fr) {% if pipeline == 'live' %}auto {% endif %}minmax(120px, 0.38fr); height: 100%;">
+<div class="section-grid" style="grid-template-rows: auto minmax(220px, 0.62fr) minmax(120px, 0.38fr); height: 100%;">
 
   <!-- Wizard navigation -->
   <div class="dark-card toolbar">
@@ -128,15 +128,6 @@
     <div style="flex:1;"></div>
     <a id="btnNext" href="/launcher/output?pipeline=live" class="btn">Next →</a>
   </div>
-
-  <!-- Config locked banner (live only — shown after Save & Run is clicked) -->
-  {% if pipeline == 'live' %}
-  <div id="configLockedBanner" style="display:none; padding:8px 14px; border-radius:8px; font-size:0.82rem; color:var(--theme-text); background:color-mix(in srgb, var(--theme-warning-text) 12%, transparent); align-items:center; gap:8px;">
-    <span>&#128274; Config locked — run is in progress or completed.</span>
-    <div style="flex:1;"></div>
-    <a href="/" id="btnGoHomeFromBanner" class="btn secondary" style="font-size:0.78rem; padding:4px 10px;">&#8592; Go Home</a>
-  </div>
-  {% endif %}
 
   <!-- Config form -->
   <div class="card" style="display:flex; flex-direction:column; min-height:0; overflow:hidden;">
@@ -147,7 +138,8 @@
       </div>
     </div>
     {% if pipeline == 'live' %}
-    <div style="display:flex; justify-content:flex-end; padding:8px 12px; border-top:1px solid color-mix(in srgb, var(--theme-text-box) 55%, var(--theme-white) 45%);">
+    <div style="display:flex; justify-content:space-between; padding:8px 12px; border-top:1px solid color-mix(in srgb, var(--theme-text-box) 55%, var(--theme-white) 45%);">
+      <button class="btn secondary" id="btnReload" disabled>&#8635; Reset to defaults</button>
       <button class="btn" id="btnSaveChanges" disabled style="background:var(--theme-sel-red); border-color:var(--theme-sel-red); color:#fff;">Save Changes</button>
     </div>
     {% endif %}
@@ -350,7 +342,7 @@
     const nameRow = document.createElement("div"); nameRow.className = "param-row";
     const nameLabelWrap = document.createElement("div");
     const nameLabelEl = document.createElement("div"); nameLabelEl.className = "param-label";
-    nameLabelEl.textContent = "RUN NAME"; nameLabelWrap.appendChild(nameLabelEl);
+    nameLabelEl.textContent = "Run name"; nameLabelWrap.appendChild(nameLabelEl);
     const nameMetaEl = document.createElement("span"); nameMetaEl.className = "param-meta";
     nameLabelWrap.appendChild(nameMetaEl);
     const nameInp = document.createElement("input");
@@ -375,13 +367,13 @@
         const row = document.createElement("div"); row.className = "param-row";
         const labelWrap = document.createElement("div");
         const labelEl = document.createElement("div"); labelEl.className = "param-label";
-        labelEl.textContent = param.label || param.path; labelWrap.appendChild(labelEl);
-        const meta = document.createElement("span"); meta.className = "param-meta";
-        let mt = `${cfgEntry.label || cfgName} · ${cfgName} · ${param.path} · ${param.type}`;
-        if ("min" in param || "max" in param) mt += ` · [${param.min ?? "-∞"}, ${param.max ?? "+∞"}]`;
-        if (param.choices) mt += ` · ${JSON.stringify(param.choices)}`;
-        if (param.path === ASSEMBLY_ID_PATH) mt += " · locked (set in assembly selection)";
-        meta.textContent = mt; labelWrap.appendChild(meta);
+        let _labelText = (param.label || param.path).toUpperCase();
+        if ((param.type === "int" || param.type === "float") && param.path !== ASSEMBLY_ID_PATH) {
+          if ("min" in param || "max" in param) _labelText += `  [${param.min ?? "-\u221e"}, ${param.max ?? "+\u221e"}]`;
+        } else if (param.type === "bool") {
+          _labelText += "  ON/OFF";
+        }
+        labelEl.textContent = _labelText; labelWrap.appendChild(labelEl);
         const inp = makeInput(param, cfgVals[param.path]);
         inp.dataset.cfg = cfgName; inp.dataset.path = param.path; inp.dataset.type = param.type;
         row.appendChild(labelWrap); row.appendChild(inp); mergedSection.appendChild(row);
@@ -469,9 +461,25 @@
     if (_runBtn) _runBtn.style.display = "none";
     const _saveBtn = document.getElementById("btnSaveChanges");
     if (_saveBtn) _saveBtn.style.display = "none";
-    // Show locked banner
-    const banner = document.getElementById("configLockedBanner");
-    if (banner) banner.style.display = "flex";
+    // Show small locked banner after toolbar (like assembly_selection.html)
+    const _toolbar = document.querySelector(".toolbar");
+    if (_toolbar && !document.getElementById("configLockedBanner")) {
+      const banner = document.createElement("div");
+      banner.id = "configLockedBanner";
+      banner.style.cssText = [
+        "display:flex",
+        "align-items:center",
+        "gap:8px",
+        "padding:6px 14px",
+        "margin-top:6px",
+        "background:color-mix(in srgb, var(--theme-warning-text) 12%, transparent)",
+        "border-radius:8px",
+        "font-size:0.82rem",
+        "color:var(--theme-text)"
+      ].join(";");
+      banner.innerHTML = '<span>&#128274; Config locked \u2014 run is in progress or completed.</span><div style="flex:1;"></div><a href="/" class="btn secondary" style="font-size:0.78rem;padding:4px 10px;">&#8592; Go Home</a>';
+      _toolbar.after(banner);
+    }
     console.info("[AISCO] Config frozen.");
   }
 
