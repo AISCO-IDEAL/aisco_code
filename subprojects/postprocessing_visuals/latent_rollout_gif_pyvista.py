@@ -2520,6 +2520,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         help="Show the latent spiral card in the right panel (including epoch_gif mode)",
     )
     parser.add_argument(
+        "--show-epoch-label",
+        dest="show_epoch_label",
+        action=argparse.BooleanOptionalAction,
+        default=bool(_c("show_epoch_label", True)),
+        help="Show/hide the epoch counter label",
+    )
+    parser.add_argument(
         "--export-final-png",
         dest="export_final_png",
         action=argparse.BooleanOptionalAction,
@@ -3032,7 +3039,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                         outer_margin_x,
                     )
                     composite_skip = _composite_box_on_frame(composite_skip, right_img, right_x, skip_box_y)
-                composite_skip = draw_epoch_label_on_frame(composite_skip, frame_epoch_num, box_color=(20, 24, 30))
+                if bool(args.show_epoch_label):
+                    composite_skip = draw_epoch_label_on_frame(composite_skip, frame_epoch_num, box_color=(20, 24, 30))
                 frames.append(composite_skip)
             continue
 
@@ -3235,7 +3243,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             )
             composite = _composite_box_on_frame(composite, left_img, lbox_x, box_y)
 
-        composite = draw_epoch_label_on_frame(composite, frame_epoch_num, box_color=(20, 24, 30))
+        if bool(args.show_epoch_label):
+            composite = draw_epoch_label_on_frame(composite, frame_epoch_num, box_color=(20, 24, 30))
         frames.append(composite)
         last_valid_rgb = rgb
         last_aeroshell_rgb = rgb
