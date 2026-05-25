@@ -1,6 +1,5 @@
 {% extends "base.html" %}
 {% block hint %}{% if pipeline == 'live' %}Edit config overrides, then launch a training run and watch live progress below.{% else %}Browse config values used for a completed run (read-only).{% endif %}{% endblock %}
-{% block global_run_progress %}{% endblock %}
 
 {% block content %}
 <style>

@@ -342,7 +342,63 @@ endblock %}
 <div class="section-grid" style="grid-template-rows: auto 1fr; height: 100%;">
     <div class="dark-card toolbar">
         <a id="backToHomeBtn" href="/" class="btn secondary">← Back to Home</a>
+        {% if pipeline == 'live' %}
+        <div style="flex:1; padding:0 10px;">
+            <div class="progress-bar-wrap" id="progressWrap"><div class="progress-bar-fill" id="progressFill" style="width:0%"></div></div>
+            <div id="progressLabel" style="font-size:0.78rem; color:var(--theme-muted); font-weight:600; margin-top:3px;">Idle</div>
+        </div>
+        <script>(function () {
+            var fill = document.getElementById("progressFill");
+            var lbl  = document.getElementById("progressLabel");
+            var _es = null, _timer = null, _done = false;
+            function _start() {
+                if (_es) { _es.close(); _es = null; }
+                if (_timer) { clearTimeout(_timer); _timer = null; }
+                _done = false;
+                _es = new EventSource("/launcher/api/run/stream/logs");
+                _es.addEventListener("epoch", function (ev) {
+                    var d = JSON.parse(ev.data);
+                    var pct = d.total > 0 ? Math.min(100, ((d.epoch + 1) / d.total) * 100) : 0;
+                    if (fill) fill.style.width = pct + "%";
+                    if (lbl) lbl.textContent = "Epoch " + (d.epoch + 1) + " / " + d.total + " (" + pct.toFixed(1) + "%)";
+                });
+                _es.addEventListener("done", function (ev) {
+                    var d = JSON.parse(ev.data);
+                    if (fill) fill.style.width = "100%";
+                    if (lbl) lbl.textContent = d.return_code === 0 ? "Completed." : "Finished (code " + d.return_code + ")";
+                    if (_es) { _es.close(); _es = null; }
+                    _done = true;
+                });
+                _es.onerror = function () {
+                    if (_timer) clearTimeout(_timer);
+                    _timer = setTimeout(function () {
+                        _timer = null;
+                        if (_done) return;
+                        fetch("/launcher/api/run/state").then(function (r) { return r.json(); }).then(function (s) {
+                            if (!s.running && s.return_code !== null) {
+                                if (fill) fill.style.width = "100%";
+                                if (lbl) lbl.textContent = s.return_code === 0 ? "Completed." : "Finished (code " + s.return_code + ")";
+                                _done = true;
+                            } else if (s.running) { _start(); }
+                        }).catch(function () {});
+                    }, 5000);
+                };
+            }
+            fetch("/launcher/api/run/progress").then(function (r) { return r.json(); }).then(function (p) {
+                if (p.completed) { if (fill) fill.style.width = "100%"; if (lbl) lbl.textContent = "Completed."; _done = true; }
+                else if (p.current_epoch >= 0) {
+                    if (fill) fill.style.width = p.progress_percent + "%";
+                    if (lbl) lbl.textContent = "Epoch " + (p.current_epoch + 1) + " / " + p.num_epochs + " (" + p.progress_percent.toFixed(1) + "%)";
+                }
+            }).catch(function () {});
+            fetch("/launcher/api/run/state").then(function (r) { return r.json(); }).then(function (s) {
+                if (s.running) { _start(); }
+                else if (s.return_code !== null) { if (fill) fill.style.width = "100%"; if (lbl) lbl.textContent = "Completed."; _done = true; }
+            }).catch(function () {});
+        }());</script>
+        {% else %}
         <div style="flex:1;"></div>
+        {% endif %}
         <a id="btnNextToOverrides" href="/launcher/config-overrides?pipeline={{ pipeline }}" class="btn">Next →</a>
     </div>
 
