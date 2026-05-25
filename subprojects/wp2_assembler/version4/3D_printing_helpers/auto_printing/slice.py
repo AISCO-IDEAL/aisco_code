@@ -84,10 +84,14 @@ def slice_3mf(input_3mf: Path, output_dir: Path) -> int:
 
     cmd = [
         str(APPIMAGE),
-        "--load-settings", f"{machine_json};{process_json}",
-        "--load-filaments", str(filament_json),
-        "--slice", "0",
-        "--outputdir", str(output_dir),
+        "--load-settings",
+        f"{machine_json};{process_json}",
+        "--load-filaments",
+        str(filament_json),
+        "--slice",
+        "0",
+        "--outputdir",
+        str(output_dir),
         str(input_3mf),
     ]
 
@@ -103,9 +107,7 @@ def slice_3mf(input_3mf: Path, output_dir: Path) -> int:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Slice a 3MF file for BambuLab X1C using Bambu Studio CLI."
-    )
+    parser = argparse.ArgumentParser(description="Slice a 3MF file for BambuLab X1C using Bambu Studio CLI.")
     parser.add_argument(
         "input",
         nargs="?",
@@ -113,7 +115,8 @@ def main() -> None:
         help="Path to the input .3mf file (default: 3DBenchy.3mf next to this script)",
     )
     parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         default=None,
         help="Output directory for sliced files (default: <input_dir>/sliced_output)",
     )
