@@ -356,7 +356,6 @@ endblock %}
                                     <th>X</th>
                                     <th>Y</th>
                                     <th>Z</th>
-                                    <th style="width:80px;">Order</th>
                                 </tr>
                             </thead>
                             <tbody id="controls"></tbody>
@@ -532,10 +531,11 @@ endblock %}
                 ? " disabled title=\"Wheel Z is fixed and cannot be changed\""
                 : " disabled title=\"Assembly is locked \u2014 go back to edit\"")
             : "";
+        const minAttr = (part === "seat" && axis === "z") ? " min=\"100\" max=\"800\"" : "";
         return `
       <td>
         <input type="number" step="1" value="${Math.round(value)}"
-          data-key="${part}" data-axis="${axis}"${disabledAttr} oninput="onEdit(this)">
+          data-key="${part}" data-axis="${axis}"${minAttr}${disabledAttr} oninput="onEdit(this)">
       </td>
     `;
     }
@@ -557,7 +557,6 @@ endblock %}
                 ${inputCell(part, "x", vals.x)}
                 ${inputCell(part, "y", vals.y)}
                 ${inputCell(part, "z", vals.z, isWheel)}
-                <td style="padding:4px 6px;">${isWheel ? `<div style="display:flex; gap:10px;"><button class="move-btn" ${(canUp && !_assemblyFrozen) ? "" : "disabled"} style="background:var(--theme-white); border-color:var(--theme-surface-large); color:var(--theme-bg); min-width:34px;" onclick="movePart('${part}',-1)" title="Move up">&#8593;</button><button class="move-btn" ${(canDn && !_assemblyFrozen) ? "" : "disabled"} style="background:var(--theme-white); border-color:var(--theme-title-2); color:var(--theme-bg); min-width:34px;" onclick="movePart('${part}',1)" title="Move down">&#8595;</button></div>` : ""}</td>
             `;
             body.appendChild(row);
         }
@@ -615,6 +614,7 @@ endblock %}
         let v = parseFloat(el.value || "0");
         if (axis === "x") v = Math.max(bounds.xmin, Math.min(bounds.xmax, v));
         if (axis === "y") v = Math.max(bounds.ymin, Math.min(bounds.ymax, v));
+        if (key === "seat" && axis === "z") v = Math.max(100, Math.min(800, v));
         el.value = v;
         params[key][axis] = v;
         markAssemblyEdited();
