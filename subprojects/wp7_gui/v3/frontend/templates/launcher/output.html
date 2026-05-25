@@ -189,33 +189,14 @@
     <!-- ── TOOLBAR ─────────────────────────────────────────────────────────── -->
     <div class="dark-card toolbar" style="position:relative;">
         {% if pipeline == 'live' %}
-        <a href="/launcher/config-overrides?pipeline=live" class="btn secondary">← Back</a>
+        <a href="/launcher/config-overrides?pipeline=live" class="btn secondary">&larr; Back</a>
         {% else %}
-        <a href="/launcher/config-overrides?pipeline=completed" class="btn secondary">← Back</a>
+        <a href="/launcher/config-overrides?pipeline=completed" class="btn secondary">&larr; Back</a>
         {% endif %}
 
-        <span id="runNameDisplay">—</span>
+        <span id="runNameDisplay">&#x2014;</span>
 
-        <button class="btn secondary" id="btnEditPanels">Edit Panels</button>
-        <a href="/launcher/leaderboard?pipeline={{ pipeline }}" id="leaderboardBtn" class="btn">Next →</a>
-
-        <!-- Panel editor dropdown -->
-        <div class="dark-card" id="panelEditorCard"
-            style="display:none; position:absolute; top:calc(100% + 8px); right:0; z-index:20; width:min(420px, calc(100vw - 48px)); gap:10px; padding:10px 12px; box-shadow:0 18px 38px color-mix(in srgb, var(--theme-black) 22%, transparent);">
-            <div style="display:flex; align-items:center; gap:10px;">
-                <div style="font-size:0.82rem; color:var(--theme-warning-text); font-weight:700;">Priority Visualization
-                    Order</div>
-                <div style="flex:1;"></div>
-                <button class="btn secondary" id="btnClosePanelEditor"
-                    style="padding:4px 10px; font-size:0.8rem;">Close</button>
-            </div>
-            <div style="font-size:0.74rem; color:var(--theme-muted); line-height:1.6;">
-                The right panel searches for available meshes in the priority order below.
-                Select which to display using the radio buttons on the right column.
-                Edit <code>MESH_PRIORITY</code> in the page source to change the search order.
-            </div>
-            <div id="priorityListPreview" style="display:flex; flex-direction:column; gap:3px; margin-top:4px;"></div>
-        </div>
+        <a href="/launcher/leaderboard?pipeline={{ pipeline }}" id="leaderboardBtn" class="btn">Next &rarr;</a>
     </div>
 
     <!-- ── MAIN 3-COLUMN CONTENT ──────────────────────────────────────────── -->
@@ -225,7 +206,7 @@
             <!-- LEFT: Primary GLB mesh -->
             <div class="output-col">
                 <div class="visual-card" style="grid-template-rows: auto 1fr auto auto auto;">
-                    <div class="visual-title">Aeroshell Mesh (GLB)</div>
+                    <div class="visual-title">Aeroshell Mesh (GLB, Vision Cone)</div>
 
                     <div id="primaryGlbMeshBox">
                         <span id="primaryGlbPlaceholder"
@@ -253,6 +234,23 @@
 
             <!-- MIDDLE: Metric placeholders -->
             <div class="output-col">
+                <div class="dark-card" style="display:grid; gap:8px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <div class="visual-title" style="margin:0;">Visualization Selection</div>
+                        <span style="flex:1;"></span>
+                        <label
+                            style="display:flex; align-items:center; gap:5px; font-size:0.72rem; color:var(--theme-muted); cursor:pointer; white-space:nowrap;">
+                            <input type="checkbox" id="expertModeToggle"> Expert mode (4)
+                        </label>
+                    </div>
+                    <div style="font-size:0.74rem; color:var(--theme-muted); line-height:1.5;">
+                        Select the secondary visualization shown on the right. Default mode shows up to 3 options.
+                    </div>
+                    <div id="rightPanelSelector" class="right-selector">
+                        <span style="font-size:0.72rem; color:var(--theme-muted);">Waiting for artifacts&#x2026;</span>
+                    </div>
+                </div>
+
                 <div class="metric-card" data-metric="speed">
                     <div class="metric-card__name">Speed (km/h)</div>
                     <div class="metric-card__value" id="metricCS">&#x2014;</div>
@@ -275,19 +273,8 @@
 
             <!-- RIGHT: Single visualization with radio selection -->
             <div class="output-col">
-                <div class="visual-card" style="grid-template-rows: auto auto 1fr auto auto auto;">
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <div class="visual-title">Secondary Visualization</div>
-                        <span style="flex:1;"></span>
-                        <label
-                            style="display:flex; align-items:center; gap:5px; font-size:0.72rem; color:var(--theme-muted); cursor:pointer; white-space:nowrap;">
-                            <input type="checkbox" id="cameraSyncToggle"> Sync camera
-                        </label>
-                    </div>
-
-                    <div id="rightPanelSelector" class="right-selector">
-                        <span style="font-size:0.72rem; color:var(--theme-muted);">Waiting for artifacts&#x2026;</span>
-                    </div>
+                <div class="visual-card" style="grid-template-rows: auto 1fr auto auto auto;">
+                    <div class="visual-title">Secondary Visualization</div>
 
                     <div id="rightPanelMeshBox" class="priority-mesh-box">
                         <span id="rightPanelPlaceholder"
@@ -349,6 +336,8 @@
     }());
     var MESH_PRIORITY = window._MESH_PRIORITY;
     var MESH_PRIORITY_MAX_SHOWN = window._MESH_PRIORITY_MAX_SHOWN;
+    const MESH_PRIORITY_EXPERT_MAX_SHOWN = 4;
+    const EXPERT_MODE_KEY = "aiscoOutputExpertModeV3";
 
     // ── DOM references ─────────────────────────────────────────────────────────
     const runNameDisplay = document.getElementById("runNameDisplay");
@@ -365,12 +354,8 @@
     const rightPanelGlbControls = document.getElementById("rightPanelGlbControls");
     const rightPanelSlider = document.getElementById("rightPanelSlider");
     const rightPanelPlayBtn = document.getElementById("rightPanelPlay");
-    const cameraSyncToggle = document.getElementById("cameraSyncToggle");
-    const btnEditPanels = document.getElementById("btnEditPanels");
-    const panelEditorCard = document.getElementById("panelEditorCard");
-    const btnClosePanelEditor = document.getElementById("btnClosePanelEditor");
+    const expertModeToggle = document.getElementById("expertModeToggle");
     const leaderboardBtn = document.getElementById("leaderboardBtn");
-    const priorityListPreview = document.getElementById("priorityListPreview");
     const statusLabel = document.getElementById("statusLabel");
     const metricSpeedValue = document.getElementById("metricCS");
     const metricDragValue = document.getElementById("metricDrag");
@@ -405,10 +390,19 @@
     let availableItems = [];   // all items with data, in priority order
     let activeRightLabel = null; // currently selected label
     let latestArtifactData = null;
+    let expertModeEnabled = localStorage.getItem(EXPERT_MODE_KEY) === "1";
     let artifactPollTimer = null;
     let metricsPollTimer = null;
     let _metricsHistory = null; // retained across slider moves
     let _epochLocked = false;   // true when user has scrubbed away from latest
+
+    if (expertModeToggle) {
+        expertModeToggle.checked = expertModeEnabled;
+    }
+
+    function getEffectiveMaxShown() {
+        return expertModeEnabled ? MESH_PRIORITY_EXPERT_MAX_SHOWN : MESH_PRIORITY_MAX_SHOWN;
+    }
 
     const _urlParams = new URLSearchParams(window.location.search);
     const cfgSession = _urlParams.get("cfg_session") || null;
@@ -562,7 +556,7 @@
                 primaryGlbViewer.setGlbControlsHost(primaryGlbControls);
                 primaryGlbViewer.setOnControlsChange(function (vs) {
                     primaryUserView = vs;
-                    if (cameraSyncToggle.checked && rightPanelViewer) {
+                    if (rightPanelViewer) {
                         rightPanelUserView = vs;
                         rightPanelViewer.setViewState(vs);
                     }
@@ -620,7 +614,7 @@
 
     // Helper: sync right epoch to match the current primary epoch (proportional)
     function syncRightEpochToPrimary() {
-        if (!cameraSyncToggle.checked || !rightPanelFiles.length || !primaryGlbFiles.length) return;
+        if (!rightPanelFiles.length || !primaryGlbFiles.length) return;
         var pct = primaryGlbFiles.length > 1 ? primaryGlbIdx / (primaryGlbFiles.length - 1) : 0;
         rightPanelIdx = Math.round(pct * (rightPanelFiles.length - 1));
         rightPanelSlider.value = String(rightPanelIdx);
@@ -635,7 +629,7 @@
 
     // Helper: sync primary epoch to match the current right epoch (proportional)
     function syncPrimaryEpochToRight() {
-        if (!cameraSyncToggle.checked || !primaryGlbFiles.length || !rightPanelFiles.length) return;
+        if (!primaryGlbFiles.length || !rightPanelFiles.length) return;
         var pct = rightPanelFiles.length > 1 ? rightPanelIdx / (rightPanelFiles.length - 1) : 0;
         primaryGlbIdx = Math.round(pct * (primaryGlbFiles.length - 1));
         primaryGlbSlider.value = String(primaryGlbIdx);
@@ -727,22 +721,23 @@
         var result = [];
         var usedExtras = {};
         var extras = Array.isArray(data.extra_ply_groups) ? data.extra_ply_groups : [];
+        var maxShown = getEffectiveMaxShown();
 
         for (var i = 0; i < MESH_PRIORITY.length; i++) {
-            if (result.length >= MESH_PRIORITY_MAX_SHOWN) break;
+            if (result.length >= maxShown) break;
             var entry = MESH_PRIORITY[i];
 
             if (entry.type === "glb_cone") {
-                var files = Array.isArray(data.meshes_glb_cone) ? data.meshes_glb_cone : [];
-                if (files.length) result.push({ label: entry.label, files: files });
+                continue;
+            }
 
-            } else if (entry.type === "ply") {
+            if (entry.type === "ply") {
                 var files = Array.isArray(data.meshes) ? data.meshes : [];
                 if (files.length) result.push({ label: entry.label, files: files });
 
             } else if (entry.type === "extra_group") {
                 for (var j = 0; j < extras.length; j++) {
-                    if (result.length >= MESH_PRIORITY_MAX_SHOWN) break;
+                    if (result.length >= maxShown) break;
                     var group = extras[j];
                     if (usedExtras[group.label]) continue;
                     var testStr = group.label || "";
@@ -766,12 +761,12 @@
                 rightPanelViewer.setGlbControlsHost(rightPanelGlbControls);
                 rightPanelViewer.setOnControlsChange(function (vs) {
                     rightPanelUserView = vs;
-                    if (cameraSyncToggle.checked && primaryGlbViewer) {
+                    if (primaryGlbViewer) {
                         primaryUserView = vs;
                         primaryGlbViewer.setViewState(vs);
                     }
                 });
-                if (cameraSyncToggle.checked && primaryGlbViewer) {
+                if (primaryGlbViewer) {
                     var vs = primaryGlbViewer.getViewState();
                     if (vs) {
                         rightPanelViewer.setViewState(vs);
@@ -876,31 +871,10 @@
         });
     }
 
-    function renderPriorityListPreview() {
-        priorityListPreview.innerHTML = "";
-        MESH_PRIORITY.forEach(function (entry, i) {
-            var hasData = availableItems.some(function (it) { return it.label === entry.label; });
-            var isActive = entry.label === activeRightLabel;
-            var el = document.createElement("div");
-            el.style.cssText =
-                "font-size:0.72rem;color:var(--theme-muted);display:flex;gap:6px;align-items:center;";
-            var badge = isActive
-                ? "<span style=\"background:color-mix(in srgb,var(--theme-title-2) 25%,transparent);color:var(--theme-warning-text);border-radius:3px;padding:0 4px;font-size:0.65rem;font-weight:700;\">shown</span>"
-                : (hasData
-                    ? "<span style=\"color:var(--theme-muted);font-size:0.65rem;\">available</span>"
-                    : "");
-            el.innerHTML =
-                "<span style=\"color:var(--theme-warning-text);font-weight:700;min-width:16px;\">" + (i + 1) + ".</span>" +
-                "<span style=\"flex:1;\">" + entry.label + "</span>" + badge;
-            priorityListPreview.appendChild(el);
-        });
-    }
-
     function updatePriorityPanels(data) {
         availableItems = buildPriorityFileList(data);
 
         renderPrioritySelector();
-        renderPriorityListPreview();
 
         if (!availableItems.length) return;
 
@@ -943,57 +917,15 @@
     });
 
     rightPanelPlayBtn.addEventListener("click", function () {
-        if (cameraSyncToggle.checked) {
-            if (rightPanelPlaying) { stopSyncedPlay(); } else { startSyncedPlay(); }
-            return;
-        }
-        if (rightPanelPlaying) {
-            rightPanelPlaying = false;
-            clearInterval(rightPanelPlayInterval);
-            rightPanelPlayBtn.textContent = "\u25b6 Play";
-        } else {
-            rightPanelPlaying = true;
-            rightPanelPlayBtn.textContent = "\u23f8 Pause";
-            rightPanelPlayInterval = setInterval(function () {
-                rightPanelIdx = (rightPanelIdx + 1) % rightPanelFiles.length;
-                rightPanelSlider.value = String(rightPanelIdx);
-                paintSlider(rightPanelSlider);
-                loadRightPanel();
-                if (rightPanelIdx === 0) {
-                    rightPanelPlaying = false;
-                    clearInterval(rightPanelPlayInterval);
-                    rightPanelPlayBtn.textContent = "\u25b6 Play";
-                }
-            }, 500);
-        }
+        if (rightPanelPlaying) { stopSyncedPlay(); } else { startSyncedPlay(); }
     });
 
-    // Camera sync toggle
-    cameraSyncToggle.addEventListener("change", function () {
-        if (!cameraSyncToggle.checked) {
-            // If a synced play was running, stop it cleanly (independent plays stop too)
-            if (syncPlayInterval) { stopSyncedPlay(); }
-            return;
+    expertModeToggle?.addEventListener("change", function () {
+        expertModeEnabled = !!expertModeToggle.checked;
+        localStorage.setItem(EXPERT_MODE_KEY, expertModeEnabled ? "1" : "0");
+        if (latestArtifactData) {
+            updatePriorityPanels(latestArtifactData);
         }
-        // Sync camera: copy primary's view to the right panel and persist it
-        if (primaryGlbViewer && rightPanelViewer) {
-            var vs = primaryGlbViewer.getViewState();
-            if (vs) {
-                rightPanelViewer.setViewState(vs);
-                rightPanelUserView = vs;
-            }
-        }
-        // Sync epoch position: snap right panel to match primary
-        syncRightEpochToPrimary();
-    });
-
-    // ── Panel editor ───────────────────────────────────────────────────────────
-    btnEditPanels.addEventListener("click", function () {
-        panelEditorCard.style.display =
-            panelEditorCard.style.display === "none" ? "grid" : "none";
-    });
-    btnClosePanelEditor.addEventListener("click", function () {
-        panelEditorCard.style.display = "none";
     });
 
     // ── Leaderboard link helper ────────────────────────────────────────────────
@@ -1016,7 +948,7 @@
             }
         }
 
-        updatePrimaryGlb(data.meshes_glb || []);
+        updatePrimaryGlb(data.meshes_glb_cone || []);
         updatePriorityPanels(data);
     }
 
