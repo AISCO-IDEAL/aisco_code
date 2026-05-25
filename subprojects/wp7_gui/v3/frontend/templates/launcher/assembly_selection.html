@@ -998,6 +998,7 @@ endblock %}
     window.addEventListener("resize", drawPreview);
 
     function updateAddToMapButton() {
+        if (_assemblyFrozen) { btnAddToMap.disabled = true; return; }
         const loadedButUnchanged = loadedAssemblyMapId !== null && !hasUnsavedMapCloneChanges;
         if (addToMapInFlight) {
             btnAddToMap.disabled = true;

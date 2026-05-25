@@ -131,10 +131,10 @@
 
   <!-- Config locked banner (live only — shown after Save & Run is clicked) -->
   {% if pipeline == 'live' %}
-  <div id="configLockedBanner" class="dark-card toolbar" style="display:none; background: color-mix(in srgb, var(--theme-warning-text) 12%, transparent);">
-    <span style="font-size:0.84rem;">&#128274; Config locked — run is in progress or completed.</span>
+  <div id="configLockedBanner" style="display:none; padding:8px 14px; border-radius:8px; font-size:0.82rem; color:var(--theme-text); background:color-mix(in srgb, var(--theme-warning-text) 12%, transparent); align-items:center; gap:8px;">
+    <span>&#128274; Config locked — run is in progress or completed.</span>
     <div style="flex:1;"></div>
-    <a href="/" id="btnGoHomeFromBanner" class="btn secondary">← Go Home</a>
+    <a href="/" id="btnGoHomeFromBanner" class="btn secondary" style="font-size:0.78rem; padding:4px 10px;">&#8592; Go Home</a>
   </div>
   {% endif %}
 
@@ -352,7 +352,6 @@
     const nameLabelEl = document.createElement("div"); nameLabelEl.className = "param-label";
     nameLabelEl.textContent = "Run name"; nameLabelWrap.appendChild(nameLabelEl);
     const nameMetaEl = document.createElement("span"); nameMetaEl.className = "param-meta";
-    nameMetaEl.textContent = "Renames the session folder · sets the wandb run name · determines the output folder name · string";
     nameLabelWrap.appendChild(nameMetaEl);
     const nameInp = document.createElement("input");
     nameInp.id = "runNameFormInput"; nameInp.className = "param-input";
@@ -472,7 +471,7 @@
     if (_saveBtn) _saveBtn.style.display = "none";
     // Show locked banner
     const banner = document.getElementById("configLockedBanner");
-    if (banner) banner.style.display = "";
+    if (banner) banner.style.display = "flex";
     console.info("[AISCO] Config frozen.");
   }
 
