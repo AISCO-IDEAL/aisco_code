@@ -17,24 +17,19 @@
             "match": null
         },
         {
-            "type": "ply",
-            "label": "Aeroshell Mesh (PLY)",
-            "match": null
-        },
-        {
             "type": "extra_group",
             "label": "Cp Field",
             "match": "aero.*cp|\\bcp\\b|pressure"
         },
         {
             "type": "extra_group",
-            "label": "Solar – Quality",
-            "match": "solar.*quality"
+            "label": "Solar – Selection",
+            "match": "solar.*selection"
         },
         {
             "type": "extra_group",
-            "label": "Solar – Selection",
-            "match": "solar.*selection"
+            "label": "Solar – Quality",
+            "match": "solar.*quality"
         },
         {
             "type": "extra_group",
