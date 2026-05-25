@@ -41,7 +41,36 @@ _CHECK_WHEELS_INSIDE_OUTER = True  # if wheels are inside outer bounding box
 _CHECK_SEAT_CLEARANCE = True  # seat bottom must stay above the wheel clearance plane
 
 
-def _write_ply(shape: cq.Shape, path: Path) -> None:
+def _make_front_marker(front_x: float, font_size: float = 200.0, depth: float = 40.0) -> cq.Shape | None:
+    """Create a 'FRONT' text solid at the front of the assembly.
+
+    The text reads from +Y to -Y when viewed from above (+Z), matching the
+    canvas label orientation.
+
+    Args:
+        front_x: X coordinate of the foremost wheel (mm).
+        font_size: Character height in mm.
+        depth: Extrusion depth in mm.
+
+    Returns:
+        A CadQuery Shape, or None if creation fails.
+    """
+    try:
+        raw = (
+            cq.Workplane("XY")
+            .text("FRONT", fontsize=font_size, distance=depth, cut=False, combine=False)
+            .val()
+        )
+        # Rotate -90° around Z so text reads from +Y (first char) to -Y (last char)
+        rotated = raw.rotate(cq.Vector(0, 0, 0), cq.Vector(0, 0, 1), -90)
+        # Place just ahead of the front wheel at ground level
+        return rotated.translate(cq.Vector(front_x + font_size * 0.6, 0, 0))
+    except Exception as exc:
+        print(f"[WARNING] Could not create FRONT marker: {exc}")
+        return None
+
+
+
     vertices, triangles = shape.tessellate(0.5)
     with path.open("w") as f:
         f.write("ply\nformat ascii 1.0\n")
@@ -364,6 +393,10 @@ def call_assembly_from_params(output_dir: Path | None = None) -> tuple[cq.Assemb
     if _EXPORT_WHEELS:
         for wheel_name, wheel_solid in full_wheel_solids:
             inner_assembly.add(wheel_solid, name=wheel_name)
+    front_x = max((params[w]["x"] for w in wheel_names), default=500.0)
+    front_marker = _make_front_marker(front_x)
+    if front_marker is not None:
+        inner_assembly.add(front_marker, name="front_marker")
     inner_assembly.name = "inner_assembly"
 
     outer_solid = cut_outer.Solids()[0]
