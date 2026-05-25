@@ -908,8 +908,8 @@ endblock %}
         const p = pointerPos(event);
         if (dragPart) {
             const world = fromCanvas(p.x, p.y);
-            params[dragPart].x = world.x;
-            params[dragPart].y = world.y;
+            params[dragPart].x = Math.max(bounds.xmin, Math.min(bounds.xmax, world.x));
+            params[dragPart].y = Math.max(bounds.ymin, Math.min(bounds.ymax, world.y));
             markAssemblyEdited();
             renderTable();
             drawPreview();
