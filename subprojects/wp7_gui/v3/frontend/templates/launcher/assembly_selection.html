@@ -532,10 +532,11 @@ endblock %}
                 : " disabled title=\"Assembly is locked \u2014 go back to edit\"")
             : "";
         const minAttr = (part === "seat" && axis === "z") ? " min=\"100\" max=\"800\"" : "";
+        const eventAttr = axis === "z" ? "onchange" : "oninput";
         return `
       <td>
         <input type="number" step="1" value="${Math.round(value)}"
-          data-key="${part}" data-axis="${axis}"${minAttr}${disabledAttr} oninput="onEdit(this)">
+          data-key="${part}" data-axis="${axis}"${minAttr}${disabledAttr} ${eventAttr}="onEdit(this)">
       </td>
     `;
     }
