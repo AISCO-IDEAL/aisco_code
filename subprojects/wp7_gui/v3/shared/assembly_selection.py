@@ -190,6 +190,22 @@ class AssemblySelectionService:
             "mesh_url": "/launcher/api/assembly-selection/mesh",
         }
 
+    def reset_to_default(self, assembly_id: int = 1) -> None:
+        """Reset parameters.yaml to a map entry without triggering a mesh rebuild.
+
+        Called on home-reset so the next wizard run starts from a clean assembly.
+        Silently no-ops if the map entry does not exist or any error occurs.
+
+        Args:
+            assembly_id: Assembly map ID to use as the default starting point.
+        """
+        try:
+            params = self._read_map_entry(assembly_id)
+            with self._lock:
+                self._write_params(params)
+        except Exception:
+            pass
+
     def get_mesh_response(self) -> FileResponse:
         if not self._assembly_ply.is_file():
             raise HTTPException(status_code=404, detail={"message": f"assembly.ply not found at {self._assembly_ply}"})

@@ -550,9 +550,9 @@
         ].forEach(k => localStorage.removeItem(k));
         console.info("[AISCO] Wizard state cleared.");
       }
-      document.getElementById("doneHomeBtn").addEventListener("click", (e) => {
+      document.getElementById("doneHomeBtn").addEventListener("click", async (e) => {
         e.preventDefault();
-        fetch("/launcher/api/run/stop", { method: "POST" }).catch(() => {});
+        try { await fetch("/launcher/api/run/home-reset", { method: "POST" }); } catch (_) {}
         clearWizardState();
         window.location.href = "/";
       });

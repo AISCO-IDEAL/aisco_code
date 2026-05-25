@@ -1414,9 +1414,9 @@ endblock %}
         console.info("[AISCO] Wizard state cleared.");
     }
 
-    document.getElementById("backToHomeBtn").addEventListener("click", (e) => {
+    document.getElementById("backToHomeBtn").addEventListener("click", async (e) => {
         e.preventDefault();
-        fetch("/launcher/api/run/stop", { method: "POST" }).catch(() => {});
+        try { await fetch("/launcher/api/run/home-reset", { method: "POST" }); } catch (_) {}
         clearWizardState();
         window.location.href = "/";
     });

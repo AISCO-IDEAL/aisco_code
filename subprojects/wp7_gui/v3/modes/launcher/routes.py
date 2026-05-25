@@ -235,6 +235,23 @@ def run_stop() -> JSONResponse:
     return JSONResponse(_process_manager.stop())
 
 
+@router.post("/api/run/home-reset")
+def run_home_reset() -> JSONResponse:
+    """Stop any active run and reset server-side live-pipeline state for a fresh session.
+
+    Called when the user navigates home from any live-pipeline wizard page.
+    Clears the active config folder (so the output page shows no stale artifacts)
+    and resets the live assembly params to map entry 1 (the default starting point).
+
+    Returns:
+        JSON with ``{"status": "ok"}``.
+    """
+    _process_manager.stop()
+    _runtime_state["active_cfg_folder"] = ""
+    _assembly_service_live.reset_to_default()
+    return JSONResponse({"status": "ok"})
+
+
 @router.get("/api/run/state")
 def run_state() -> dict[str, Any]:
     state = _process_manager.get_state()
