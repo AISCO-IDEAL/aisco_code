@@ -367,16 +367,16 @@
     const priorityListPreview = document.getElementById("priorityListPreview");
 
     const primaryGlbMeshBox = document.getElementById("primaryGlbMeshBox");
-    const primaryGlbPlaceholder = document.getElementById("primaryGlbPlaceholder");
-    const primaryGlbStatus = document.getElementById("primaryGlbStatus");
+    let primaryGlbPlaceholder = document.getElementById("primaryGlbPlaceholder");
+    let primaryGlbStatus = document.getElementById("primaryGlbStatus");
     const primaryGlbControls = document.getElementById("primaryGlbControls");
     const primaryGlbSlider = document.getElementById("primaryGlbSlider");
     const primaryGlbPlayBtn = document.getElementById("primaryGlbPlay");
 
     const rightPanelSelector = document.getElementById("rightPanelSelector");
     const rightPanelMeshBox = document.getElementById("rightPanelMeshBox");
-    const rightPanelPlaceholder = document.getElementById("rightPanelPlaceholder");
-    const rightPanelStatus = document.getElementById("rightPanelStatus");
+    let rightPanelPlaceholder = document.getElementById("rightPanelPlaceholder");
+    let rightPanelStatus = document.getElementById("rightPanelStatus");
     const rightPanelGlbControls = document.getElementById("rightPanelGlbControls");
     const rightPanelSlider = document.getElementById("rightPanelSlider");
     const rightPanelPlayBtn = document.getElementById("rightPanelPlay");
@@ -1007,6 +1007,12 @@
             "<span id=\"rightPanelPlaceholder\" style=\"position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--theme-muted);font-size:0.82rem;z-index:1;text-align:center;pointer-events:none;\">No visualization selected</span>" +
             "<div id=\"rightPanelStatus\" class=\"mesh-status\" style=\"display:none;\"></div>";
 
+        // Refresh stale references — innerHTML replacement creates new DOM nodes.
+        primaryGlbPlaceholder = document.getElementById("primaryGlbPlaceholder");
+        primaryGlbStatus = document.getElementById("primaryGlbStatus");
+        rightPanelPlaceholder = document.getElementById("rightPanelPlaceholder");
+        rightPanelStatus = document.getElementById("rightPanelStatus");
+
         rightPanelSelector.innerHTML =
             "<span style=\"font-size:0.72rem; color:var(--theme-muted);\">Select a run to view artifacts\u2026</span>";
 
@@ -1050,14 +1056,6 @@
                 fetch(VIEWER_API + "/runs/" + runId + "/artifacts").then(function (r) { return r.json(); }),
                 fetch(VIEWER_API + "/runs/" + runId + "/metrics").then(function (r) { return r.json(); }),
             ]);
-
-            // Re-grab DOM refs after resetViewers re-created them
-            const newPrimaryPlaceholder = document.getElementById("primaryGlbPlaceholder");
-            const newPrimaryStatus = document.getElementById("primaryGlbStatus");
-            const newRightPlaceholder = document.getElementById("rightPanelPlaceholder");
-            const newRightStatus = document.getElementById("rightPanelStatus");
-            if (newPrimaryPlaceholder) primaryGlbMeshBox._placeholder = newPrimaryPlaceholder;
-            if (newPrimaryStatus) primaryGlbMeshBox._status = newPrimaryStatus;
 
             updatePrimaryGlb(artData.meshes_glb || []);
             updatePriorityPanels(artData);
