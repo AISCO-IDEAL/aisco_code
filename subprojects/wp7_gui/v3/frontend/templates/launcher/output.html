@@ -201,6 +201,22 @@
 
     <!-- ── MAIN 3-COLUMN CONTENT ──────────────────────────────────────────── -->
     <div style="overflow:auto; min-height:0; padding:2px 0;">
+        <div class="dark-card" style="display:grid; gap:8px; margin:0 auto 12px; max-width:980px; justify-items:center; text-align:center;">
+            <div style="display:flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap; width:100%;">
+                <div class="visual-title" style="margin:0;">Visualization Selection</div>
+                <label
+                    style="display:flex; align-items:center; gap:5px; font-size:0.72rem; color:var(--theme-muted); cursor:pointer; white-space:nowrap;">
+                    <input type="checkbox" id="includeGradientsToggle"> Include gradients (4)
+                </label>
+            </div>
+            <div style="font-size:0.74rem; color:var(--theme-muted); line-height:1.5; max-width:760px;">
+                Default selection shows Cp Field and Solar - Selection. Enable gradients to include two gradient visualizations as well.
+            </div>
+            <div id="rightPanelSelector" class="right-selector" style="width:min(760px, 100%); text-align:left;">
+                <span style="font-size:0.72rem; color:var(--theme-muted);">Waiting for artifacts&#x2026;</span>
+            </div>
+        </div>
+
         <div class="output-cols">
 
             <!-- LEFT: Primary GLB mesh -->
@@ -234,23 +250,6 @@
 
             <!-- MIDDLE: Metric placeholders -->
             <div class="output-col">
-                <div class="dark-card" style="display:grid; gap:8px;">
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <div class="visual-title" style="margin:0;">Visualization Selection</div>
-                        <span style="flex:1;"></span>
-                        <label
-                            style="display:flex; align-items:center; gap:5px; font-size:0.72rem; color:var(--theme-muted); cursor:pointer; white-space:nowrap;">
-                            <input type="checkbox" id="expertModeToggle"> Expert mode (4)
-                        </label>
-                    </div>
-                    <div style="font-size:0.74rem; color:var(--theme-muted); line-height:1.5;">
-                        Select the secondary visualization shown on the right. Default mode shows up to 3 options.
-                    </div>
-                    <div id="rightPanelSelector" class="right-selector">
-                        <span style="font-size:0.72rem; color:var(--theme-muted);">Waiting for artifacts&#x2026;</span>
-                    </div>
-                </div>
-
                 <div class="metric-card" data-metric="speed">
                     <div class="metric-card__name">Speed (km/h)</div>
                     <div class="metric-card__value" id="metricCS">&#x2014;</div>
@@ -311,7 +310,7 @@
     const isLive = pipeline === "live";
     const LAUNCHER_API = "/launcher/api";
     const VIEWER_API = "/viewer/api";
-    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260521_2";
+    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260525_4";
     const PANEL_VISIBILITY_DEFAULTS = {{ panel_visibility_defaults_json | safe }};
     const PANEL_DEFAULTS = PANEL_VISIBILITY_DEFAULTS.launcher;
     const modeKey = isLive ? "live" : "completed";
@@ -325,7 +324,6 @@
         var _cfg = {{ mesh_priority_json | safe
     }};
     var _raw = Array.isArray(_cfg.priority) ? _cfg.priority : [];
-    window._MESH_PRIORITY_MAX_SHOWN = typeof _cfg.max_shown === "number" ? _cfg.max_shown : 5;
     window._MESH_PRIORITY = _raw.map(function (e) {
         return {
             type: e.type,
@@ -335,9 +333,8 @@
     });
     }());
     var MESH_PRIORITY = window._MESH_PRIORITY;
-    var MESH_PRIORITY_MAX_SHOWN = window._MESH_PRIORITY_MAX_SHOWN;
-    const MESH_PRIORITY_EXPERT_MAX_SHOWN = 4;
-    const EXPERT_MODE_KEY = "aiscoOutputExpertModeV3";
+    const INCLUDE_GRADIENTS_KEY = "aiscoOutputIncludeGradientsV3";
+    const LEGACY_EXPERT_MODE_KEY = "aiscoOutputExpertModeV3";
 
     // ── DOM references ─────────────────────────────────────────────────────────
     const runNameDisplay = document.getElementById("runNameDisplay");
@@ -354,7 +351,7 @@
     const rightPanelGlbControls = document.getElementById("rightPanelGlbControls");
     const rightPanelSlider = document.getElementById("rightPanelSlider");
     const rightPanelPlayBtn = document.getElementById("rightPanelPlay");
-    const expertModeToggle = document.getElementById("expertModeToggle");
+    const includeGradientsToggle = document.getElementById("includeGradientsToggle");
     const leaderboardBtn = document.getElementById("leaderboardBtn");
     const statusLabel = document.getElementById("statusLabel");
     const metricSpeedValue = document.getElementById("metricCS");
@@ -390,18 +387,15 @@
     let availableItems = [];   // all items with data, in priority order
     let activeRightLabel = null; // currently selected label
     let latestArtifactData = null;
-    let expertModeEnabled = localStorage.getItem(EXPERT_MODE_KEY) === "1";
+    let includeGradientsEnabled =
+        localStorage.getItem(INCLUDE_GRADIENTS_KEY) === "1" || localStorage.getItem(LEGACY_EXPERT_MODE_KEY) === "1";
     let artifactPollTimer = null;
     let metricsPollTimer = null;
     let _metricsHistory = null; // retained across slider moves
     let _epochLocked = false;   // true when user has scrubbed away from latest
 
-    if (expertModeToggle) {
-        expertModeToggle.checked = expertModeEnabled;
-    }
-
-    function getEffectiveMaxShown() {
-        return expertModeEnabled ? MESH_PRIORITY_EXPERT_MAX_SHOWN : MESH_PRIORITY_MAX_SHOWN;
+    if (includeGradientsToggle) {
+        includeGradientsToggle.checked = includeGradientsEnabled;
     }
 
     const _urlParams = new URLSearchParams(window.location.search);
@@ -718,13 +712,11 @@
 
     // ── Right panel (single viewer with radio selection) ──────────────────────
     function buildPriorityFileList(data) {
-        var result = [];
+        var allItems = [];
         var usedExtras = {};
         var extras = Array.isArray(data.extra_ply_groups) ? data.extra_ply_groups : [];
-        var maxShown = getEffectiveMaxShown();
 
         for (var i = 0; i < MESH_PRIORITY.length; i++) {
-            if (result.length >= maxShown) break;
             var entry = MESH_PRIORITY[i];
 
             if (entry.type === "glb_cone") {
@@ -733,22 +725,54 @@
 
             if (entry.type === "ply") {
                 var files = Array.isArray(data.meshes) ? data.meshes : [];
-                if (files.length) result.push({ label: entry.label, files: files });
+                if (files.length) allItems.push({ label: entry.label, files: files });
 
             } else if (entry.type === "extra_group") {
                 for (var j = 0; j < extras.length; j++) {
-                    if (result.length >= maxShown) break;
                     var group = extras[j];
                     if (usedExtras[group.label]) continue;
                     var testStr = group.label || "";
                     if (!entry.match || entry.match.test(testStr)) {
                         usedExtras[group.label] = true;
-                        result.push({ label: group.label, files: group.ply_files || [] });
+                        allItems.push({ label: group.label, files: group.ply_files || [] });
                     }
                 }
             }
         }
-        return result;
+
+        function firstMatch(regex) {
+            return allItems.find(function (it) { return regex.test((it && it.label) || ""); }) || null;
+        }
+
+        var cpField = firstMatch(/\baero\b.*\bcp\b|\bcp\s*field\b/i);
+        var solarSelection = firstMatch(/\bsolar\b.*\bselection\b/i);
+        var selected = [cpField, solarSelection].filter(function (it, idx, arr) {
+            return !!it && arr.indexOf(it) === idx;
+        });
+
+        if (includeGradientsEnabled) {
+            var gradientItems = allItems.filter(function (it) {
+                return /\bmesh\s*gradients?\b|\bgradient\b/i.test((it && it.label) || "");
+            });
+            var gradientChoices = [];
+            var solarGradient = gradientItems.find(function (it) { return /\bsolar\b/i.test(it.label); }) || null;
+            if (solarGradient) gradientChoices.push(solarGradient);
+            var nonSolarGradient = gradientItems.find(function (it) {
+                return gradientChoices.indexOf(it) === -1 && !/\bsolar\b/i.test(it.label);
+            }) || null;
+            if (nonSolarGradient) gradientChoices.push(nonSolarGradient);
+            for (var g = 0; g < gradientItems.length && gradientChoices.length < 2; g++) {
+                if (gradientChoices.indexOf(gradientItems[g]) === -1) gradientChoices.push(gradientItems[g]);
+            }
+            gradientChoices.slice(0, 2).forEach(function (it) {
+                if (selected.indexOf(it) === -1) selected.push(it);
+            });
+        }
+
+        if (!selected.length) {
+            return allItems.slice(0, includeGradientsEnabled ? 4 : 2);
+        }
+        return selected;
     }
 
     function loadRightPanel() {
@@ -920,9 +944,9 @@
         if (rightPanelPlaying) { stopSyncedPlay(); } else { startSyncedPlay(); }
     });
 
-    expertModeToggle?.addEventListener("change", function () {
-        expertModeEnabled = !!expertModeToggle.checked;
-        localStorage.setItem(EXPERT_MODE_KEY, expertModeEnabled ? "1" : "0");
+    includeGradientsToggle?.addEventListener("change", function () {
+        includeGradientsEnabled = !!includeGradientsToggle.checked;
+        localStorage.setItem(INCLUDE_GRADIENTS_KEY, includeGradientsEnabled ? "1" : "0");
         if (latestArtifactData) {
             updatePriorityPanels(latestArtifactData);
         }

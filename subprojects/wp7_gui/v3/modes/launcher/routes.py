@@ -68,7 +68,7 @@ def _assembly(pipeline: str) -> AssemblySelectionService:
 
 _SUBPAGES = {
     "assembly-selection": ("1 - Launcher — Assembly Selection", "launcher/assembly_selection.html"),
-    "config-overrides": ("2 - Launcher — Configure & Run", "launcher/config_overrides.html"),
+    "config-overrides": ("2 - Launcher — Configure and Run", "launcher/config_overrides.html"),
     "output": ("3 - Launcher — Output", "launcher/output.html"),
     "leaderboard": ("4 - Launcher — Live Leaderboard", "launcher/leaderboard.html"),
 }
@@ -94,11 +94,6 @@ class CleanupRequest(BaseModel):
 
 class FolderRequest(BaseModel):
     folder: str
-
-
-class RenameRequest(BaseModel):
-    folder: str
-    run_name: str
 
 
 # ---------------------------------------------------------------------------
@@ -794,26 +789,6 @@ def cfg_values_put(payload: OverrideValuesRequest) -> dict[str, Any]:
 @router.post("/api/config-overrides/reset")
 def cfg_reset(payload: FolderRequest) -> dict[str, Any]:
     return _config_manager.reset_session(payload.folder)
-
-
-@router.post("/api/config-overrides/rename")
-def cfg_rename(payload: RenameRequest) -> dict[str, Any]:
-    result = _config_manager.rename_session(payload.folder, payload.run_name)
-    # Also write the sanitised name into wandb_general.name so WP4 uses it
-    # as the wandb run name (which in turn determines the output folder).
-    gen_cfg_path = Path(result["new_folder"]) / "general_config.yaml"
-    if gen_cfg_path.exists():
-        try:
-            with gen_cfg_path.open(encoding="utf-8") as f:
-                gen_cfg = yaml.safe_load(f) or {}
-            if not isinstance(gen_cfg.get("wandb_general"), dict):
-                gen_cfg["wandb_general"] = {}
-            gen_cfg["wandb_general"]["name"] = result["name"]
-            with gen_cfg_path.open("w", encoding="utf-8") as f:
-                yaml.dump(gen_cfg, f, allow_unicode=True, default_flow_style=False)
-        except Exception as exc:
-            LOGGER.warning("Could not update wandb_general.name in general_config.yaml: %s", exc)
-    return result
 
 
 @router.get("/api/config-overrides/sessions")

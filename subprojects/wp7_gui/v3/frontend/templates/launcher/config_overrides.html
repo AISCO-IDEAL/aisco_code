@@ -147,26 +147,29 @@
 
   {% if pipeline == 'live' %}
   <!-- Run controls -->
-  <div class="dark-card toolbar" style="gap: 10px; padding-top: 10px; padding-bottom: 10px;">
-    <button class="btn" id="btnRun" disabled>&#9654; Run</button>
-    <button class="btn secondary" id="btnStop" disabled>&#9632; Stop</button>
-    <div style="flex:1; min-width:190px;">
-      <div class="progress-bar-wrap" id="progressWrap">
-        <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+  <div class="card" style="display:grid; grid-template-rows:auto auto; gap:10px; padding-top: 10px; padding-bottom: 10px;">
+    <div style="font-size:0.9rem; font-weight:700; color:var(--theme-text);">2 - Run/Stop</div>
+    <div class="toolbar" style="gap: 10px;">
+      <button class="btn" id="btnRun" disabled>&#9654; Run</button>
+      <button class="btn secondary" id="btnStop" disabled>&#9632; Stop</button>
+      <div style="flex:1; min-width:190px;">
+        <div class="progress-bar-wrap" id="progressWrap">
+          <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+        </div>
+        <div id="progressLabel" style="font-size:0.9rem; color:var(--theme-muted); font-weight:600; margin-top:5px;">Idle</div>
       </div>
-      <div id="progressLabel" style="font-size:0.9rem; color:var(--theme-muted); font-weight:600; margin-top:5px;">Idle</div>
+      <span class="run-metric-label run-metric-drag">Drag</span>
+      <span id="runDragValue" class="run-metric-value run-metric-drag">&#8212;</span>
+      <span class="run-metric-label run-metric-solar">Solar</span>
+      <span id="runSolarValue" class="run-metric-value run-metric-solar">&#8212;</span>
+      <span class="run-metric-label run-metric-speed">Speed</span>
+      <span id="runSpeedValue" class="run-metric-value run-metric-speed">&#8212;</span>
     </div>
-    <span class="run-metric-label run-metric-drag">Drag</span>
-    <span id="runDragValue" class="run-metric-value run-metric-drag">&#8212;</span>
-    <span class="run-metric-label run-metric-solar">Solar</span>
-    <span id="runSolarValue" class="run-metric-value run-metric-solar">&#8212;</span>
-    <span class="run-metric-label run-metric-speed">Speed</span>
-    <span id="runSpeedValue" class="run-metric-value run-metric-speed">&#8212;</span>
   </div>
   {% endif %}
 
   <!-- Output console -->
-  <div class="dark-card" style="max-height: 200px; display: grid; grid-template-rows: auto 1fr; gap: 6px;">
+  <div class="card" style="max-height: 200px; display: grid; grid-template-rows: auto 1fr; gap: 6px;">
     <div style="font-size: 0.82rem; color: var(--theme-warning-text); font-weight: 600;">Output</div>
     <div class="console" id="outputConsole">Ready.</div>
   </div>
@@ -323,42 +326,14 @@
     return inp;
   }
 
-  function extractRunName(folder) {
-    const basename = folder.split("/").pop();
-    const m = basename.match(/^(.+?)_(\d{8}_\d{6})(?:_\d+)?$/);
-    if (!m) return "";
-    return m[1] === "gui_override" ? "" : m[1];
-  }
-
   function renderForm(schema, values) {
     formArea.innerHTML = "";
-    let sectionIndex = 1;
 
-    const nameSection = document.createElement("details");
-    nameSection.className = "config-section"; nameSection.open = true;
-    const nameSummary = document.createElement("summary");
-    nameSummary.textContent = `${sectionIndex++} - Session`;
-    nameSection.appendChild(nameSummary);
-    const nameRow = document.createElement("div"); nameRow.className = "param-row";
-    const nameLabelWrap = document.createElement("div");
-    const nameLabelEl = document.createElement("div"); nameLabelEl.className = "param-label";
-    nameLabelEl.textContent = "Run name"; nameLabelWrap.appendChild(nameLabelEl);
-    const nameMetaEl = document.createElement("span"); nameMetaEl.className = "param-meta";
-    nameLabelWrap.appendChild(nameMetaEl);
-    const nameInp = document.createElement("input");
-    nameInp.id = "runNameFormInput"; nameInp.className = "param-input";
-    nameInp.type = "text"; nameInp.placeholder = "(no custom name)";
-    nameInp.value = extractRunName(activeFolder);
-    nameInp.addEventListener("input", checkValidity);
-    nameRow.appendChild(nameLabelWrap); nameRow.appendChild(nameInp);
-    nameSection.appendChild(nameRow);
-    formArea.appendChild(nameSection);
-
-    const mergedSection = document.createElement("details");
+    const mergedSection = document.createElement("div");
     mergedSection.className = "config-section";
-    mergedSection.open = true;
-    const mergedSummary = document.createElement("summary");
-    mergedSummary.textContent = `${sectionIndex++} - Config Overrides`;
+    const mergedSummary = document.createElement("div");
+    mergedSummary.className = "param-section-header";
+    mergedSummary.textContent = "1 - Config Overrides";
     mergedSection.appendChild(mergedSummary);
 
     for (const [cfgName, cfgEntry] of Object.entries(schema.configs || {})) {
@@ -565,25 +540,7 @@
     const updates = collectUpdates();
     if (!updates) throw new Error("Fix invalid fields before saving.");
 
-    // 1) Rename session folder if needed
-    const newName = (document.getElementById("runNameFormInput")?.value || "").trim();
-    const currentName = extractRunName(activeFolder);
-    if (newName && newName !== currentName) {
-      const rr = await fetch(`${API}/config-overrides/rename`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ folder: activeFolder, run_name: newName }),
-      });
-      if (!rr.ok) { const rd = await rr.json(); throw new Error(rd.detail?.message || rr.status); }
-      const rd = await rr.json();
-      activeFolder = rd.new_folder;
-      localStorage.setItem(STORAGE_KEY, activeFolder);
-      sessionInfo.textContent = "Active: " + activeFolder.split("/").pop();
-      if (sessionInfo) sessionInfo.textContent = "Active: " + activeFolder.split("/").pop();
-      log(`Renamed to: ${activeFolder.split("/").pop()}`, "success");
-      updateNextHref();
-    }
-
-    // 2) Save values
+    // Save values
     const r = await fetch(`${API}/config-overrides/values`, {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ folder: activeFolder, updates })

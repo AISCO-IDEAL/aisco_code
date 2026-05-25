@@ -37,7 +37,6 @@ export function initMeshViewer(containerEl, options = {}) {
     }
 
     const meshBgHex = hexToInt(cssVar("--theme-mesh-bg", "#F1F7F3"), 0xf1f7f3);
-    const sliderAccent = cssVar("--theme-slider-accent", "#C33531");
     const controlTextColor = cssVar("--theme-control-text", "#000000");
     const fallbackMeshHex = hexToInt(cssVar("--theme-mesh-fallback", "#99A3A4"), 0x99a3a4);
 
@@ -125,33 +124,8 @@ export function initMeshViewer(containerEl, options = {}) {
         return true;
     }
 
-    function ensureOpacitySliderStyles() {
-        const styleId = "glb-opacity-slider-styles";
-        if (document.getElementById(styleId)) {
-            return;
-        }
-        const style = document.createElement("style");
-        style.id = styleId;
-        style.textContent = `
-            .glb-opacity-slider {
-                -webkit-appearance: auto;
-                appearance: auto;
-                height: 14px;
-                background: transparent;
-                padding: 0;
-                margin: 0;
-                outline: none;
-                accent-color: ${sliderAccent};
-            }
-        `;
-        document.head.appendChild(style);
-    }
-
-    function paintOpacitySliderBar(slider) {
-        if (!slider) {
-            return;
-        }
-        slider.style.accentColor = sliderAccent;
+    function defaultOpacityForComponent(name) {
+        return name === "sdf_mesh" ? 0.65 : 1.0;
     }
 
     const hemisphereLight = new HemisphereLight(0xffffff, 0x444444, 1.0);
@@ -333,7 +307,13 @@ export function initMeshViewer(containerEl, options = {}) {
         if (!glbControlsHost) {
             return;
         }
-        ensureOpacitySliderStyles();
+        // Per-user request: hide all component controls (toggles and opacity sliders)
+        // in both live output and archive viewers.
+        glbControlsHost.innerHTML = "";
+        glbControlsHost.style.display = "none";
+        return;
+
+        /*
         glbControlsHost.innerHTML = "";
         const components = getMeshComponents();
         if (!components.length) {
@@ -374,30 +354,15 @@ export function initMeshViewer(containerEl, options = {}) {
             name.style.overflow = "hidden";
             name.style.textOverflow = "ellipsis";
 
-            const opacity = document.createElement("input");
-            opacity.type = "range";
-            opacity.min = "0";
-            opacity.max = "1";
-            opacity.step = "0.01";
-            opacity.value = String(component.opacity);
-            opacity.className = "glb-opacity-slider";
-            opacity.style.gridColumn = "1 / span 2";
-            opacity.style.width = "100%";
-            paintOpacitySliderBar(opacity);
-
             visible.addEventListener("change", () => {
                 setMeshComponentState(component.key, { visible: visible.checked });
-            });
-            opacity.addEventListener("input", () => {
-                setMeshComponentState(component.key, { opacity: parseFloat(opacity.value) });
-                paintOpacitySliderBar(opacity);
             });
 
             cell.appendChild(visible);
             cell.appendChild(name);
-            cell.appendChild(opacity);
             glbControlsHost.appendChild(cell);
         });
+        */
     }
 
     function setGlbControlsHost(hostEl) {
@@ -507,8 +472,7 @@ export function initMeshViewer(containerEl, options = {}) {
                         if (!node.geometry.hasAttribute("normal")) {
                             node.geometry.computeVertexNormals();
                         }
-                        const srcMat = Array.isArray(node.material) ? node.material[0] : node.material;
-                        const baseAlpha = typeof srcMat?.opacity === "number" ? srcMat.opacity : 1.0;
+                        const baseAlpha = defaultOpacityForComponent(node.name);
                         const hasVtxColors = node.geometry.hasAttribute("color");
 
                         // Apply outer_lines_only style when configured for outer_bbox.
@@ -522,6 +486,8 @@ export function initMeshViewer(containerEl, options = {}) {
                             const edgesGeo = new EdgesGeometry(node.geometry, _visConfig.outer_lines_threshold ?? 15);
                             const linesMat = new LineBasicMaterial({
                                 color: new Color(lc[0], lc[1], lc[2]),
+                                transparent: baseAlpha < 0.99,
+                                opacity: baseAlpha,
                             });
                             const lines = new LineSegments(edgesGeo, linesMat);
                             lines.name = node.name;
@@ -540,6 +506,8 @@ export function initMeshViewer(containerEl, options = {}) {
                             const edgesGeo = new EdgesGeometry(node.geometry, _visConfig.cone_lines_threshold ?? 15);
                             const linesMat = new LineBasicMaterial({
                                 color: new Color(lc[0], lc[1], lc[2]),
+                                transparent: baseAlpha < 0.99,
+                                opacity: baseAlpha,
                             });
                             const lines = new LineSegments(edgesGeo, linesMat);
                             lines.name = node.name;
