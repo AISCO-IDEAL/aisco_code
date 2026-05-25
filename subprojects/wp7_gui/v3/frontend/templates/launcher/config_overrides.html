@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block hint %}{% if pipeline == 'live' %}Edit config overrides, then launch a training run and watch live progress below.{% else %}Browse config values used for a completed run (read-only).{% endif %}{% endblock %}
+{% block global_run_progress %}{% endblock %}
 
 {% block content %}
 <style>
@@ -120,7 +121,7 @@
     cursor: not-allowed;
   }
 </style>
-<div class="section-grid" style="grid-template-rows: auto minmax(220px, 0.62fr) minmax(120px, 0.38fr); height: 100%;">
+<div class="section-grid" style="grid-template-rows: auto auto minmax(220px, 0.62fr) auto minmax(120px, 0.38fr); height: 100%;">
 
   <!-- Wizard navigation -->
   <div class="dark-card toolbar">
@@ -138,6 +139,11 @@
     <a id="btnNext" href="/launcher/output?pipeline=live" class="btn">Next →</a>
   </div>
 
+  <!-- Config locked banner (shown by applyConfigFreeze; display:none keeps row height 0 until needed) -->
+  <div id="configLockedBanner" style="display:none; padding:8px 14px; background:color-mix(in srgb, var(--theme-warning-text) 12%, transparent); border-radius:8px; font-size:0.82rem; color:var(--theme-text);">
+    🔒 Config locked — run is in progress or completed.
+  </div>
+
   <!-- Config form -->
   <div class="card" style="display:flex; flex-direction:column; min-height:0; overflow:hidden;">
     <div id="formArea" style="flex:1; overflow-y:auto; min-height:0;">
@@ -147,15 +153,16 @@
       </div>
     </div>
     {% if pipeline == 'live' %}
-    <div style="display:flex; justify-content:space-between; padding:8px 12px; border-top:1px solid color-mix(in srgb, var(--theme-text-box) 55%, var(--theme-white) 45%);">
-      <button class="btn secondary" id="btnReload" disabled>&#8635; Reset to defaults</button>
-      <div style="display:flex; gap:8px;">
-        <button class="btn secondary" id="btnStop" disabled>&#9632; Stop</button>
-        <button class="btn" id="btnRun" disabled style="padding:8px 24px; font-size:1rem; font-weight:700;">&#9654; Run</button>
-        <button class="btn" id="btnSaveChanges" disabled style="background:var(--theme-sel-red); border-color:var(--theme-sel-red); color:#fff;">Save Changes</button>
-      </div>
+    <div style="display:flex; justify-content:space-between; padding:8px 12px; border-top:1px solid color-mix(in srgb, var(--theme-text-box) 55%, var(--theme-white) 45%);">      <button class="btn secondary" id="btnReload" disabled>&#8635; Reset to defaults</button>
+      <button class="btn" id="btnSaveChanges" disabled style="background:var(--theme-sel-red); border-color:var(--theme-sel-red); color:#fff;">Save Changes</button>
     </div>
     {% endif %}
+  </div>
+
+  <!-- Run controls — separate box, always in DOM so grid row height is always defined -->
+  <div class="dark-card toolbar" id="runControlsBox" style="{% if pipeline != 'live' %}display:none; {% endif %}gap:10px; padding:10px 14px;">
+    <button class="btn secondary" id="btnStop" disabled>&#9632; Stop</button>
+    <button class="btn" id="btnRun" disabled style="padding:8px 24px; font-size:1rem; font-weight:700;">&#9654; Run</button>
   </div>
 
   <!-- Output console -->
@@ -448,31 +455,15 @@
         inp.disabled = true;
       }
     });
-    // Hide Reset and Save & Run buttons
+    // Hide Reset, Run, and Save Changes buttons
     if (btnReload) btnReload.style.display = "none";
     const _runBtn = document.getElementById("btnRun");
     if (_runBtn) _runBtn.style.display = "none";
     const _saveBtn = document.getElementById("btnSaveChanges");
     if (_saveBtn) _saveBtn.style.display = "none";
-    // Show small locked banner after toolbar (like assembly_selection.html)
-    const _toolbar = document.querySelector(".toolbar");
-    if (_toolbar && !document.getElementById("configLockedBanner")) {
-      const banner = document.createElement("div");
-      banner.id = "configLockedBanner";
-      banner.style.cssText = [
-        "display:flex",
-        "align-items:center",
-        "gap:8px",
-        "padding:6px 14px",
-        "margin-top:6px",
-        "background:color-mix(in srgb, var(--theme-warning-text) 12%, transparent)",
-        "border-radius:8px",
-        "font-size:0.82rem",
-        "color:var(--theme-text)"
-      ].join(";");
-      banner.innerHTML = '<span>&#128274; Config locked \u2014 run is in progress or completed.</span><div style="flex:1;"></div><a href="/" class="btn secondary" style="font-size:0.78rem;padding:4px 10px;">&#8592; Go Home</a>';
-      _toolbar.after(banner);
-    }
+    // Show the pre-rendered locked banner (plain text, like assembly_selection.html)
+    const _banner = document.getElementById("configLockedBanner");
+    if (_banner) _banner.style.display = "block";
     console.info("[AISCO] Config frozen.");
   }
 
