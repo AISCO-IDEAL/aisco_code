@@ -81,6 +81,7 @@
   {% if pipeline == 'live' %}
   <!-- Run controls -->
   <div class="dark-card toolbar" style="gap: 10px; padding-top: 10px; padding-bottom: 10px;">
+    <button class="btn secondary" id="btnSaveChanges" disabled>Save Changes</button>
     <button class="btn" id="btnRun" disabled>&#9654; Run</button>
     <button class="btn secondary" id="btnStop" disabled>&#9632; Stop</button>
     <div style="flex:1; min-width:190px;">
@@ -166,6 +167,8 @@
     updateNextHref();
     const _runBtn = document.getElementById("btnRun");
     if (_runBtn) _runBtn.disabled = !activeFolder;
+    const _saveBtn = document.getElementById("btnSaveChanges");
+    if (_saveBtn) _saveBtn.disabled = !activeFolder;
   }
 
   function checkValidity() {
@@ -363,6 +366,8 @@
     if (btnReload) btnReload.style.display = "none";
     const _runBtn = document.getElementById("btnRun");
     if (_runBtn) _runBtn.style.display = "none";
+    const _saveBtn = document.getElementById("btnSaveChanges");
+    if (_saveBtn) _saveBtn.style.display = "none";
     // Show locked banner
     const banner = document.getElementById("configLockedBanner");
     if (banner) banner.style.display = "";
@@ -424,16 +429,64 @@
   // ---------------------------------------------------------------------------
   const progressFill  = document.getElementById("progressFill");
   const progressLabel = document.getElementById("progressLabel");
+  const btnSaveChanges = document.getElementById("btnSaveChanges");
   const btnRun        = document.getElementById("btnRun");
   const btnStop       = document.getElementById("btnStop");
   let progressEventSource = null;
   let _runCompleted   = false;
   let _reconnectTimer = null;
+  let _suppressBeforeUnloadOnce = false;
 
   // ── M7: beforeunload guard ─────────────────────────────────────────────────
   function _runUnloadGuard(e) {
+    if (_suppressBeforeUnloadOnce) {
+      _suppressBeforeUnloadOnce = false;
+      return;
+    }
     e.preventDefault();
     return (e.returnValue = "A WP4 run is in progress. Are you sure you want to leave?");
+  }
+
+  function _nextOutputHref() {
+    return (btnNext && btnNext.href) ? btnNext.href : "/launcher/output?pipeline=live";
+  }
+
+  async function saveConfigChanges() {
+    if (!activeFolder) throw new Error("No active session.");
+    const updates = collectUpdates();
+    if (!updates) throw new Error("Fix invalid fields before saving.");
+
+    // 1) Rename session folder if needed
+    const newName = (document.getElementById("runNameFormInput")?.value || "").trim();
+    const currentName = extractRunName(activeFolder);
+    if (newName && newName !== currentName) {
+      const rr = await fetch(`${API}/config-overrides/rename`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folder: activeFolder, run_name: newName }),
+      });
+      if (!rr.ok) { const rd = await rr.json(); throw new Error(rd.detail?.message || rr.status); }
+      const rd = await rr.json();
+      activeFolder = rd.new_folder;
+      localStorage.setItem(STORAGE_KEY, activeFolder);
+      sessionInfo.textContent = "Active: " + activeFolder.split("/").pop();
+      log(`Renamed to: ${activeFolder.split("/").pop()}`, "success");
+      updateNextHref();
+    }
+
+    // 2) Save values
+    const r = await fetch(`${API}/config-overrides/values`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folder: activeFolder, updates })
+    });
+    if (!r.ok) { const d = await r.json(); throw new Error(d.detail?.message || r.status); }
+    const d = await r.json();
+    log(`Config saved: ${d.written.join(", ")}`, "success");
+  }
+
+  function navigateToOutputLive() {
+    _suppressBeforeUnloadOnce = true;
+    window.removeEventListener("beforeunload", _runUnloadGuard);
+    window.location.href = _nextOutputHref();
   }
 
   // Register guard immediately if run was launched in a previous page load
@@ -505,45 +558,44 @@
     };
   }
 
-  // ── M3: Save & Run button ─────────────────────────────────────────────────
+  btnSaveChanges?.addEventListener("click", async () => {
+    if (!activeFolder) { log("No active session.", "error"); return; }
+    btnSaveChanges.disabled = true;
+    btnRun.disabled = true;
+    progressLabel.textContent = "Saving config\u2026";
+    try {
+      await saveConfigChanges();
+      progressLabel.textContent = "Saved.";
+    } catch (err) {
+      log(`ERROR: ${err.message}`, "error");
+      progressLabel.textContent = "Error: " + err.message;
+    } finally {
+      if (!localStorage.getItem(FROZEN_KEY)) {
+        btnSaveChanges.disabled = !activeFolder;
+        btnRun.disabled = !activeFolder;
+      }
+    }
+  });
+
+  // ── M3: Save + Run + Go to Output ─────────────────────────────────────────
   btnRun.addEventListener("click", async () => {
     if (!activeFolder) { log("No active session.", "error"); return; }
-    const updates = collectUpdates();
-    if (!updates) { log("Fix invalid fields before saving.", "error"); return; }
-    btnRun.disabled = true; btnStop.disabled = false;
-    progressFill.style.width = "0%"; progressLabel.textContent = "Saving\u2026";
+    btnSaveChanges.disabled = true;
+    btnRun.disabled = true;
+    btnStop.disabled = false;
+    progressFill.style.width = "0%";
+    progressLabel.textContent = "Saving\u2026";
     try {
-      // 1. Rename session folder if a new run name was entered
-      const newName = (document.getElementById("runNameFormInput")?.value || "").trim();
-      const currentName = extractRunName(activeFolder);
-      if (newName && newName !== currentName) {
-        const rr = await fetch(`${API}/config-overrides/rename`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ folder: activeFolder, run_name: newName }),
-        });
-        if (!rr.ok) { const rd = await rr.json(); throw new Error(rd.detail?.message || rr.status); }
-        const rd = await rr.json();
-        activeFolder = rd.new_folder;
-        localStorage.setItem(STORAGE_KEY, activeFolder);
-        sessionInfo.textContent = "Active: " + activeFolder.split("/").pop();
-        log(`Renamed to: ${activeFolder.split("/").pop()}`, "success");
-      }
-      // 2. PUT config values
-      progressLabel.textContent = "Saving config\u2026";
-      const r = await fetch(`${API}/config-overrides/values`, {
-        method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ folder: activeFolder, updates })
-      });
-      if (!r.ok) { const d = await r.json(); throw new Error(d.detail?.message || r.status); }
-      const d = await r.json();
-      log(`Config saved: ${d.written.join(", ")}`, "success");
-      // 3. Freeze — set both flags, apply UI freeze
+      await saveConfigChanges();
+
+      // Freeze state and guard for active run.
       localStorage.setItem(FROZEN_KEY, "1");
       localStorage.setItem(RUN_KEY, "1");
       applyConfigFreeze();
-      window.addEventListener("beforeunload", _runUnloadGuard); // M7
+      window.addEventListener("beforeunload", _runUnloadGuard);
       console.info("[AISCO] Save & Run: config frozen, launching run.");
-      // 4. Start run
+
+      // Start run, then navigate to Output (same destination as Next).
       progressLabel.textContent = "Launching\u2026";
       const rs = await fetch(`${API}/run/start`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -551,14 +603,14 @@
       });
       const rd2 = await rs.json();
       if (!rs.ok) throw new Error(rd2.detail?.message || rs.status);
-      startSSEProgress();
+
+      progressLabel.textContent = "Running\u2026 redirecting to output.";
+      navigateToOutputLive();
     } catch (err) {
       log(`ERROR: ${err.message}`, "error");
       progressLabel.textContent = "Error: " + err.message;
-      // If freeze was already applied (flags set), form stays frozen.
-      // The ← Go Home banner link is the recovery path (Scenario 3).
-      // If PUT failed (before freeze), re-enable Run so the user can retry.
       if (!localStorage.getItem(FROZEN_KEY)) {
+        btnSaveChanges.disabled = !activeFolder;
         btnRun.disabled = !activeFolder;
         btnStop.disabled = true;
       }
@@ -571,6 +623,7 @@
     await fetch(`${API}/run/stop`, { method: "POST" });
     if (progressEventSource) { progressEventSource.close(); progressEventSource = null; }
     progressLabel.textContent = "Stopped.";
+    btnSaveChanges.disabled = !activeFolder;
     btnRun.disabled = !activeFolder;
   });
 
