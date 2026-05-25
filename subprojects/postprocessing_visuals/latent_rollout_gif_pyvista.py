@@ -3347,10 +3347,27 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         out_path = Path(args.out)
         print(f"\nWriting {len(frames)} frames → {out_path}  (fps={args.fps})")
 
+        gif_frames = frames
+        if bool(args.transparent_background):
+            # GIF supports 1-bit transparency via a designated palette index.
+            # Convert each frame to RGBA: render-region pixels that match the
+            # background color become alpha=0; the panel region stays opaque.
+            bg_rgb = np.array(_parse_color_rgb(args.render_bg), dtype=np.uint8)
+            render_w = int(args.width)
+            rgba_frames: list[np.ndarray] = []
+            for f in frames:
+                alpha = np.full(f.shape[:2], 255, dtype=np.uint8)
+                # Only punch out bg pixels in the 3-D render region (left side)
+                render_region = f[:, :render_w, :]
+                bg_mask = np.all(render_region == bg_rgb[None, None, :], axis=-1)
+                alpha[:, :render_w][bg_mask] = 0
+                rgba_frames.append(np.dstack([f, alpha]))
+            gif_frames = rgba_frames
+
         # Force imageio to calculate an optimized palette per frame rather than a single blurry global palette
         imageio.mimsave(
             out_path,
-            frames,
+            gif_frames,
             fps=args.fps,
             loop=0,
             quantizer="nq",  # NeuQuant high-quality neural network quantizer
