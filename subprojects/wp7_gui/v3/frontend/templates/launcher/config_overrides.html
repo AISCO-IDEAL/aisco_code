@@ -591,10 +591,10 @@
 
   const btnGoHome = document.getElementById("btnGoHomeFromBanner");
   if (btnGoHome) {
-    btnGoHome.addEventListener("click", (e) => {
+    btnGoHome.addEventListener("click", async (e) => {
       e.preventDefault();
       window.removeEventListener("beforeunload", _runUnloadGuard);
-      fetch(`${API}/run/stop`, { method: "POST" }).catch(() => {});
+      try { await fetch(`${API}/run/home-reset`, { method: "POST" }); } catch (_) {}
       clearWizardState();
       window.location.href = "/";
     });
