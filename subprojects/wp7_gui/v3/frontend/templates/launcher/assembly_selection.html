@@ -740,16 +740,16 @@ endblock %}
         ctx.fillText("X \u2192", canvasDrawSize.width - 4, zero.y - 6);
 
         // "FRONT" label on positive X axis, rotated 90° (reads +Y → -Y in world coords)
-        const frontPos = toCanvas(bounds.xmax * 0.92, 0);
+        const frontPos = toCanvas(bounds.xmax * 0.98, 0);
         ctx.save();
         ctx.translate(frontPos.x, frontPos.y);
         ctx.rotate(Math.PI / 2);
-        ctx.font = `bold 11px ${C_CANVAS_FONT}`;
+        ctx.font = `bold 22px ${C_CANVAS_FONT}`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillStyle = C_CANVAS_AXIS_X;
         ctx.globalAlpha = 0.85;
-        ctx.fillText("FRONT", 0, -14);
+        ctx.fillText("FRONT", 0, -20);
         ctx.restore();
         ctx.globalAlpha = 1;
 
