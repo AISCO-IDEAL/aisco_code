@@ -1,85 +1,147 @@
 # latent_rollout_config.yaml
-# All settings for latent_rollout_gif.py
+# All settings for latent_rollout_gif_pyvista2.py
 # CLI flags (--key value) override any value set here.
-# Usage: python subprojects/postprocessing_visuals/latent_rollout_gif.py --config subprojects/postprocessing_visuals/latent_rollout_config.yaml
+# Usage: python subprojects/postprocessing_visuals/latent_rollout_gif_pyvista2.py --config subprojects/postprocessing_visuals/latent_rollout_config.yaml
 
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-checkpoint: /cluster/work/fuge/AISCO/wp9/for_victor/6166b4e953/93_362262_stellar-energy/models/93_362262_stellar-energy_epoch2680.pth
-output_dir: /cluster/work/fuge/AISCO/wp9/ginn_gif
-# out: null   # uncomment to override the auto-generated filename entirely
+checkpoint: null
+out: null
+output_dir: /cluster/work/fuge/AISCO/wp9/pyvista_gif
+cse_samples_out: null
+final_png_out: null
+# ---------------------------------------------------------------------------
+# Animation / traversal
+# ---------------------------------------------------------------------------
+n_frames: 360
+resolution: 96
+radius: null
+fps: 5
+device: auto
+width: 3840
+height: 2160
+panel_width: 1280
+azim: -60.0
+elev: 25.0
+mesh_zoom: 1.4
+mode: spiral
+
+mesh_x_shift: 300  # mm
+
+show_anchors: false
+epoch_coords: [0.0, 0.0]
+
+epoch_gif: false
+
+final_hold_seconds: 3.0
+export_final_png: true
+final_png_include_composite: true
+final_frame_use_best_cse: true
 
 # ---------------------------------------------------------------------------
-# Animation
+# Colors / rendering
 # ---------------------------------------------------------------------------
-n_frames: 240     # frames per traversal
-fps: 24           # GIF playback speed in frames-per-second
-radius: null      # traversal radius; null = infer from checkpoint
-mode: spiral       # traversal mode: circle | spiral | line | cross
+render_bg: "#23283E"
+transparent_background: true
+
+mesh_color: "#5DADE2" #"#F2F4F7" # Aeroshell base color
+mesh_alpha: 1.0
+
+show_assembly: true
+assembly_color: "#F39C12"
+assembly_scale: 1.0
+
+full_wheels: true
+cutoff_wheel: false
+
+show_windshield: true
+windshield_assembly_id: 1
+windshield_color: "#86A9BD"
+windshield_alpha: 0.32
+show_pressure_field: false
+
+show_solar_selection: false
+solar_sun_dir: [-1.0, 0.0, 1.0]
+solar_area_budget_mm2: 4200000.0
+solar_selection_color: "#F0D33E"
+
+
+solar_binary_postprocess_iters: 2
+solar_contour_postprocess_iters: 4
+solar_contour_hole_fill_iters: 2
+solar_overlay_smooth_iters: 10
+
+show_cse_overlay: true
+save_cse_samples: true
+show_cse_kmh: true
+show_cse_tacho: true
+cse_tacho_max_kmh: 160
+show_latent_panel: true
+cse_text_color: "#EAF2F8"
+cse_box_color: "#27314A"
+cse_box_alpha: 0.72
+latent_box_alpha: 0.72
+cse_metrics_device: cpu
+
+
+gaot_version: 3
+gaot_model_id: 65531686
+gaot_v_inf: 25.0
+gaot_rho: 1.225
+gaot_mesh_resolution: 50000
+gaot_gradient_max: 0.001
+
+solar_effective_irradiance_w_m2: 250.0
+cse_mass_kg: 210.0
+cse_constant_losses_w: 20.0
+cse_rolling_friction_coefficient: 0.006
+
+
+# Clean-edge preset (no post-smoothing)
+mask_refine_subdivisions: 2
+solar_mask_refine_subdivisions: 0
+
 
 # ---------------------------------------------------------------------------
 # Spiral mode  (only active when mode: spiral)
 # ---------------------------------------------------------------------------
-spiral_turns: 3          # number of full rotations outward
-spiral_radius_start: 0.0 # inner radius — 0.0 starts at the origin
-spiral_radius_end: null  # outer radius — null = use z_radius from checkpoint
+spiral_turns: 3.0
+spiral_equal_distance: true
+spiral_radius_start: 0.0
+spiral_radius_end: null
 
 # ---------------------------------------------------------------------------
 # Line mode  (only active when mode: line)
 # ---------------------------------------------------------------------------
-line_start: [0.0, -1.5]  # start latent coordinates [z0, z1]
-line_end:   [0.0,  1.5]  # end latent coordinates [z0, z1]
-line_bounces: 1           # complete back-and-forth oscillations  (1 = A→B→A)
+line_start: [0.0, -2.0]
+line_end: [0.0, 2.0]
+line_bounces: 1
 
 # ---------------------------------------------------------------------------
 # Cross mode  (only active when mode: cross)
 # ---------------------------------------------------------------------------
-cross_radius: 1.5        # half-width of the X pattern; null = use z_radius from checkpoint
+cross_radius: null
 
 # ---------------------------------------------------------------------------
 # Mesh extraction
 # ---------------------------------------------------------------------------
-resolution: 40    # marching-cubes grid resolution per axis
-bbox_padding: 100  # expand each prism face outward by this many mm (prevents boundary holes)
-device: auto      # "auto" | "cuda" | "cpu"
+bbox_padding: 1.25
+outer_prism_scale: 1.6
 
 # ---------------------------------------------------------------------------
-# Render viewport
+# Latent-space side panel colors
 # ---------------------------------------------------------------------------
-width: 960        # 3D render width in pixels
-height: 600       # 3D render height in pixels
-panel_width: 320  # latent-map side panel width in pixels
-
-# ---------------------------------------------------------------------------
-# Camera
-# ---------------------------------------------------------------------------
-azim: -60.0       # azimuth angle in degrees
-elev: 45.0        # elevation angle in degrees
-
-# ---------------------------------------------------------------------------
-# Colors  (hex "#RRGGBB" or integer list [R, G, B])
-# ---------------------------------------------------------------------------
-
-# 3D render
-mesh_color:   "#5DADE2"   # aeroshell surface color
-mesh_alpha:   0.75        # aeroshell opacity 0.0–1.0 (0.75 = 75% opaque; use BLEND when < 1)
-render_bg:    "#ffffff"   # 3D render background
-
-# Inner assembly
-show_assembly:   true        # render inner assembly inside the transparent aeroshell
-assembly_color:  "#F39C12"  # inner assembly color (orange)
-
-# Latent-space side panel
-panel_bg:             "#23283E"   # panel background
-panel_axis:           "#4B5573"   # axis lines
-panel_circle:         "#6E7DA5"   # training manifold circle
-panel_anchor:         "#DC5A5A"   # pretrained anchor dots
-panel_anchor_label:   "#F0A0A0"   # anchor index labels
-panel_progress:       "#50C8FF"   # traversed arc highlight
-panel_cursor:         "#50C8FF"   # current position dot fill
-panel_cursor_outline: "#FFFFFF"   # current position dot outline
-panel_axis_label:     "#B4BEDC"   # z₀ / z₁ labels
-panel_coord_text:     "#82C3FF"   # z = [...] coordinate readout
-panel_frame_text:     "#8C91AA"   # "frame N / M" counter
-panel_title:          "#C8CDE6"   # panel title text
+panel_bg: "#23283E"
+panel_axis: "#4B5573"
+panel_circle: "#6E7DA5"
+panel_anchor: "#DC5A5A"
+panel_anchor_label: "#F0A0A0"
+panel_progress: "#50C8FF"
+panel_cursor: "#50C8FF"
+panel_cursor_outline: "#FFFFFF"
+panel_axis_label: "#B4BEDC"
+panel_coord_text: "#82C3FF"
+panel_frame_text: "#8C91AA"
+panel_title: "#C8CDE6"
+panel_grid: "#36435F"

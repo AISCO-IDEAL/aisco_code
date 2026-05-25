@@ -199,11 +199,15 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     solar_v5: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
     solar_v6: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
     solar_v7: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
+<<<<<<< HEAD
     solar_s_r: [0, 2.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SR.py"] # single ray
+=======
+    solar_s_r: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SR.py"] # single ray
+>>>>>>> main
     solar_s_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SRRT.py"] # single ray ray tracing
     solar_m_r: [0, 10.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MR.py"]  # multi ray
     solar_m_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MRRT.py"]  # multi ray ray tracing
-    null_loss_solar: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+    null_loss_solar: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
 
   diversity:
     _role: diversity
