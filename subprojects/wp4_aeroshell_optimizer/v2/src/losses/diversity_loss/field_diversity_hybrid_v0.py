@@ -104,6 +104,7 @@ class FieldDiversityHybridV0:
             if self._w_surf != 0.0
             else torch.zeros((), device=Z.device, dtype=torch.float32)
         )
+        assert vol is not None and surf is not None
         loss = self._w_vol * vol + self._w_surf * surf
         if self._max_div is not None:
             loss = torch.clamp(loss - self._max_div, min=0.0)

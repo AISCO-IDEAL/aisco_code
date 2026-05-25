@@ -141,8 +141,9 @@ class FiLMWIREV5(ConcatBaseModel):
             nn.Linear(film_hidden_features, 2 * hidden_features * self.n_modulated_layers, dtype=torch_dtype),
         )
         # Identity init: zero the final layer so gamma = 1 + 0, beta = 0 at start.
-        nn.init.zeros_(self.film_generator[-1].weight)
-        nn.init.zeros_(self.film_generator[-1].bias)
+        final_linear = cast(nn.Linear, self.film_generator[-1])
+        nn.init.zeros_(final_linear.weight)
+        nn.init.zeros_(final_linear.bias)
 
         self.smooth_proj = nn.Linear(hidden_features, hidden_features, dtype=torch_dtype) if use_smooth_output else None
         self.output_layer = nn.Linear(hidden_features, out_features, dtype=torch_dtype)

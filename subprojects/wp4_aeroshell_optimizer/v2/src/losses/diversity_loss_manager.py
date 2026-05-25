@@ -71,7 +71,7 @@ class DiversityLossManager:
     def loss_name(self) -> str:
         return self._loss_name
 
-    def _init_from_config(self) -> None:  # noqa: PLR0912
+    def _init_from_config(self) -> None:  # noqa: PLR0912, PLR0915
         losses_block_raw: Any = self._losses_config.get("losses")
         if not isinstance(losses_block_raw, dict):
             return
@@ -140,9 +140,7 @@ class DiversityLossManager:
         schedule_cfg = loss_cfg.get("max_div_schedule") or {}
         if isinstance(schedule_cfg, dict) and bool(schedule_cfg.get("enabled", False)):
             if self._max_div is None:
-                raise ValueError(
-                    "max_div_schedule.enabled=true requires max_div to be set (it's the starting value)."
-                )
+                raise ValueError("max_div_schedule.enabled=true requires max_div to be set (it's the starting value).")
             if "end_value" not in schedule_cfg:
                 raise ValueError("max_div_schedule.enabled=true requires 'end_value'.")
             self._max_div_schedule_end = float(schedule_cfg["end_value"])
@@ -155,9 +153,7 @@ class DiversityLossManager:
                 )
             mode = str(schedule_cfg.get("mode", "linear")).lower()
             if mode not in ("linear", "smoothstep"):
-                raise ValueError(
-                    f"max_div_schedule.mode '{mode}' not recognised. Expected 'linear' or 'smoothstep'."
-                )
+                raise ValueError(f"max_div_schedule.mode '{mode}' not recognised. Expected 'linear' or 'smoothstep'.")
             self._max_div_schedule_mode = mode
             self._max_div_schedule_enabled = True
 
@@ -173,8 +169,7 @@ class DiversityLossManager:
         alm_formula = str(loss_cfg.get("alm_formula", "quadratic_augmented"))
         if alm_formula not in ("quadratic_augmented", "linear_augmented"):
             raise ValueError(
-                f"alm_formula '{alm_formula}' not recognised for diversity. "
-                "Expected 'quadratic_augmented' or 'linear_augmented'."
+                f"alm_formula '{alm_formula}' not recognised for diversity. Expected 'quadratic_augmented' or 'linear_augmented'."
             )
         self._alm_formula = alm_formula
 
@@ -249,7 +244,7 @@ class DiversityLossManager:
 
         current_max_div = self._current_max_div(epoch)
         self._last_max_div_used = current_max_div
-        if current_max_div is not None:
+        if current_max_div is not None:  # noqa: SIM108 weird readabilitly rule
             c_div = torch.clamp(raw_loss - current_max_div, min=0.0)
         else:
             # No saturation threshold — treat the raw loss directly as the violation
@@ -258,7 +253,7 @@ class DiversityLossManager:
 
         lam = self._lam.detach().squeeze()
         mu = self._mu.detach().squeeze()
-        if self._alm_formula == "linear_augmented":
+        if self._alm_formula == "linear_augmented":  # noqa: SIM108 weird readabilitly rule
             alm_penalty = (lam + 0.5 * mu) * c_div
         else:
             alm_penalty = lam * c_div + 0.5 * mu * c_div**2

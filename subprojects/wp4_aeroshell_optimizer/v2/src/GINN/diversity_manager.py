@@ -1206,13 +1206,9 @@ class DiversityTrainer:
 
                 if diversity_result.active:
                     trainable_params = [p for p in self._model.parameters() if p.requires_grad]
-                    prev_grad = [
-                        p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params
-                    ]
+                    prev_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
                     diversity_result.weighted.backward(retain_graph=False)
-                    curr_grad = [
-                        p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params
-                    ]
+                    curr_grad = [p.grad.detach().clone() if p.grad is not None else torch.zeros_like(p) for p in trainable_params]
                     delta_norm = sum((c - pv).pow(2).sum().item() for c, pv in zip(curr_grad, prev_grad, strict=False)) ** 0.5
 
                     self._diversity_manager.update_multipliers(diversity_result.c_div.detach())
