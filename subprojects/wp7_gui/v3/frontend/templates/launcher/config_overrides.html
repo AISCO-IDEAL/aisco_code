@@ -39,6 +39,12 @@
     }
   }
 
+  /* ---- larger param labels ---- */
+  #formArea .param-label {
+    font-size: 0.96rem;
+    font-weight: 600;
+  }
+
   /* ---- remove spinners from number inputs ---- */
   .param-input[type="number"] { -moz-appearance: textfield; }
   .param-input[type="number"]::-webkit-inner-spin-button,
@@ -114,24 +120,13 @@
     cursor: not-allowed;
   }
 </style>
-<div class="section-grid" style="grid-template-rows: auto auto minmax(220px, 0.62fr) {% if pipeline == 'live' %}auto {% endif %}minmax(120px, 0.38fr); height: 100%;">
+<div class="section-grid" style="grid-template-rows: auto minmax(220px, 0.62fr) {% if pipeline == 'live' %}auto {% endif %}minmax(120px, 0.38fr); height: 100%;">
 
   <!-- Wizard navigation -->
   <div class="dark-card toolbar">
     <a id="btnBackToAssembly" href="/launcher/assembly-selection?pipeline={{ pipeline }}" class="btn secondary">← Back</a>
     <div style="flex:1;"></div>
     <a id="btnNext" href="/launcher/output?pipeline=live" class="btn">Next →</a>
-  </div>
-
-  <!-- Session toolbar -->
-  <div class="dark-card toolbar">
-    {% if pipeline == 'live' %}
-    <button class="btn secondary" id="btnReload" disabled>Reset to defaults</button>
-    <div class="session-info" id="sessionInfo">Initializing session…</div>
-    {% else %}
-    <button class="btn secondary" id="btnReload" disabled>Reset to defaults</button>
-    <div class="session-info" id="sessionInfo">No active session.</div>
-    {% endif %}
   </div>
 
   <!-- Config locked banner (live only — shown after Save & Run is clicked) -->
@@ -236,11 +231,11 @@
     activeFolder = folder || "";
     if (activeFolder) {
       localStorage.setItem(STORAGE_KEY, activeFolder);
-      sessionInfo.textContent = "Active: " + activeFolder.split("/").pop();
+      if (sessionInfo) sessionInfo.textContent = "Active: " + activeFolder.split("/").pop();
       if (btnReload) btnReload.disabled = false;
     } else {
       localStorage.removeItem(STORAGE_KEY);
-      sessionInfo.textContent = "No active session.";
+      if (sessionInfo) sessionInfo.textContent = "No active session.";
       if (btnReload) btnReload.disabled = true;
     }
     updateNextHref();
@@ -576,6 +571,7 @@
       activeFolder = rd.new_folder;
       localStorage.setItem(STORAGE_KEY, activeFolder);
       sessionInfo.textContent = "Active: " + activeFolder.split("/").pop();
+      if (sessionInfo) sessionInfo.textContent = "Active: " + activeFolder.split("/").pop();
       log(`Renamed to: ${activeFolder.split("/").pop()}`, "success");
       updateNextHref();
     }
