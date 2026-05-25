@@ -125,7 +125,16 @@
   <!-- Wizard navigation -->
   <div class="dark-card toolbar">
     <a id="btnBackToAssembly" href="/launcher/assembly-selection?pipeline={{ pipeline }}" class="btn secondary">← Back</a>
+    {% if pipeline == 'live' %}
+    <div style="flex:1; padding:0 10px;">
+      <div class="progress-bar-wrap" id="progressWrap">
+        <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+      </div>
+      <div id="progressLabel" style="font-size:0.78rem; color:var(--theme-muted); font-weight:600; margin-top:3px;">Idle</div>
+    </div>
+    {% else %}
     <div style="flex:1;"></div>
+    {% endif %}
     <a id="btnNext" href="/launcher/output?pipeline=live" class="btn">Next →</a>
   </div>
 
@@ -140,30 +149,14 @@
     {% if pipeline == 'live' %}
     <div style="display:flex; justify-content:space-between; padding:8px 12px; border-top:1px solid color-mix(in srgb, var(--theme-text-box) 55%, var(--theme-white) 45%);">
       <button class="btn secondary" id="btnReload" disabled>&#8635; Reset to defaults</button>
-      <button class="btn" id="btnSaveChanges" disabled style="background:var(--theme-sel-red); border-color:var(--theme-sel-red); color:#fff;">Save Changes</button>
+      <div style="display:flex; gap:8px;">
+        <button class="btn secondary" id="btnStop" disabled>&#9632; Stop</button>
+        <button class="btn" id="btnRun" disabled style="padding:8px 24px; font-size:1rem; font-weight:700;">&#9654; Run</button>
+        <button class="btn" id="btnSaveChanges" disabled style="background:var(--theme-sel-red); border-color:var(--theme-sel-red); color:#fff;">Save Changes</button>
+      </div>
     </div>
     {% endif %}
   </div>
-
-  {% if pipeline == 'live' %}
-  <!-- Run controls -->
-  <div class="dark-card toolbar" style="gap: 10px; padding-top: 10px; padding-bottom: 10px;">
-    <button class="btn" id="btnRun" disabled>&#9654; Run</button>
-    <button class="btn secondary" id="btnStop" disabled>&#9632; Stop</button>
-    <div style="flex:1; min-width:190px;">
-      <div class="progress-bar-wrap" id="progressWrap">
-        <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
-      </div>
-      <div id="progressLabel" style="font-size:0.9rem; color:var(--theme-muted); font-weight:600; margin-top:5px;">Idle</div>
-    </div>
-    <span class="run-metric-label run-metric-drag">Drag</span>
-    <span id="runDragValue" class="run-metric-value run-metric-drag">&#8212;</span>
-    <span class="run-metric-label run-metric-solar">Solar</span>
-    <span id="runSolarValue" class="run-metric-value run-metric-solar">&#8212;</span>
-    <span class="run-metric-label run-metric-speed">Speed</span>
-    <span id="runSpeedValue" class="run-metric-value run-metric-speed">&#8212;</span>
-  </div>
-  {% endif %}
 
   <!-- Output console -->
   <div class="dark-card" style="max-height: 200px; display: grid; grid-template-rows: auto 1fr; gap: 6px;">
@@ -632,13 +625,10 @@
     _runCompleted = false;
     progressEventSource = new EventSource(`${API}/run/stream/logs`);
     progressEventSource.addEventListener("epoch", e => {
-      const { epoch, total, drag_value, solar_power_w, cruising_speed_ms } = JSON.parse(e.data);
+      const { epoch, total } = JSON.parse(e.data);
       const pct = total > 0 ? Math.min(100, ((epoch + 1) / total) * 100) : 0;
       progressFill.style.width = pct + "%";
       progressLabel.textContent = `Epoch ${epoch + 1} / ${total} (${pct.toFixed(1)}%)`;
-      if (drag_value != null) document.getElementById("runDragValue").textContent = drag_value.toFixed(3) + "\u00a0N";
-      if (solar_power_w != null) document.getElementById("runSolarValue").textContent = solar_power_w.toFixed(1) + "\u00a0W";
-      if (cruising_speed_ms != null) document.getElementById("runSpeedValue").textContent = (cruising_speed_ms * 3.6).toFixed(2) + "\u00a0km/h";
     });
     progressEventSource.addEventListener("done", e => {
       const { return_code } = JSON.parse(e.data);
@@ -743,21 +733,13 @@
       const state = await fetch(`${API}/run/state`).then(r => r.json());
       if (state.running || state.log_path) {
         if (state.running) { btnRun.disabled = true; btnStop.disabled = false; }
-        const [prog, m] = await Promise.all([
-          fetch(`${API}/run/progress`).then(r => r.json()),
-          fetch(`${API}/run/metrics/latest`).then(r => r.json()),
-        ]);
+        const prog = await fetch(`${API}/run/progress`).then(r => r.json());
         if (prog.completed) {
           progressFill.style.width = "100%";
           progressLabel.textContent = "Completed.";
         } else if (prog.current_epoch >= 0) {
           progressFill.style.width = prog.progress_percent + "%";
           progressLabel.textContent = `Epoch ${prog.current_epoch + 1} / ${prog.num_epochs} (${prog.progress_percent.toFixed(1)}%) \u2014 reconnecting\u2026`;
-        }
-        if (m.found) {
-          if (m.drag_value != null) document.getElementById("runDragValue").textContent = m.drag_value.toFixed(3) + "\u00a0N";
-          if (m.solar_power_w != null) document.getElementById("runSolarValue").textContent = m.solar_power_w.toFixed(1) + "\u00a0W";
-          if (m.cruising_speed_ms != null) document.getElementById("runSpeedValue").textContent = (m.cruising_speed_ms * 3.6).toFixed(2) + "\u00a0km/h";
         }
         if (state.running) startSSEProgress();
       }
