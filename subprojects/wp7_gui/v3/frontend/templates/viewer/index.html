@@ -415,6 +415,7 @@
 
     let availableItems = [];
     let activeRightLabel = null;
+    let _metricsHistory = null; // retained across slider moves
 
     // ── Smart back button ── localStorage return URL takes priority ───────────
     (function () {
@@ -474,7 +475,7 @@
         return Number(value).toFixed(decimals) + "\u00a0" + suffix;
     }
 
-    function drawMetricTrend(canvas, values, strokeColor) {
+    function drawMetricTrend(canvas, values, strokeColor, markerFraction) {
         if (!canvas) return;
         var ctx = canvas.getContext("2d");
         if (!ctx) return;
@@ -507,6 +508,38 @@
             else ctx.lineTo(x, y);
         }
         ctx.stroke();
+        if (markerFraction != null && Number.isFinite(markerFraction)) {
+            var mx = markerFraction * (w - 2) + 1;
+            ctx.strokeStyle = "rgba(255,255,255,0.55)";
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(mx, 0);
+            ctx.lineTo(mx, h - 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+    }
+
+    function applyMetricDisplaysForEpoch(epochNum) {
+        if (!_metricsHistory || !_metricsHistory.epoch || !_metricsHistory.epoch.length) return;
+        var epochs = _metricsHistory.epoch;
+        var bestIdx = 0;
+        var bestDist = Infinity;
+        for (var i = 0; i < epochs.length; i++) {
+            var d = Math.abs(Number(epochs[i]) - epochNum);
+            if (d < bestDist) { bestDist = d; bestIdx = i; }
+        }
+        var frac = epochs.length > 1 ? bestIdx / (epochs.length - 1) : 0;
+        var speedMs = _metricsHistory.cruising_speed_ms ? _metricsHistory.cruising_speed_ms[bestIdx] : null;
+        var speedKmh = speedMs == null ? null : Number(speedMs) * 3.6;
+        if (metricSpeedValue) metricSpeedValue.textContent = _formatMetric(speedKmh, 2, "km/h");
+        if (metricDragValue) metricDragValue.textContent = _formatMetric(_metricsHistory.drag_value ? _metricsHistory.drag_value[bestIdx] : null, 2, "N");
+        if (metricSolarValue) metricSolarValue.textContent = _formatMetric(_metricsHistory.solar_power_w ? _metricsHistory.solar_power_w[bestIdx] : null, 1, "W");
+        var speedSeriesKmh = (_metricsHistory.cruising_speed_ms || []).map(function (v) { return v == null ? null : Number(v) * 3.6; });
+        drawMetricTrend(metricSpeedGraph, speedSeriesKmh, _metricColor("--theme-metric-speed-border", "#66CC99"), frac);
+        drawMetricTrend(metricDragGraph, _metricsHistory.drag_value || [], _metricColor("--theme-metric-drag-border", "#66A3FF"), frac);
+        drawMetricTrend(metricSolarGraph, _metricsHistory.solar_power_w || [], _metricColor("--theme-metric-solar-border", "#FFD966"), frac);
     }
 
     function applyMetricDisplays(latest, history) {
@@ -635,6 +668,8 @@
                 paintSlider(rightPanelSlider);
                 loadRightPanel();
             }
+            var _f = primaryGlbFiles[primaryGlbIdx];
+            if (_f && _f.epoch != null) applyMetricDisplaysForEpoch(_f.epoch);
             if (primaryGlbIdx === 0) { stopSyncedPlay(); }
         }, 500);
     }
@@ -649,6 +684,8 @@
         paintSlider(primaryGlbSlider);
         loadPrimaryGlb();
         syncRightEpochToPrimary();
+        var _f = primaryGlbFiles[primaryGlbIdx];
+        if (_f && _f.epoch != null) applyMetricDisplaysForEpoch(_f.epoch);
     });
 
     primaryGlbPlayBtn.addEventListener("click", function () {
@@ -668,6 +705,8 @@
                 primaryGlbSlider.value = String(primaryGlbIdx);
                 paintSlider(primaryGlbSlider);
                 loadPrimaryGlb();
+                var _f = primaryGlbFiles[primaryGlbIdx];
+                if (_f && _f.epoch != null) applyMetricDisplaysForEpoch(_f.epoch);
                 if (primaryGlbIdx === 0) {
                     primaryGlbPlaying = false;
                     clearInterval(primaryGlbPlayInterval);
@@ -985,6 +1024,7 @@
         rightPanelGlbControls.style.display = "none";
         rightPanelGlbControls.innerHTML = "";
 
+        _metricsHistory = null;
         clearMetrics();
         renderPriorityListPreview();
     }
@@ -1023,6 +1063,7 @@
             updatePriorityPanels(artData);
 
             if (metricsData && metricsData.found) {
+                _metricsHistory = metricsData.history || null;
                 applyMetricDisplays(metricsData.latest, metricsData.history);
             }
         } catch (err) {
