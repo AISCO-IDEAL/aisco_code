@@ -34,7 +34,7 @@ epoch_coords: [0.0, 0.0]
 
 epoch_gif: false
 
-final_hold_seconds: 3.0
+final_hold_seconds: 0.0
 export_final_png: true
 final_png_include_composite: true
 final_frame_use_best_cse: true
@@ -44,6 +44,11 @@ final_frame_use_best_cse: true
 # ---------------------------------------------------------------------------
 render_bg: "#23283E"
 transparent_background: true
+show_latent_panel: true
+show_epoch_label: true
+show_cse_overlay: true 
+cse_box_alpha: 0.72
+latent_box_alpha: 0.72
 
 mesh_color: "#5DADE2" #"#F2F4F7" # Aeroshell base color
 mesh_alpha: 1.0
@@ -59,32 +64,29 @@ show_windshield: true
 windshield_assembly_id: 1
 windshield_color: "#86A9BD"
 windshield_alpha: 0.32
-show_pressure_field: false
 
 show_solar_selection: false
+show_solar_quality_mask: false
+solar_quality_cmap: "magma"
 solar_sun_dir: [-1.0, 0.0, 1.0]
 solar_area_budget_mm2: 4200000.0
 solar_selection_color: "#F0D33E"
-
 
 solar_binary_postprocess_iters: 2
 solar_contour_postprocess_iters: 4
 solar_contour_hole_fill_iters: 2
 solar_overlay_smooth_iters: 10
 
-show_cse_overlay: true
 save_cse_samples: true
 show_cse_kmh: true
 show_cse_tacho: true
 cse_tacho_max_kmh: 160
-show_latent_panel: true
+
 cse_text_color: "#EAF2F8"
 cse_box_color: "#27314A"
-cse_box_alpha: 0.72
-latent_box_alpha: 0.72
 cse_metrics_device: cpu
 
-
+show_pressure_field: false
 gaot_version: 3
 gaot_model_id: 65531686
 gaot_v_inf: 25.0

@@ -599,6 +599,48 @@ def _compute_solar_selection_mask(
         return binary_mask
 
 
+def _compute_solar_quality_face_values(
+    aeroshell_mesh: trimesh.Trimesh,
+    device: torch.device,
+    sun_dir_xyz: tuple[float, float, float],
+    cone_face_mask: Tensor | None = None,
+) -> np.ndarray | None:
+    """Compute per-face solar quality in [0, 1] from face normal alignment.
+
+    Quality is max(dot(n, sun_dir), 0), normalized over valid faces.
+    """
+    try:
+        from subprojects.wp3_solar_estimator.utils.rollout_utils.mesh_area_normals import (  # noqa: PLC0415
+            compute_face_areas_and_normals,
+        )
+
+        epsilon = 1e-12
+        verts = torch.tensor(aeroshell_mesh.vertices, dtype=torch.float32, device=device)
+        faces = torch.tensor(aeroshell_mesh.faces, dtype=torch.long, device=device)
+        _, _face_area_m2, face_normals_unit = compute_face_areas_and_normals(verts, faces)
+
+        sun_dir = torch.tensor(sun_dir_xyz, dtype=torch.float32, device=device)
+        sun_dir = sun_dir / torch.linalg.norm(sun_dir).clamp_min(epsilon)
+        quality = torch.clamp((face_normals_unit * sun_dir).sum(-1), min=0.0)
+
+        if cone_face_mask is not None and int(cone_face_mask.numel()) == int(quality.numel()):
+            mask = cone_face_mask.to(device=device, dtype=torch.bool)
+            quality = quality.masked_fill(mask, 0.0)
+
+        q_max = float(quality.max().item()) if quality.numel() > 0 else 0.0
+        if q_max > epsilon:
+            quality = quality / q_max
+    except Exception as exc:
+        warnings.warn(
+            f"[latent_rollout] solar quality mask failed: {exc}. Skipping.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+    else:
+        return quality.detach().cpu().numpy().astype(np.float32)
+
+
 def _build_face_overlay_mesh(
     base_mesh: trimesh.Trimesh,
     face_mask: np.ndarray,
@@ -982,6 +1024,9 @@ def render_mesh(
     assembly_smooth_shading: bool = True,
     pressure_field: np.ndarray | None = None,
     pressure_field_enabled: bool = False,
+    solar_quality_face: np.ndarray | None = None,
+    solar_quality_enabled: bool = False,
+    solar_quality_cmap: str = "viridis",
 ) -> np.ndarray:
     """Render mesh and inner assembly using PyVista with Order-Independent Transparency."""
     # 1. Initialize offscreen plotter (removing the multi_samples keyword argument)
@@ -1020,6 +1065,20 @@ def render_mesh(
             specular=0.1,
             smooth_shading=True,
             show_scalar_bar=False,
+        )
+    elif solar_quality_enabled and solar_quality_face is not None and len(solar_quality_face) == len(mesh.faces):
+        plotter.add_mesh(
+            pv_mesh,
+            scalars=np.asarray(solar_quality_face, dtype=np.float32),
+            cmap=solar_quality_cmap,
+            clim=[0.0, 1.0],
+            opacity=1.0,
+            ambient=0.3,
+            diffuse=0.7,
+            specular=0.1,
+            smooth_shading=True,
+            show_scalar_bar=False,
+            preference="cell",
         )
     else:
         plotter.add_mesh(
@@ -2396,6 +2455,19 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         help="Show/hide solar selection overlay on the aeroshell",
     )
     parser.add_argument(
+        "--show-solar-quality-mask",
+        dest="show_solar_quality_mask",
+        action=argparse.BooleanOptionalAction,
+        default=bool(_c("show_solar_quality_mask", False)),
+        help="Show/hide continuous solar quality mask on aeroshell faces",
+    )
+    parser.add_argument(
+        "--solar-quality-cmap",
+        dest="solar_quality_cmap",
+        default=str(_c("solar_quality_cmap", "viridis")),
+        help="Matplotlib colormap used for the solar quality mask",
+    )
+    parser.add_argument(
         "--show-pressure-field",
         dest="show_pressure_field",
         action=argparse.BooleanOptionalAction,
@@ -3054,7 +3126,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         mask_mesh = mesh
         pressure_field_cp_t: Tensor | None = None
         pressure_field_cp_np: np.ndarray | None = None
+        solar_quality_face_np: np.ndarray | None = None
         show_pressure_field_now = bool(args.show_pressure_field) and gaot_loader is not None and int(args.gaot_version) == 3
+        show_solar_quality_mask_now = bool(args.show_solar_quality_mask) and (not show_pressure_field_now)
         if show_pressure_field_now:
             pressure_field_cp_t = _estimate_pressure_field_cp(
                 gaot_loader=gaot_loader,
@@ -3064,7 +3138,15 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             if pressure_field_cp_t is not None:
                 pressure_field_cp_np = pressure_field_cp_t.detach().cpu().numpy().squeeze(-1)
 
-        if (not show_pressure_field_now) and (args.show_windshield or args.show_solar_selection):
+        if show_solar_quality_mask_now:
+            solar_quality_face_np = _compute_solar_quality_face_values(
+                mesh,
+                device=device,
+                sun_dir_xyz=(float(args.solar_sun_dir[0]), float(args.solar_sun_dir[1]), float(args.solar_sun_dir[2])),
+                cone_face_mask=None,
+            )
+
+        if (not show_pressure_field_now) and (not show_solar_quality_mask_now) and (args.show_windshield or args.show_solar_selection):
             refine_subdiv = args.mask_refine_subdivisions
             if args.show_solar_selection:
                 refine_subdiv = max(refine_subdiv, args.solar_mask_refine_subdivisions)
@@ -3072,7 +3154,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             cone_face_mask = _compute_windshield_face_mask(
                 mask_mesh, args.windshield_assembly_id, device, precomputed_cone=_cached_cone_mesh
             )
-        if (not show_pressure_field_now) and args.show_windshield and cone_face_mask is not None:
+        if (not show_pressure_field_now) and (not show_solar_quality_mask_now) and args.show_windshield and cone_face_mask is not None:
             cone_np = cone_face_mask.detach().cpu().numpy()
             cutout_mesh = _cutout_faces_from_mesh(mask_mesh, cone_np)
             if cutout_mesh is not None:
@@ -3089,7 +3171,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                     cone_np,
                     normal_offset_mm=1.5,
                 )
-        if (not show_pressure_field_now) and args.show_solar_selection:
+        if (not show_pressure_field_now) and (not show_solar_quality_mask_now) and args.show_solar_selection:
             solar_mask = _compute_solar_selection_mask(
                 mask_mesh,
                 device=device,
@@ -3184,6 +3266,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             assembly_smooth_shading=assembly_smooth_shading,
             pressure_field=pressure_field_cp_np,
             pressure_field_enabled=show_pressure_field_now,
+            solar_quality_face=solar_quality_face_np,
+            solar_quality_enabled=show_solar_quality_mask_now,
+            solar_quality_cmap=str(args.solar_quality_cmap),
         )
         composite = np.array(rgb, copy=True)
         lbox_x, box_y, rbox_x, _ = box_position(
