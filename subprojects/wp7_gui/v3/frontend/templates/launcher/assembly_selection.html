@@ -740,7 +740,7 @@ endblock %}
         ctx.fillText("X \u2192", canvasDrawSize.width - 4, zero.y - 6);
 
         // "FRONT" label on positive X axis, rotated 90° (reads +Y → -Y in world coords)
-        const frontPos = toCanvas(bounds.xmax * 0.6, 0);
+        const frontPos = toCanvas(bounds.xmax * 0.92, 0);
         ctx.save();
         ctx.translate(frontPos.x, frontPos.y);
         ctx.rotate(Math.PI / 2);
