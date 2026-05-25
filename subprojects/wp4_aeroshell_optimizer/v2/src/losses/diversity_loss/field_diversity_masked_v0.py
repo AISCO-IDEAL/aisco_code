@@ -55,9 +55,8 @@ class FieldDiversityMaskedV0:
         self._bb_inner_cutoff_mm: float = float(cfg.get("bb_inner_cutoff_mm", 15.0))
         self._wheel_sampling_density: int = int(cfg.get("wheel_sampling_density", 10))
         self._bb_inner_target_point_count: int = int(cfg.get("bb_inner_target_point_count", 20000))
-        self._max_div: float | None = cfg.get("max_div", None)
-        self._max_div = None if self._max_div is None else float(self._max_div)
         self._max_resample_iters: int = int(cfg.get("max_resample_iters", 8))
+        self._warmup_epochs: int = int(cfg.get("warmup_epochs", 0))
 
         assembly_id = int(self.losses_config.get("bb_config", {}).get("assembly_id", 1))
         wheel_cfg = self.losses_config.get("wheel_loss_config", {}) or {}
@@ -102,7 +101,12 @@ class FieldDiversityMaskedV0:
         bbox_hi: list[float] | None = None,
         norm_order: int = 2,
         neighbor_agg_fn: str = "min",
-    ) -> Tensor:
+        epoch: int = -1,
+        leinster_temp: float | None = None,
+        leinster_q: float | None = None,
+    ) -> Tensor | None:
+        if 0 <= epoch < self._warmup_epochs:
+            return None
         if not isinstance(model, SupportsLatentConcat):
             return torch.zeros((), device=self._device, dtype=torch.float32)
         if Z is None:
@@ -132,7 +136,13 @@ class FieldDiversityMaskedV0:
             field_values.append(y_i.squeeze(-1))
 
         Y = torch.stack(field_values, dim=0)
-        return field_diversity_loss(Y, norm_order=norm_order, neighbor_agg_fn=neighbor_agg_fn, max_div=self._max_div)
+        return field_diversity_loss(
+            Y,
+            norm_order=norm_order,
+            neighbor_agg_fn=neighbor_agg_fn,
+            leinster_temp=leinster_temp,
+            leinster_q=leinster_q,
+        )
 
     def debug_sample(self, num_points: int, device: torch.device | None = None) -> dict[str, Tensor]:
         """Return raw + masked sample sets for the visualizer. Does not touch the model."""

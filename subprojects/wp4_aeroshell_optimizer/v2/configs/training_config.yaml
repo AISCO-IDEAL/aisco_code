@@ -2,7 +2,7 @@
 # Training hyper-parameters (from training_v0_config.yaml)
 # ===========================================================================
 training_params:
-  learning_rate: 0.000025  # 0.000008 for WIREV5, 0.0005 for WIREV2 and ConcatWireV2, 0.0001 for basic MLP, 0.0005 for AISCOModel_v0
+  learning_rate: 0.00001  # 0.00001 for WIREV5, 0.000008 for ConcatWireV5, 0.0001 for basic MLP, 0.0005 for AISCOModel_v0
   optimizer: "adam_fast"  # key from optimizers.json — adam | adamw | sgd_momentum | lbfgs
   num_epochs: 150 # basic_MLP_v1.py: training_config["training_params"].get("num_epochs", 1000)
   mesh_save_interval: 20  # basic_MLP_v1.py: training_config["training_params"].get("mesh_save_interval", 50)
@@ -59,22 +59,25 @@ gradient_clipping:
   auto_clip_hist_len: 50
   auto_clip_min_len: 50
 
-#used in optimise() path
+#used in optimise() path?
 gradient_clip_norm: 100
 # ===========================================================================
 # GINN / Diversity parameters (merged from GINN.yaml)
 # ===========================================================================
 
-pretrain_population_size: false # optimisation loop uses same population size as pretraining
-population_size: 24 # used only when pretrain_population_size: false
+# pretrain_population_size: true  → optimisation loop uses N = Z_pretrained.shape[0] (full checkpoint)
+# pretrain_population_size: false → optimisation loop uses N = `population_size`; initial Z is the
+#                                    first `population_size` rows of Z_pretrained (simple slice).
+#                                    Errors if `population_size` > checkpoint size.
+pretrain_population_size: false
+population_size: 20
 
-# Initial Z placement when pretrain_population_size: false.
-#   z_init_mode: circle        → slots placed at evenly-spaced angles on the
-#                                 pretraining z-circle (same radius)
-#   z_init_mode: wider_circle  → slots randomly sampled within a circle of radius
-#                                 r_init_scale * r_pretraining (wider than training)
-z_init_mode: circle           # circle | wider_circle; used only when pretrain_population_size: false
-r_init_scale: 1.0             # radius multiplier for wider_circle mode
+# DEAD CONFIG — NOT WIRED. The original intent was to generate fresh Z codes when
+# pretrain_population_size=false (circle: evenly spaced on the pretraining radius;
+# wider_circle: random disk of radius r_init_scale * r_pretraining). The wire-up
+# was deferred — current behaviour is the simple slice described above.
+z_init_mode: circle           # NOT READ
+r_init_scale: 1.0             # NOT READ
 
 # ===========================================================================
 # Diversity loss sampling config
@@ -84,7 +87,20 @@ r_init_scale: 1.0             # radius multiplier for wider_circle mode
 bbox_scale_factor: 1.4  # multiply outer_prism bounds by this; 1.0 = full outer_prism
 diversity_num_points: 4096
 diversity_norm_order: 2          # p for L^p field distance
-diversity_neighbor_agg_fn: "min" # 'min' = maximize nearest-neighbour distance (GINN paper Eq. 26)
+# Aggregation across the population:
+#   min/mean/sum — local: each shape scored against its neighbours individually.
+#   leinster     — global all-pairs Leinster diversity (GINN train/losses.py). Pressures the
+#                  population to spread evenly across the shape manifold → structured latent space.
+diversity_neighbor_agg_fn: "leinster"
+# leinster_temp is a FIXED field distance (mm, SDF units): the scale at which two shapes
+# count as notably different. Must be absolute, not relative — a relative temperature is
+# scale-invariant and cannot drive the population to actually diversify, only rearrange it.
+#   too small → saturates (diversity pegs at population size N, gradient dies)
+#   too large → nothing registers as diverse (diversity stuck near 1)
+# ~100 ≈ the pairwise field-distance scale of a diversified population (from past runs);
+# calibrate from the D curve: D shooting to N = too small, D stuck near 1 = too large.
+diversity_leinster_temp: 1800     # only used when agg_fn=leinster
+diversity_leinster_q: 2          # diversity order q; q=2 = inverse-Simpson effective shape count
 
 # ===========================================================================
 # Latent population behaviour

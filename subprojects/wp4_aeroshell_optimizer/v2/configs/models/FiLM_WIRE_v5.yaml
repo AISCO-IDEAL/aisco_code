@@ -1,0 +1,43 @@
+# FiLM WIRE v5 — ConcatWIREV5 + deep z conditioning.
+#
+# Same V5 Gabor backbone as ConcatWIREV5 (decoupled wave/decay, coarse-to-fine
+# frequency tiling, geometry-aware normalisation), with two added conditioning paths:
+#   1. The mid-depth skip re-injects the latent z (not just the coordinates).
+#   2. A FiLM generator modulates every Gabor layer with a per-layer (gamma, beta).
+# The FiLM generator is identity-initialised, so at start the model matches ConcatWIREV5.
+#
+# This model does not have an optimise() method — it is driven by the diversity training loop.
+
+coords: 3
+z_dim: 2                    # dimension of the per-instance latent vector
+hidden_features: 512
+hidden_layers: 3
+out_features: 1
+skip_layer_idx: 2           # 0-indexed; valid range [0, hidden_layers-1]
+
+film_hidden_features: 128   # width of the FiLM generator's hidden layer
+
+# First layer: wide-band feature extractor over xyz + z.
+first_omega_min: 1.625463831497798
+first_omega_max: 8.666857169072504
+first_scale_min: 5.37003644859779
+first_scale_max: 26.58724002911597
+
+# Hidden layers: log-uniform coarse-to-fine sub-bands per layer.
+hidden_omega_min: 3.8292073656441374
+hidden_omega_max: 10.646821504903292
+hidden_scale_min: 1.1743072337647469
+hidden_scale_max: 47.571974975931376
+
+train_omega: False
+train_scale: False
+use_spectral_norm: True
+use_smooth_output: True
+
+# Geometry-aware normalisation (defaults reproduce /1000 used in V3/V4).
+bbox_center: [0.0, 0.0, 0.0]
+bbox_half_extent: 1000.0
+# If true, overrides bbox_center / bbox_half_extent with values from the assembly outer bbox.
+use_assembly_normalisation: True
+
+dtype: "float32"
