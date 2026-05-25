@@ -71,6 +71,12 @@ endblock %}
         font-size: 13px;
         color: var(--sel-text);
         background: var(--theme-panel);
+        -moz-appearance: textfield;
+    }
+    .map-load-row input::-webkit-inner-spin-button,
+    .map-load-row input::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
     }
 
     .map-load-row button {

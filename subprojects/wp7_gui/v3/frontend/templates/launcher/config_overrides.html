@@ -39,6 +39,14 @@
     }
   }
 
+  /* ---- remove spinners from number inputs ---- */
+  .param-input[type="number"] { -moz-appearance: textfield; }
+  .param-input[type="number"]::-webkit-inner-spin-button,
+  .param-input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
   /* ---- flat section header ---- */
   .param-section-header {
     font-size: 0.76rem;
