@@ -73,7 +73,6 @@ class CSVMetricsWriter:
             cruising_speed_ms: Cruising speed estimate in m/s, or None if unavailable.
         """
         csv_path = run_dir / "epoch_metrics.csv"
-        needs_header = not csv_path.exists()
         row = {
             "epoch": epoch,
             "timestamp": datetime.now(tz=UTC).isoformat(timespec="seconds"),
@@ -81,14 +80,16 @@ class CSVMetricsWriter:
             "solar_power_w": _fmt(solar_power_w),
             "cruising_speed_ms": _fmt(cruising_speed_ms),
         }
-        try:
-            with csv_path.open("a", newline="", encoding="utf-8") as fh:
-                writer = csv.DictWriter(fh, fieldnames=_PER_RUN_FIELDS)
-                if needs_header:
-                    writer.writeheader()
-                writer.writerow(row)
-        except OSError as exc:
-            LOGGER.warning("Could not write epoch CSV %s: %s", csv_path, exc)
+        with self._lock:
+            needs_header = not csv_path.exists()
+            try:
+                with csv_path.open("a", newline="", encoding="utf-8") as fh:
+                    writer = csv.DictWriter(fh, fieldnames=_PER_RUN_FIELDS)
+                    if needs_header:
+                        writer.writeheader()
+                    writer.writerow(row)
+            except OSError as exc:
+                LOGGER.warning("Could not write epoch CSV %s: %s", csv_path, exc)
 
     # ------------------------------------------------------------------
     # Global summary CSV
@@ -179,18 +180,23 @@ class CSVMetricsWriter:
             return {}
         if not rows:
             return {}
-        last = rows[-1]
-        epoch_raw = last.get("epoch", "").strip()
-        epoch: int | None = None
-        with contextlib.suppress(ValueError):
-            epoch = int(epoch_raw)
-        if epoch is None:
+        # Return the row with the highest valid epoch, ignoring spurious header
+        # duplicates (which produce non-integer epoch cells).
+        best_epoch: int = -1
+        best_row: dict[str, str] | None = None
+        for row in rows:
+            with contextlib.suppress(ValueError):
+                ep = int((row.get("epoch", "") or "").strip())
+                if ep > best_epoch:
+                    best_epoch = ep
+                    best_row = row
+        if best_row is None:
             return {}
         return {
-            "epoch": epoch,
-            "drag_value": _parse_float(last.get("drag_value", "")),
-            "solar_power_w": _parse_float(last.get("solar_power_w", "")),
-            "cruising_speed_ms": _parse_float(last.get("cruising_speed_ms", "")),
+            "epoch": best_epoch,
+            "drag_value": _parse_float(best_row.get("drag_value", "")),
+            "solar_power_w": _parse_float(best_row.get("solar_power_w", "")),
+            "cruising_speed_ms": _parse_float(best_row.get("cruising_speed_ms", "")),
         }
 
     def read_metric_history(self, run_dir: Path, limit: int = 120) -> dict[str, list[float | int | None]]:
@@ -205,7 +211,7 @@ class CSVMetricsWriter:
             ``solar_power_w``, ``cruising_speed_ms``.
         """
         csv_path = run_dir / "epoch_metrics.csv"
-        empty = {
+        empty: dict[str, list[float | int | None]] = {
             "epoch": [],
             "drag_value": [],
             "solar_power_w": [],
@@ -222,7 +228,17 @@ class CSVMetricsWriter:
         if not rows:
             return empty
 
-        tail = rows[-max(1, int(limit)) :]
+        # Deduplicate by epoch: last occurrence of each epoch number wins.
+        # This guards against duplicate rows produced by concurrent writes.
+        seen: dict[int, dict[str, str]] = {}
+        for row in rows:
+            with contextlib.suppress(ValueError):
+                ep = int((row.get("epoch", "") or "").strip())
+                seen[ep] = row
+        if not seen:
+            return empty
+        deduped = [seen[ep] for ep in sorted(seen.keys())]
+        tail = deduped[-max(1, int(limit)) :]
         history: dict[str, list[float | int | None]] = {
             "epoch": [],
             "drag_value": [],

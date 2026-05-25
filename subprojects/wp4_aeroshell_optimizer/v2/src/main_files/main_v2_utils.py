@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import csv
+import fcntl
 import json
 import os
 import random
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
 from typing import Any
 
 import torch
@@ -38,8 +39,6 @@ def _consume_unique_german_name() -> str | None:
 
     with lock_file.open("a+", encoding="utf-8") as lock_handle:
         try:
-            import fcntl
-
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
         except Exception:
             # Best effort lock: if fcntl is unavailable, continue without it.
@@ -48,9 +47,7 @@ def _consume_unique_german_name() -> str | None:
         raw_lines = _RUN_NAME_POOL_PATH.read_text(encoding="utf-8").splitlines()
         available = [line.strip() for line in raw_lines if line.strip()]
         if not available:
-            raise RuntimeError(
-                "German run-name pool is exhausted. Refill german_run_names_10000.txt before starting a new run."
-            )
+            raise RuntimeError("German run-name pool is exhausted. Refill german_run_names_10000.txt before starting a new run.")
 
         idx = random.randrange(len(available))
         selected = available.pop(idx)
@@ -71,7 +68,7 @@ def _consume_unique_german_name() -> str | None:
             writer = csv.writer(used_fh)
             if not csv_exists:
                 writer.writerow(["timestamp_utc", "name"])
-            writer.writerow([datetime.now(timezone.utc).isoformat(), selected])
+            writer.writerow([datetime.now(UTC).isoformat(), selected])
 
         numeric_prefix = random.randint(100, 999)
         return f"{numeric_prefix}_{selected}"

@@ -460,8 +460,31 @@
         }
     }
 
-    loadLeaderboard();
-    setInterval(loadLeaderboard, 1000);
+    // ── SSE-driven updates ─────────────────────────────────────────────────────
+    // Subscribe to the leaderboard change stream. The server sends a 'changed'
+    // event whenever gui_runs_summary.csv is modified, plus one immediately on
+    // connect. A fallback interval handles reconnect gaps.
+    var _lbFallbackInterval = null;
+
+    function _startLeaderboardStream() {
+        var es = new EventSource("/launcher/api/leaderboard/stream");
+        es.addEventListener("changed", function () { loadLeaderboard(); });
+        es.onerror = function () {
+            es.close();
+            // On error, keep polling at a slower rate until the stream comes back.
+            if (!_lbFallbackInterval) {
+                _lbFallbackInterval = setInterval(function () {
+                    loadLeaderboard();
+                    // Retry SSE connection.
+                    clearInterval(_lbFallbackInterval);
+                    _lbFallbackInterval = null;
+                    _startLeaderboardStream();
+                }, 5000);
+            }
+        };
+    }
+
+    _startLeaderboardStream();
 
     // M6: Done — Home clears wizard state and stops any residual run.
     (function () {
