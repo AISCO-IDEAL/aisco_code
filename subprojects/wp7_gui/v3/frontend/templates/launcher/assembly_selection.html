@@ -744,11 +744,28 @@ endblock %}
         ctx.save();
         ctx.translate(frontPos.x, frontPos.y);
         ctx.rotate(Math.PI / 2);
+        ctx.globalAlpha = 0.85;
+        ctx.strokeStyle = C_CANVAS_LABEL;
+        ctx.fillStyle = C_CANVAS_LABEL;
+        ctx.lineWidth = 2;
+        // Arrow in the driving direction (+x in rotated frame = downward on screen)
+        const arrowTip = -62;
+        const shaftStart = arrowTip - 20;
+        const headHalf = 5;
+        ctx.beginPath();
+        ctx.moveTo(shaftStart, -20);
+        ctx.lineTo(arrowTip - 8, -20);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(arrowTip, -20);
+        ctx.lineTo(arrowTip - 8, -20 - headHalf);
+        ctx.lineTo(arrowTip - 8, -20 + headHalf);
+        ctx.closePath();
+        ctx.fill();
+        // FRONT text
         ctx.font = `bold 22px ${C_CANVAS_FONT}`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillStyle = C_CANVAS_AXIS_X;
-        ctx.globalAlpha = 0.85;
         ctx.fillText("FRONT", 0, -20);
         ctx.restore();
         ctx.globalAlpha = 1;
