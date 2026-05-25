@@ -12,11 +12,6 @@
     "max_shown": 3,
     "priority": [
         {
-            "type": "glb_cone",
-            "label": "Aeroshell Mesh (GLB, Vision Cone)",
-            "match": null
-        },
-        {
             "type": "extra_group",
             "label": "Cp Field",
             "match": "aero.*cp|\\bcp\\b|pressure"
@@ -28,8 +23,8 @@
         },
         {
             "type": "extra_group",
-            "label": "Solar – Quality",
-            "match": "solar.*quality"
+            "label": "Solar – Penalty",
+            "match": "solar.*penalty"
         },
         {
             "type": "extra_group",
@@ -38,8 +33,8 @@
         },
         {
             "type": "extra_group",
-            "label": "Solar – Penalty",
-            "match": "solar.*penalty"
+            "label": "Solar – Quality",
+            "match": "solar.*quality"
         },
         {
             "type": "extra_group",
@@ -90,6 +85,16 @@
             "type": "extra_group",
             "label": "Other",
             "match": ".*"
+        },
+                {
+            "type": "glb_cone",
+            "label": "Aeroshell Mesh (GLB, Vision Cone)",
+            "match": null
+        },
+        {
+            "type": "ply",
+            "label": "Aeroshell Mesh (PLY)",
+            "match": null
         }
     ]
 }

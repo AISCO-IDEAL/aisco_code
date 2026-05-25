@@ -27,9 +27,9 @@ _RUN_NAME_LOCK_PATH = _WP4_V2_ROOT / "configs" / ".german_run_names.lock"
 def _consume_unique_german_name() -> str | None:
     """Consume one unique run-name token from the 10k pool.
 
-    Returns a token in the form ``NNN_adjective-noun``. The adjective-noun part
-    is removed from the source pool and appended to a used-names CSV so it
-    cannot be reused.
+    Returns a token in the form ``adjective-noun``. The selected token is
+    removed from the source pool and appended to a used-names CSV so it cannot
+    be reused.
     """
     if not _RUN_NAME_POOL_PATH.exists():
         raise RuntimeError(f"German run-name pool not found: {_RUN_NAME_POOL_PATH}")
@@ -70,8 +70,7 @@ def _consume_unique_german_name() -> str | None:
                 writer.writerow(["timestamp_utc", "name"])
             writer.writerow([datetime.now(UTC).isoformat(), selected])
 
-        numeric_prefix = random.randint(100, 999)
-        return f"{numeric_prefix}_{selected}"
+        return selected
 
 
 def _resolve_wandb_name(name_cfg: Any, run_locally: bool) -> str | None:  # noqa: PLR0911
