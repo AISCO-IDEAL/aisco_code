@@ -1,8 +1,8 @@
 """Create 3D-printing artifacts from existing AISCO exports.
 
 This is intentionally a post-processor. It reads meshes from a run folder,
-reconstructs deterministic repair geometry from WP2 v4 configs, and writes a
-report that distinguishes found geometry from repaired or missing data.
+reconstructs deterministic repair geometry from exported WP2 v4 meshes, and
+writes a report that distinguishes found geometry from repaired or missing data.
 """
 
 from __future__ import annotations
@@ -17,19 +17,14 @@ from pathlib import Path
 from typing import Any
 from xml.sax.saxutils import escape
 
-try:
-    import yaml  # type: ignore[import-not-found]
-except ImportError:
-    yaml = None  # type: ignore[assignment]
-
 REPO_ROOT = Path(__file__).resolve().parents[4]
-HELPER_DIR = Path(__file__).resolve().parent
-DEFAULT_CONFIG_PATH = HELPER_DIR / "print_config.yaml"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
-
+# Edit these paths when running this file directly.
+INPUT_DIR = Path("/cluster/work/fuge/AISCO/beast_sync_wp2/1017_273570_desert-wave")
+OUTPUT_DIR = INPUT_DIR / "printables_3d"
 
 def _status(message: str) -> None:
     print(f"[3d-print] {message}", flush=True)
@@ -60,66 +55,6 @@ class ExportReport:
     warnings: list[str] = field(default_factory=list)
 
 
-class ConfigError(ValueError):
-    pass
-
-
-def _parse_scalar(value: str) -> Any:
-    value = value.strip()
-    lowered = value.lower()
-    result: Any
-    if value in {"", "''", '""'}:
-        result = ""
-    elif (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
-        result = value[1:-1]
-    elif lowered in {"true", "yes"}:
-        result = True
-    elif lowered in {"false", "no"}:
-        result = False
-    elif lowered in {"none", "null"}:
-        result = None
-    else:
-        try:
-            result = int(value)
-        except ValueError:
-            try:
-                result = float(value)
-            except ValueError:
-                result = value
-    return result
-
-
-def _load_simple_yaml_mapping(config_path: Path) -> dict[str, Any]:
-    data: dict[str, Any] = {}
-    for raw_line in config_path.read_text().splitlines():
-        line = raw_line.split("#", 1)[0].strip()
-        if not line:
-            continue
-        if ":" not in line:
-            raise ConfigError(f"Cannot parse config line: {raw_line}")
-        key, value = line.split(":", 1)
-        data[key.strip()] = _parse_scalar(value)
-    return data
-
-
-def load_config(config_path: Path) -> dict[str, Any]:
-    if not config_path.exists():
-        return {}
-    if yaml is None:
-        return _load_simple_yaml_mapping(config_path)
-    with config_path.open("r") as fh:
-        data = yaml.safe_load(fh) or {}
-    if not isinstance(data, dict):
-        raise ConfigError(f"Config must be a YAML mapping: {config_path}")
-    return data
-
-
-def _as_path(value: Any) -> Path | None:
-    if value in (None, ""):
-        return None
-    return Path(str(value)).expanduser()
-
-
 def _as_optional_int(value: Any) -> int | None:
     if value in ("", "auto", None):
         return None
@@ -132,118 +67,36 @@ def _as_optional_epoch(value: Any) -> int | None:
     return int(value)
 
 
-def _prompt_text(label: str, default: Any = None, required: bool = False) -> str | None:
-    default_text = f" [{default}]" if default not in (None, "") else ""
-    while True:
-        value = input(f"{label}{default_text}: ").strip()
-        if value:
-            return value
-        if default not in (None, ""):
-            return str(default)
-        if not required:
-            return None
-        print("This value is required.")
-
-
-def _prompt_int(label: str, default: int | None = None, required: bool = False) -> int | None:
-    while True:
-        value = _prompt_text(label, default, required)
-        if value in (None, ""):
-            return None
-        try:
-            return int(str(value))
-        except ValueError:
-            print("Please enter an integer.")
-
-
-def _prompt_float(label: str, default: float) -> float:
-    while True:
-        value = _prompt_text(label, default, required=True)
-        try:
-            return float(str(value))
-        except (TypeError, ValueError):
-            print("Please enter a number.")
-
-
-def _prompt_bool(label: str, default: bool) -> bool:
-    suffix = "Y/n" if default else "y/N"
-    while True:
-        value = input(f"{label} [{suffix}]: ").strip().lower()
-        if not value:
-            return default
-        if value in {"y", "yes", "true", "1"}:
-            return True
-        if value in {"n", "no", "false", "0"}:
-            return False
-        print("Please answer yes or no.")
-
-
-def resolve_settings(args: argparse.Namespace) -> dict[str, Any]:  # noqa: PLR0915
-    config_path = args.config.expanduser().resolve()
-    cfg = load_config(config_path)
-
-    run_dir = args.run_dir or _as_path(cfg.get("run_dir"))
-    out_dir = args.out_dir or _as_path(cfg.get("out_dir"))
-    assembly_mesh_dir = args.assembly_mesh_dir or _as_path(cfg.get("assembly_mesh_dir"))
-    assembly_slot = args.assembly_slot if args.assembly_slot is not None else cfg.get("assembly_slot")
-    shell_clearance_mm = args.shell_clearance_mm if args.shell_clearance_mm is not None else cfg.get("shell_clearance_mm", 0.35)
-    scale_factor = args.scale_factor if args.scale_factor is not None else cfg.get("scale_factor", 150.0 / 5800.0)
-    epoch = args.epoch if args.epoch is not None else cfg.get("epoch")
-    solar_source = args.solar_source or cfg.get("solar_source", "selection")
-    solar_dir = args.solar_dir or _as_path(cfg.get("solar_dir"))
-    search_parent_for_solar = cfg.get("search_parent_for_solar", False)
-    keep_original_wheels = (
-        args.keep_original_wheels
-        if args.keep_original_wheels is not None
-        else bool(cfg.get("keep_original_wheels_for_test", False))
-    )
-    prompt_for_missing = bool(cfg.get("prompt_for_missing", True))
-    confirm_before_export = bool(cfg.get("confirm_before_export", True))
-
-    assembly_slot = _as_optional_int(assembly_slot)
-    epoch = _as_optional_epoch(epoch)
-
-    if prompt_for_missing:
-        if run_dir is None:
-            value = _prompt_text("Run/export folder", cfg.get("run_dir"), required=True)
-            run_dir = Path(value).expanduser() if value else None
-        if out_dir is None:
-            default_out = run_dir / "printables_3d" if run_dir is not None else None
-            value = _prompt_text("Output folder", default_out, required=False)
-            out_dir = Path(value).expanduser() if value else default_out
-        assembly_mesh_dir_text = _prompt_text("Assembly mesh folder", assembly_mesh_dir, required=False)
-        assembly_mesh_dir = Path(assembly_mesh_dir_text).expanduser() if assembly_mesh_dir_text else assembly_mesh_dir
-        assembly_slot = _prompt_int("Assembly slot (blank = first available)", assembly_slot, required=False)
-        epoch = _prompt_int("Epoch number (blank = latest)", epoch, required=False)
-        shell_clearance_mm = _prompt_float("Shell socket clearance in mm", float(shell_clearance_mm))
-        scale_factor = _prompt_float("Global print scale factor", float(scale_factor))
-        solar_source = _prompt_text("Solar source folder", solar_source, required=True) or "selection"
-        solar_dir_text = _prompt_text("Exact solar folder (blank = search inside run_dir)", solar_dir, required=False)
-        solar_dir = Path(solar_dir_text).expanduser() if solar_dir_text else solar_dir
-        search_parent_for_solar = _prompt_bool("Search parent folder for solar outputs", bool(search_parent_for_solar))
-
-    if run_dir is None:
-        raise SystemExit(f"No run_dir provided. Add it to {config_path} or enter it when prompted.")
-    if out_dir is None:
-        out_dir = run_dir / "printables_3d"
+def resolve_settings(args: argparse.Namespace) -> dict[str, Any]:
+    run_dir = args.run_dir.expanduser().resolve()
+    out_dir = args.out_dir.expanduser().resolve() if args.out_dir is not None else run_dir / "printables_3d"
+    assembly_mesh_dir = args.assembly_mesh_dir.expanduser() if args.assembly_mesh_dir is not None else None
+    assembly_slot = _as_optional_int(args.assembly_slot)
+    epoch = _as_optional_epoch(args.epoch)
+    shell_clearance_mm = float(args.shell_clearance_mm)
+    scale_factor = float(args.scale_factor)
+    solar_source = str(args.solar_source)
+    solar_dir = args.solar_dir.expanduser() if args.solar_dir is not None else None
+    search_parent_for_solar = bool(args.search_parent_for_solar)
+    keep_original_wheels = bool(args.keep_original_wheels)
+    rollout_only = bool(args.rollout_only)
 
     settings = {
-        "config_path": config_path,
         "run_dir": run_dir,
         "out_dir": out_dir,
         "assembly_mesh_dir": assembly_mesh_dir,
         "assembly_slot": assembly_slot,
         "epoch": epoch,
-        "shell_clearance_mm": float(shell_clearance_mm),
-        "scale_factor": float(scale_factor),
-        "solar_source": str(solar_source),
+        "shell_clearance_mm": shell_clearance_mm,
+        "scale_factor": scale_factor,
+        "solar_source": solar_source,
         "solar_dir": solar_dir,
-        "search_parent_for_solar": bool(search_parent_for_solar),
-        "keep_original_wheels": bool(keep_original_wheels),
+        "search_parent_for_solar": search_parent_for_solar,
+        "keep_original_wheels": keep_original_wheels,
+        "rollout_only": rollout_only,
     }
 
     print("\n3D printable export settings")
-    print(f"  config: {settings['config_path']}")
     print(f"  run_dir: {settings['run_dir']}")
     print(f"  out_dir: {settings['out_dir']}")
     print(f"  assembly_mesh_dir: {settings['assembly_mesh_dir'] if settings['assembly_mesh_dir'] is not None else 'run_dir/mesh_assembly_v4'}")
@@ -255,9 +108,7 @@ def resolve_settings(args: argparse.Namespace) -> dict[str, Any]:  # noqa: PLR09
     print(f"  solar_dir: {settings['solar_dir'] if settings['solar_dir'] is not None else 'inside run_dir'}")
     print(f"  search_parent_for_solar: {settings['search_parent_for_solar']}")
     print(f"  keep_original_wheels: {settings['keep_original_wheels']}")
-
-    if confirm_before_export and not _prompt_bool("Run export with these settings?", True):
-        raise SystemExit("Cancelled.")
+    print(f"  rollout_only: {settings['rollout_only']}")
 
     return settings
 
@@ -266,7 +117,7 @@ def _epoch_score(path: Path) -> tuple[int, int, str]:
     text = str(path)
     nums = [int(n) for n in re.findall(r"epoch[_-]?(\d+)", text, flags=re.IGNORECASE)]
     epoch = max(nums) if nums else -1
-    preferred = 2 if "adaptive_mesh" in text else 1 if "mesh_shape" in text else 0
+    preferred = 3 if "mesh_shape" in text else 2 if "adaptive_mesh" in text else 1
     return preferred, epoch, text
 
 
@@ -281,7 +132,7 @@ def _path_slot(path: Path) -> int | None:
 
 
 def find_final_mesh(run_dir: Path, epoch: int | None = None) -> Path | None:
-    roots = [run_dir / "meshes", run_dir]
+    roots = [run_dir / "mesh_shape", run_dir / "meshes", run_dir]
     candidates: list[Path] = []
     for root in roots:
         if not root.exists():
@@ -292,7 +143,10 @@ def find_final_mesh(run_dir: Path, epoch: int | None = None) -> Path | None:
             for p in iterator
             if p.is_file()
             and p.suffix.lower() in {".ply", ".glb", ".stl", ".obj"}
-            and "adaptive_mesh" in p.name.lower()
+            and (
+                "adaptive_mesh" in p.name.lower()
+                or root.name == "mesh_shape"
+            )
             and "printables_3d" not in str(p)
         )
     if epoch is not None:
@@ -401,6 +255,16 @@ def find_assembly_mesh(
         for search_root in search_roots:
             candidates.extend(
                 p
+                for p in search_root.glob("epoch_*.ply")
+                if p.is_file() and "printables_3d" not in str(p) and "with_vision_cone" not in p.name.lower()
+            )
+            candidates.extend(
+                p
+                for p in search_root.glob("epoch_*.glb")
+                if p.is_file() and "printables_3d" not in str(p) and "with_vision_cone" not in p.name.lower()
+            )
+            candidates.extend(
+                p
                 for p in search_root.glob("slot_*_mesh.ply")
                 if p.is_file() and "printables_3d" not in str(p)
             )
@@ -462,6 +326,85 @@ def _inner_assembly_components_only(assembly: Any) -> Any:
     return trimesh.util.concatenate(kept)
 
 
+def _open3d_occupancy(mesh: Any, points: Any, chunk_size: int = 100_000) -> tuple[Any | None, str | None]:
+    np = _require("numpy")
+    try:
+        o3d = __import__("open3d")
+    except ImportError as exc:
+        return None, f"open3d unavailable ({type(exc).__name__}: {exc})"
+
+    vertices = np.asarray(mesh.vertices, dtype=np.float32)
+    faces = np.asarray(mesh.faces, dtype=np.uint32)
+    points = np.asarray(points, dtype=np.float32)
+    if len(vertices) == 0 or len(faces) == 0 or len(points) == 0:
+        return None, "empty mesh or query points"
+
+    o3d_mesh = o3d.t.geometry.TriangleMesh()
+    o3d_mesh.vertex.positions = o3d.core.Tensor(vertices, dtype=o3d.core.Dtype.Float32)
+    o3d_mesh.triangle.indices = o3d.core.Tensor(faces, dtype=o3d.core.Dtype.UInt32)
+    scene = o3d.t.geometry.RaycastingScene()
+    scene.add_triangles(o3d_mesh)
+
+    inside = np.empty(len(points), dtype=bool)
+    for start in range(0, len(points), chunk_size):
+        end = min(start + chunk_size, len(points))
+        query = o3d.core.Tensor(points[start:end], dtype=o3d.core.Dtype.Float32)
+        inside[start:end] = scene.compute_occupancy(query).numpy().astype(bool)
+    return inside, None
+
+
+def _filter_inner_assembly_outside_body(inner_mesh: Any, body: Any) -> tuple[Any, str]:
+    """Keep only whole inner-assembly components with no sampled points inside the body."""
+    np = _require("numpy")
+    trimesh = _require("trimesh")
+    kept = []
+    removed_components = 0
+    removed_faces = 0
+    total_components = 0
+
+    for part, _bounds, _extents in _component_bounds(inner_mesh):
+        total_components += 1
+        vertices = np.asarray(part.vertices, dtype=float)
+        centers = np.asarray(part.triangles_center, dtype=float)
+        query_points = np.vstack([vertices, centers]) if len(centers) else vertices
+        if len(query_points) > 5000:
+            step = max(1, len(query_points) // 5000)
+            query_points = query_points[::step]
+
+        inside, error = _open3d_occupancy(body, query_points)
+        if inside is None:
+            return inner_mesh, f"skipped: body occupancy unavailable ({error}); kept original inner assembly"
+
+        if bool(np.any(inside)):
+            removed_components += 1
+            removed_faces += len(part.faces)
+            continue
+        kept.append(part)
+
+    if removed_components == 0:
+        return inner_mesh, f"computed: no inner components intersected the body across {total_components} component(s)"
+    if not kept:
+        return inner_mesh, f"skipped: all {total_components} inner components tested inside; kept original inner assembly"
+
+    filtered = trimesh.util.concatenate(kept)
+    return filtered, (
+        f"computed: removed {removed_components}/{total_components} inner component(s) with any sampled point inside the body "
+        f"({removed_faces} face(s)); kept only fully-outside components whole"
+    )
+
+
+def _boolean_inner_assembly_outside_body(inner_mesh: Any, body: Any) -> tuple[Any, str]:
+    """Boolean subtract the main body from the inner assembly, with coarse fallback."""
+    boolean_inner, inner_repair_msg = _repair_mesh_for_boolean(inner_mesh)
+    boolean_body, body_repair_msg = _repair_mesh_for_boolean(body)
+    cut_inner, boolean_msg = _try_boolean_difference(boolean_inner, boolean_body)
+    if cut_inner is not None:
+        return cut_inner, f"boolean inner minus body: {inner_repair_msg}; body {body_repair_msg}; {boolean_msg}"
+
+    fallback_inner, fallback_msg = _filter_inner_assembly_outside_body(inner_mesh, body)
+    return fallback_inner, f"boolean inner minus body failed ({boolean_msg}); fallback: {fallback_msg}"
+
+
 def _cleanup_multicolor_dir(multicolor_dir: Path) -> None:
     for stale_name in (
         "final_multicolor_real.glb",
@@ -482,6 +425,11 @@ def _cleanup_single_color_dir(single_color_dir: Path) -> None:
     for stale_name in (
         "plate_with_support.stl",
         "inner_assembly.stl",
+        "inner_assembly_only.stl",
+        "mesh_with_inner_assembly.stl",
+        "mesh_with_inner_assembly.3mf",
+        "unmodified_mesh_flat_bottom.stl",
+        "single_color_unmodified_flat_bottom.3mf",
         "mesh_with_cutouts.stl",
         "unmodified_mesh.stl",
         "unmodified_inner_assembly.stl",
@@ -742,6 +690,44 @@ def _single_print_shell_cutters(body: Any, inner_assembly: Any, plate_with_suppo
     return trimesh.util.concatenate(cutters)
 
 
+def _flatten_mesh_below(mesh: Any, cut_z: float) -> tuple[Any, str]:
+    np = _require("numpy")
+    trimesh = _require("trimesh")
+    vertices = np.array(mesh.vertices, dtype=float)
+    below = vertices[:, 2] < float(cut_z)
+    if not bool(np.any(below)):
+        return mesh.copy(), f"skipped: no vertices below z={float(cut_z):.3f}"
+
+    try:
+        sliced = mesh.slice_plane(
+            plane_origin=[0.0, 0.0, float(cut_z)],
+            plane_normal=[0.0, 0.0, 1.0],
+            cap=True,
+        )
+        if sliced is not None and not getattr(sliced, "is_empty", False):
+            sliced.remove_degenerate_faces()
+            sliced.remove_duplicate_faces()
+            sliced.remove_unreferenced_vertices()
+            trimesh.repair.fix_normals(sliced)
+            return sliced, f"computed: capped plane cut at z={float(cut_z):.3f}"
+    except BaseException as exc:
+        slice_error = f"{type(exc).__name__}: {exc}"
+    else:
+        slice_error = "slice returned empty mesh"
+
+    flattened = mesh.copy()
+    vertices[below, 2] = float(cut_z)
+    flattened.vertices = vertices
+    flattened.remove_degenerate_faces()
+    flattened.remove_duplicate_faces()
+    flattened.remove_unreferenced_vertices()
+    trimesh.repair.fix_normals(flattened)
+    return (
+        flattened,
+        f"fallback: capped plane cut unavailable ({slice_error}); clamped {int(below.sum())} vertex/vertices below z={float(cut_z):.3f}",
+    )
+
+
 def _cut_mesh_faces_inside_boxes(mesh: Any, cutters: Any) -> tuple[Any | None, str]:
     np = _require("numpy")
     face_centers = np.asarray(mesh.triangles_center, dtype=float)
@@ -915,7 +901,7 @@ def _raised_surface_region(surface: Any, height_mm: float) -> Any:
     trimesh = _require("trimesh")
     vertices = np.asarray(surface.vertices, dtype=float)
     faces = np.asarray(surface.faces, dtype=np.int64)
-    normals = np.asarray(surface.vertex_normals, dtype=float)
+    normals = np.array(surface.vertex_normals, dtype=float)
     normal_lengths = np.linalg.norm(normals, axis=1)
     bad_normals = normal_lengths <= 1e-12
     if bool(np.any(bad_normals)):
@@ -1080,6 +1066,7 @@ def export_printables(  # noqa: PLR0912, PLR0915
     search_parent_for_solar: bool = False,
     solar_dir: Path | None = None,
     keep_original_wheels: bool = False,
+    rollout_only: bool = False,
 ) -> ExportReport:
     _status("Starting printable export")
     trimesh = _require("trimesh")
@@ -1087,15 +1074,22 @@ def export_printables(  # noqa: PLR0912, PLR0915
     out_dir = out_dir.resolve()
     multicolor_dir = out_dir / "multicolor"
     single_color_dir = out_dir / "single_color"
+    rollout_live_prints_dir = out_dir / "rollout_live_prints"
     out_dir.mkdir(parents=True, exist_ok=True)
-    multicolor_dir.mkdir(parents=True, exist_ok=True)
-    single_color_dir.mkdir(parents=True, exist_ok=True)
+    if not rollout_only:
+        multicolor_dir.mkdir(parents=True, exist_ok=True)
+        single_color_dir.mkdir(parents=True, exist_ok=True)
+    rollout_live_prints_dir.mkdir(parents=True, exist_ok=True)
     _status(f"Run dir: {run_dir}")
     _status(f"Output dir: {out_dir}")
-    _status(f"Multicolor dir: {multicolor_dir}")
-    _status(f"Single-color dir: {single_color_dir}")
-    _cleanup_multicolor_dir(multicolor_dir)
-    _cleanup_single_color_dir(single_color_dir)
+    if not rollout_only:
+        _status(f"Multicolor dir: {multicolor_dir}")
+        _status(f"Single-color dir: {single_color_dir}")
+    _status(f"Rollout live prints dir: {rollout_live_prints_dir}")
+    if not rollout_only:
+        _cleanup_multicolor_dir(multicolor_dir)
+        _cleanup_single_color_dir(single_color_dir)
+    _cleanup_single_color_dir(rollout_live_prints_dir)
 
     _status(f"Selecting source mesh for epoch: {epoch if epoch is not None else 'latest'}")
     final_mesh_path = find_final_mesh(run_dir, epoch=epoch)
@@ -1119,20 +1113,29 @@ def export_printables(  # noqa: PLR0912, PLR0915
     _status(f"Assembly mesh: {assembly_mesh}")
     _status(f"Selected slot for matching masks: {selected_slot if selected_slot is not None else 'first available'}")
 
-    _status(f"Looking for real solar/{solar_source} mesh and solar/vision_cone_mask for selected epoch/slot")
+    if not rollout_only:
+        _status(f"Looking for real solar/{solar_source} mesh and solar/vision_cone_mask for selected epoch/slot")
 
     _status("Loading source mesh")
     body = _load_mesh(final_mesh_path)
 
-    _status("Building/repairing assembly, wheels, seat support, plate, and shell cutouts")
+    if rollout_only:
+        _status("Building rollout live print only")
+    else:
+        _status("Building/repairing assembly, wheels, seat support, plate, and shell cutouts")
+    output_name_prefix = run_dir.name
     single_outputs = {
         "single_plate_with_support": single_color_dir / "plate_with_support.stl",
         "single_inner_assembly": single_color_dir / "inner_assembly.stl",
+        "single_mesh_with_inner_assembly": single_color_dir / "mesh_with_inner_assembly.stl",
+        "single_mesh_with_inner_assembly_3mf": single_color_dir / "mesh_with_inner_assembly.3mf",
         "single_mesh_with_cutouts": single_color_dir / "mesh_with_cutouts.stl",
         "single_unmodified_mesh": single_color_dir / "unmodified_mesh.stl",
+        "rollout_unmodified_mesh_flat_bottom": rollout_live_prints_dir / "unmodified_mesh_flat_bottom.stl",
         "single_unmodified_inner_assembly": single_color_dir / "unmodified_inner_assembly.stl",
-        "single_print_3mf": single_color_dir / "single_print.3mf",
-        "single_print_unmodified_3mf": single_color_dir / "single_print_unmodified.3mf",
+        "single_print_3mf": single_color_dir / f"single_color_{output_name_prefix}.3mf",
+        "single_print_unmodified_3mf": single_color_dir / f"single_color_unmodified_{output_name_prefix}.3mf",
+        "rollout_unmodified_flat_bottom_3mf": rollout_live_prints_dir / "single_color_unmodified_flat_bottom.3mf",
     }
 
     _status("Using existing assembly mesh and inferring wheel positions from geometry")
@@ -1146,18 +1149,56 @@ def export_printables(  # noqa: PLR0912, PLR0915
         _status("Replacing original cut wheels with full wheels")
         wheel_base_mesh = _remove_cut_wheel_components(assembly_core, wheel_centers)
     full_wheels_mesh = _make_full_wheel_meshes(wheel_centers)
-    _seat_support_mesh, _plate_mesh, plate_with_support_mesh = _mesh_based_supports(wheel_base_mesh, wheel_centers)
     inner_mesh = wheel_base_mesh
     if full_wheels_mesh is not None:
         inner_mesh = trimesh.util.concatenate([wheel_base_mesh, full_wheels_mesh])
     else:
         report.warnings.append("No wheel-like components were inferred from assembly mesh; wheel repair was skipped.")
     unmodified_inner_assembly = inner_mesh.copy()
+    rollout_scale_factor = float(scale_factor) * 0.4
+    body_height = float(body.bounds[1][2] - body.bounds[0][2])
+    flat_bottom_z = float(body.bounds[0][2] + 0.1 * body_height)
+    flat_bottom_body, flat_bottom_msg = _flatten_mesh_below(body, flat_bottom_z)
+    _status(f"Flat-bottom unmodified mesh: {flat_bottom_msg}")
+    report.outputs["single_unmodified_flat_bottom_cut_z_model_mm"] = f"{flat_bottom_z:.6g}"
+    report.outputs["rollout_live_prints_scale_factor"] = f"{rollout_scale_factor:.6g}"
+
+    if rollout_only:
+        report.wheels = f"inferred {len(wheel_centers)} wheel center(s) from assembly mesh and added full regulation wheels"
+        report.seat_support = "skipped: rollout-only export"
+        report.removable_shell = "skipped: rollout-only export"
+        report.assembly_overlap = "skipped: rollout-only export"
+        _status(f"Writing {single_outputs['rollout_unmodified_mesh_flat_bottom'].name}")
+        _export_mesh(flat_bottom_body, single_outputs["rollout_unmodified_mesh_flat_bottom"], rollout_scale_factor)
+        _status(f"Writing {single_outputs['rollout_unmodified_flat_bottom_3mf'].name}")
+        _export_multicolor_3mf(
+            [
+                ("unmodified_mesh_flat_bottom", flat_bottom_body, "#D8D8D8"),
+                ("unmodified_inner_assembly", unmodified_inner_assembly, "#D8D8D8"),
+            ],
+            single_outputs["rollout_unmodified_flat_bottom_3mf"],
+            rollout_scale_factor,
+        )
+        report.outputs["rollout_unmodified_mesh_flat_bottom"] = str(single_outputs["rollout_unmodified_mesh_flat_bottom"])
+        report.outputs["rollout_unmodified_flat_bottom_3mf"] = str(single_outputs["rollout_unmodified_flat_bottom_3mf"])
+        report_path = out_dir / "print_report.json"
+        report.outputs["print_report"] = str(report_path)
+        _status(f"Writing report: {report_path}")
+        report_path.write_text(json.dumps(asdict(report), indent=2) + "\n")
+        _status("Rollout live print export finished")
+        return report
+
+    _seat_support_mesh, _plate_mesh, plate_with_support_mesh = _mesh_based_supports(wheel_base_mesh, wheel_centers)
+    _status("Boolean-cutting inner assembly with the source mesh")
+    inner_mesh, inner_filter_msg = _boolean_inner_assembly_outside_body(inner_mesh, body)
+    _status(f"Inner assembly boolean: {inner_filter_msg}")
     report.wheels = f"inferred {len(wheel_centers)} wheel center(s) from assembly mesh and added full regulation wheels"
     report.seat_support = "generated as a wheel-ground plate with a beam frame under the raised seat"
 
     vision_part = None
-    report.assembly_overlap = "skipped: not part of current multicolor STL set"
+    report.assembly_overlap = inner_filter_msg
+    if "failed" in inner_filter_msg or inner_filter_msg.startswith("skipped"):
+        report.warnings.append(f"Inner assembly boolean cut did not complete cleanly: {inner_filter_msg}")
     color_region_height_mm = 24.0
     solar_mesh_path = find_solar_mesh(run_dir, solar_source, selected_epoch, search_parent_for_solar, solar_dir, selected_slot)
     solar_mesh = None
@@ -1221,7 +1262,7 @@ def export_printables(  # noqa: PLR0912, PLR0915
         multicolor_parts.append(("solar_placement", solar_mesh, "#E53935"))
     if vision_part is not None:
         multicolor_parts.append(("vision_cone_intersection", vision_part, "#00A060"))
-    multicolor_3mf_path = multicolor_dir / "multicolor.3mf"
+    multicolor_3mf_path = multicolor_dir / f"multicolor_{output_name_prefix}.3mf"
     _status(f"Writing {multicolor_3mf_path.name}")
     _export_multicolor_3mf(multicolor_parts, multicolor_3mf_path, scale_factor)
     report.outputs["multicolor_3mf"] = str(multicolor_3mf_path)
@@ -1231,8 +1272,19 @@ def export_printables(  # noqa: PLR0912, PLR0915
     _export_mesh(plate_with_support_mesh, single_outputs["single_plate_with_support"], scale_factor)
     _status(f"Writing {single_outputs['single_inner_assembly'].name}")
     _export_mesh(inner_mesh, single_outputs["single_inner_assembly"], scale_factor)
+    mesh_with_inner_assembly = trimesh.util.concatenate([body, inner_mesh])
+    _status(f"Writing {single_outputs['single_mesh_with_inner_assembly'].name}")
+    _export_mesh(mesh_with_inner_assembly, single_outputs["single_mesh_with_inner_assembly"], scale_factor)
+    _status(f"Writing {single_outputs['single_mesh_with_inner_assembly_3mf'].name}")
+    _export_multicolor_3mf(
+        [("mesh", body, "#D8D8D8"), ("inner_assembly", inner_mesh, "#D8D8D8")],
+        single_outputs["single_mesh_with_inner_assembly_3mf"],
+        scale_factor,
+    )
     _status(f"Writing {single_outputs['single_unmodified_mesh'].name}")
     _export_mesh(body, single_outputs["single_unmodified_mesh"], scale_factor)
+    _status(f"Writing {single_outputs['rollout_unmodified_mesh_flat_bottom'].name}")
+    _export_mesh(flat_bottom_body, single_outputs["rollout_unmodified_mesh_flat_bottom"], rollout_scale_factor)
     _status(f"Writing {single_outputs['single_unmodified_inner_assembly'].name}")
     _export_mesh(unmodified_inner_assembly, single_outputs["single_unmodified_inner_assembly"], scale_factor)
 
@@ -1280,6 +1332,16 @@ def export_printables(  # noqa: PLR0912, PLR0915
         single_outputs["single_print_unmodified_3mf"],
         scale_factor,
     )
+
+    _status(f"Writing {single_outputs['rollout_unmodified_flat_bottom_3mf'].name}")
+    _export_multicolor_3mf(
+        [
+            ("unmodified_mesh_flat_bottom", flat_bottom_body, "#D8D8D8"),
+            ("unmodified_inner_assembly", unmodified_inner_assembly, "#D8D8D8"),
+        ],
+        single_outputs["rollout_unmodified_flat_bottom_3mf"],
+        rollout_scale_factor,
+    )
     report.outputs.update({k: str(v) for k, v in single_outputs.items()})
 
     report_path = out_dir / "print_report.json"
@@ -1292,26 +1354,30 @@ def export_printables(  # noqa: PLR0912, PLR0915
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--config",
-        type=Path,
-        default=DEFAULT_CONFIG_PATH,
-        help=f"YAML config file. Default: {DEFAULT_CONFIG_PATH}",
-    )
-    parser.add_argument("--run-dir", type=Path, default=None, help="Override config run_dir.")
-    parser.add_argument("--out-dir", type=Path, default=None, help="Override config out_dir.")
+    parser.add_argument("--run-dir", type=Path, default=INPUT_DIR, help="Run/export folder to post-process. Default: INPUT_DIR.")
+    parser.add_argument("--out-dir", type=Path, default=OUTPUT_DIR, help="Output folder. Default: OUTPUT_DIR.")
     parser.add_argument("--assembly-mesh-dir", type=Path, default=None, help="Folder containing mesh_assembly_v4 exports.")
     parser.add_argument("--assembly-slot", type=int, default=None, help="Assembly slot number to use, e.g. 0 for slot_00_mesh.ply.")
-    parser.add_argument("--epoch", type=int, default=None, help="Override config epoch. Omit for latest.")
-    parser.add_argument("--shell-clearance-mm", type=float, default=None, help="Override config shell_clearance_mm.")
-    parser.add_argument("--scale-factor", type=float, default=None, help="Override config scale_factor.")
-    parser.add_argument("--solar-source", type=str, default=None, help="Solar subfolder to include, e.g. selection, quality, penalty.")
+    parser.add_argument("--epoch", type=int, default=None, help="Mesh epoch to export. Omit for latest.")
+    parser.add_argument("--shell-clearance-mm", type=float, default=0.35, help="Shell socket clearance in model millimeters.")
+    parser.add_argument("--scale-factor", type=float, default=0.9 * 150.0 / 5800.0, help="Global print scale factor.")
+    parser.add_argument("--solar-source", type=str, default="binary_mask", help="Solar subfolder to include, e.g. binary_mask, selection, quality, penalty.")
     parser.add_argument("--solar-dir", type=Path, default=None, help="Exact solar folder to search, e.g. .../run/solar.")
+    parser.add_argument(
+        "--search-parent-for-solar",
+        action="store_true",
+        help="Also search the parent folder for solar outputs.",
+    )
     parser.add_argument(
         "--keep-original-wheels",
         action=argparse.BooleanOptionalAction,
-        default=None,
+        default=False,
         help="Test mode: keep the original cut wheel pieces and add full wheels for alignment comparison.",
+    )
+    parser.add_argument(
+        "--rollout-only",
+        action="store_true",
+        help="Only export the scaled rollout live print STL/3MF; skip multicolor, supports, masks, and shell cutouts.",
     )
     return parser.parse_args()
 
@@ -1331,6 +1397,7 @@ def main() -> None:
         settings["search_parent_for_solar"],
         settings["solar_dir"],
         settings["keep_original_wheels"],
+        settings["rollout_only"],
     )
     print("\nExport complete")
     print(json.dumps(asdict(report), indent=2))
