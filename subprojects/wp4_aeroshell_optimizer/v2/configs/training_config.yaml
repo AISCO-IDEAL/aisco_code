@@ -2,9 +2,9 @@
 # Training hyper-parameters (from training_v0_config.yaml)
 # ===========================================================================
 training_params:
-  learning_rate: 0.000005  # 0.00001 for WIREV5, 0.0005 for WIREV2 and ConcatWireV2, 0.0001 for basic MLP, 0.0005 for AISCOModel_v0
+  learning_rate: 0.000008  # 0.00001 for WIREV5, 0.000008 for ConcatWireV5, 0.0001 for basic MLP, 0.0005 for AISCOModel_v0
   optimizer: "adam_fast"  # key from optimizers.json — adam | adamw | sgd_momentum | lbfgs
-  num_epochs: 3000 # basic_MLP_v1.py: training_config["training_params"].get("num_epochs", 1000)
+  num_epochs: 8000 # basic_MLP_v1.py: training_config["training_params"].get("num_epochs", 1000)
   mesh_save_interval: 20  # basic_MLP_v1.py: training_config["training_params"].get("mesh_save_interval", 50)
   marching_cubes_usage: "True"  # storage_utils.py: general_config["general_info"].get("marching_cubes_usage", "False") (if True, uses marching cubes with threads for mesh extraction, if False uses kaolin-based mesh extraction without threads, which is more stable but slower)
   gradient_conflict_cadence: 0  # Gradient conflict tracking cadence (0 = disabled, N = every N epochs). Stores per-component gradient vectors and cosine similarities to disk.
@@ -99,7 +99,7 @@ diversity_neighbor_agg_fn: "leinster"
 #   too large → nothing registers as diverse (diversity stuck near 1)
 # ~100 ≈ the pairwise field-distance scale of a diversified population (from past runs);
 # calibrate from the D curve: D shooting to N = too small, D stuck near 1 = too large.
-diversity_leinster_temp: 100     # only used when agg_fn=leinster
+diversity_leinster_temp: 1800     # only used when agg_fn=leinster
 diversity_leinster_q: 2          # diversity order q; q=2 = inverse-Simpson effective shape count
 
 # ===========================================================================

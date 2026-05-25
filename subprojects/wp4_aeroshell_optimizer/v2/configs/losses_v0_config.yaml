@@ -49,7 +49,7 @@ general_info:
     max_iters: 10
     tolerance: 1.0e-3
 
-  cse_weight: 3.0  # Post-normalisation weight on the unified CSE objective (-v_cruise * loss_scale * grad_scale).
+  cse_weight: 1.0  # Post-normalisation weight on the unified CSE objective (-v_cruise * loss_scale * grad_scale).
   cse_prefactors:  # prefactors applied to objectives before feeding into CSE
     drag: 1.0
     solar: 1.0
@@ -193,13 +193,13 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
   solar:
     _role: objective
     _sign: maximize
-    _disabled_epochs:  []
+    _disabled_epochs:  [[0,1000]]
     solar_v3B_2: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v3B_2.py"]
     solar_v4: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v4.py"]
     solar_v5: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
     solar_v6: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
     solar_v7: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
-    solar_s_r: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SR.py"] # single ray
+    solar_s_r: [0, 2.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SR.py"] # single ray
     solar_s_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SRRT.py"] # single ray ray tracing
     solar_m_r: [0, 10.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MR.py"]  # multi ray
     solar_m_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MRRT.py"]  # multi ray ray tracing
@@ -257,11 +257,21 @@ field_diversity_surface_v0_config:
   mc_bbox_scale: 1.0            # outer-prism bbox multiplier for the extractor
   # Diversity saturation threshold. D ≤ max_div is the ALM inequality; c_div = max(0, D - max_div).
   # Re-measure D on a Leinster run before tuning — GINN uses -0.1, our scale is larger (~-15 to -25).
-  max_div: -7
+  max_div: -3.0
+  # Optional curriculum on max_div. When enabled, `max_div` above is the STARTING value
+  # and `end_value` is the final target; the loss linearly (or smoothstep) ramps between
+  # them across [start_epoch, end_epoch], held at end_value afterward. Backward-compatible:
+  # `enabled: false` (default) → scalar `max_div` is used unchanged for the whole run.
+  max_div_schedule:
+    enabled: false
+    end_value: -6.0
+    start_epoch: 1000
+    end_epoch: 2000
+    mode: linear            # linear | smoothstep
   warmup_epochs: 0       # constraints-only warmup before diversity engages (tune; GINN start_div=500)
   # ALM dual-variable params for the diversity constraint (mirrors general_info ALM params)
   initial_lambda: 1.0
-  initial_mu: 1.0
+  initial_mu: 0.01
   initial_nu: 1.0
   alpha: 0.9  # EMA decay factor for ν update
   gamma: 0.01  # parameter for ALM penalty update

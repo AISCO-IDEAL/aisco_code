@@ -47,6 +47,16 @@ class DiversityLossManager:
         self._alpha: Tensor = torch.ones(1, 1, device=self._device)
 
         self._max_div: float | None = None
+        # Optional curriculum on max_div — see `max_div_schedule` config block.
+        # When disabled (default), self._max_div is used unchanged for the whole run.
+        self._max_div_schedule_enabled: bool = False
+        self._max_div_schedule_end: float = 0.0
+        self._max_div_schedule_start_epoch: int = 0
+        self._max_div_schedule_end_epoch: int = 1
+        self._max_div_schedule_mode: str = "linear"
+        # Cached max_div from the most recent compute() call; consumed by build_log_data.
+        self._last_max_div_used: float | None = None
+
         self._gamma: float = 0.01
         self._gamma_aggressive: float = 1.1
         self._alm_formula: str = "quadratic_augmented"
@@ -127,6 +137,32 @@ class DiversityLossManager:
         if max_div_raw is not None and str(max_div_raw).strip().lower() not in {"none", "null"}:
             self._max_div = float(max_div_raw)
 
+        schedule_cfg = loss_cfg.get("max_div_schedule") or {}
+        if isinstance(schedule_cfg, dict) and bool(schedule_cfg.get("enabled", False)):
+            if self._max_div is None:
+                raise ValueError(
+                    "max_div_schedule.enabled=true requires max_div to be set (it's the starting value)."
+                )
+            if "end_value" not in schedule_cfg:
+                raise ValueError("max_div_schedule.enabled=true requires 'end_value'.")
+            self._max_div_schedule_end = float(schedule_cfg["end_value"])
+            self._max_div_schedule_start_epoch = int(schedule_cfg.get("start_epoch", 0))
+            self._max_div_schedule_end_epoch = int(schedule_cfg.get("end_epoch", 0))
+            if self._max_div_schedule_end_epoch <= self._max_div_schedule_start_epoch:
+                raise ValueError(
+                    f"max_div_schedule: end_epoch ({self._max_div_schedule_end_epoch}) must be > "
+                    f"start_epoch ({self._max_div_schedule_start_epoch})."
+                )
+            mode = str(schedule_cfg.get("mode", "linear")).lower()
+            if mode not in ("linear", "smoothstep"):
+                raise ValueError(
+                    f"max_div_schedule.mode '{mode}' not recognised. Expected 'linear' or 'smoothstep'."
+                )
+            self._max_div_schedule_mode = mode
+            self._max_div_schedule_enabled = True
+
+        self._last_max_div_used = self._max_div
+
         initial_lambda = float(loss_cfg.get("initial_lambda", 0.01))
         initial_mu = float(loss_cfg.get("initial_mu", 1.0))
         initial_nu = float(loss_cfg.get("initial_nu", 1.0))
@@ -149,6 +185,26 @@ class DiversityLossManager:
 
     def should_compute(self, population_size: int) -> bool:
         return self._enabled and self._loss_instance is not None and population_size > 1
+
+    def _current_max_div(self, epoch: int) -> float | None:
+        """Resolve the active max_div for this epoch, applying the schedule if enabled.
+
+        Returns the scalar `self._max_div` unchanged when the schedule is disabled,
+        when max_div is null, or for any `epoch <= start_epoch` (including the -1
+        sentinel from compute's default arg). Linear/smoothstep interpolation between
+        start and end_value across [start_epoch, end_epoch], then held at end_value.
+        """
+        if self._max_div is None or not self._max_div_schedule_enabled:
+            return self._max_div
+        if epoch < 0 or epoch <= self._max_div_schedule_start_epoch:
+            return self._max_div
+        if epoch >= self._max_div_schedule_end_epoch:
+            return self._max_div_schedule_end
+        span = self._max_div_schedule_end_epoch - self._max_div_schedule_start_epoch
+        t = (epoch - self._max_div_schedule_start_epoch) / span
+        if self._max_div_schedule_mode == "smoothstep":
+            t = t * t * (3.0 - 2.0 * t)
+        return self._max_div + t * (self._max_div_schedule_end - self._max_div)
 
     def compute(
         self,
@@ -191,8 +247,10 @@ class DiversityLossManager:
         if raw_loss is None:
             return DiversityLossComputeResult(raw=zero, weighted=zero, c_div=zero, active=False)
 
-        if self._max_div is not None:
-            c_div = torch.clamp(raw_loss - self._max_div, min=0.0)
+        current_max_div = self._current_max_div(epoch)
+        self._last_max_div_used = current_max_div
+        if current_max_div is not None:
+            c_div = torch.clamp(raw_loss - current_max_div, min=0.0)
         else:
             # No saturation threshold — treat the raw loss directly as the violation
             # (pushes diversity without bound; useful for early training or debugging)
@@ -229,7 +287,8 @@ class DiversityLossManager:
         mu_val = self._mu.item()
         nu_val = self._nu.item()
 
-        c_div_val = max(0.0, raw_loss_value - self._max_div) if self._max_div is not None else raw_loss_value
+        active_max_div = self._last_max_div_used if self._last_max_div_used is not None else self._max_div
+        c_div_val = max(0.0, raw_loss_value - active_max_div) if active_max_div is not None else raw_loss_value
         if self._alm_formula == "linear_augmented":
             weighted_val = (lam_val + 0.5 * mu_val) * c_div_val
         else:
@@ -243,6 +302,7 @@ class DiversityLossManager:
             "diversity/loss": raw_loss_value,
             "diversity/weighted_loss": weighted_val,
             "diversity/c_div": c_div_val,
+            "diversity/max_div_current": active_max_div if active_max_div is not None else 0.0,
             f"alm_params/lambda_{self._loss_name}": lam_val,
             f"alm_params/mu_{self._loss_name}": mu_val,
             f"alm_params/nu_{self._loss_name}": nu_val,
