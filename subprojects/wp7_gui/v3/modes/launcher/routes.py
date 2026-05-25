@@ -284,10 +284,13 @@ def _write_epoch_csv(
     drag_value: float | None,
     solar_power_w: float | None,
     cruising_speed_ms: float | None,
-) -> None:
+) -> bool:
     """Write one epoch row to the per-run CSV and update the global summary.
 
-    Silently skips if the run directory cannot be resolved yet (early epochs).
+    Returns True when the row was written, False when the run directory could
+    not be resolved yet (e.g. the output folder has not been created by the
+    training process).  Callers must not advance their ``last_written_epoch``
+    counter on a False return so the epoch is retried on the next poll.
 
     Args:
         active_cfg_folder: Current GUI config override folder path string.
@@ -302,7 +305,7 @@ def _write_epoch_csv(
     cfg_session = Path(cfg_folder).name if cfg_folder else ""
     run_dir = detect_current_run_dir(storage_root, preferred_cfg_session=cfg_session or None)
     if run_dir is None:
-        return
+        return False
     _csv_metrics.write_epoch_row(
         run_dir=run_dir,
         epoch=epoch,
@@ -318,6 +321,7 @@ def _write_epoch_csv(
         solar_power_w=solar_power_w,
         cruising_speed_ms=cruising_speed_ms,
     )
+    return True
 
 
 @router.get("/api/run/metrics/latest")
@@ -537,40 +541,77 @@ def api_leaderboard_sparklines(run_ids: str = "", limit: int = 40) -> JSONRespon
     return JSONResponse(content={"histories": histories})
 
 
+@router.get("/api/leaderboard/stream")
+async def leaderboard_stream() -> StreamingResponse:
+    """SSE stream that fires a 'changed' event whenever gui_runs_summary.csv is modified.
+
+    Clients subscribe once and receive a push notification each time a new epoch
+    row is upserted into the summary, instead of polling on a fixed interval.
+    An initial event is sent immediately on connect so the client loads data
+    without waiting for the first file change.
+    """
+    async def _gen():
+        summary_path = SETTINGS.logs_dir / "gui_runs_summary.csv"
+        try:
+            last_mtime: float = summary_path.stat().st_mtime if summary_path.exists() else 0.0
+        except OSError:
+            last_mtime = 0.0
+        # Trigger an immediate load on connect.
+        yield sse.event("changed", {})
+        while True:
+            await asyncio.sleep(1.0)
+            try:
+                mtime = summary_path.stat().st_mtime if summary_path.exists() else 0.0
+            except OSError:
+                mtime = last_mtime
+            if mtime != last_mtime:
+                last_mtime = mtime
+                yield sse.event("changed", {})
+
+    return sse.stream_response(_gen())
+
+
 # ---------------------------------------------------------------------------
 # Background CSV completion writer
 # ---------------------------------------------------------------------------
 
 
 def _csv_completion_writer(log_path: Path, active_cfg_folder: str) -> None:
-    """Background thread: flush final epoch CSV when the run process exits.
+    """Background thread: write epoch CSV rows continuously as the run progresses.
 
-    Polls the process manager until the run is no longer active, then performs
-    a final ``include_last=True`` flush so that the per-run and summary CSVs
-    are written even when no SSE client was connected during the run.
+    Polls the log file every few seconds while the run is active, flushing any
+    newly completed epoch blocks to the per-run and summary CSVs.  ``include_last``
+    is False during polling (the current epoch block may still be accumulating
+    lines) and True on the final flush after the process exits, ensuring every
+    epoch is captured.  ``last_written_epoch`` is threaded through all iterations
+    so no epoch is ever written twice.
 
     Args:
         log_path: Path to the run log file being monitored.
         active_cfg_folder: GUI config override folder path captured at run start.
     """
     _poll_interval = 5.0  # seconds between state checks
+    last_written_epoch: int = _sse_init_last_written_epoch(active_cfg_folder)
     while True:
         time.sleep(_poll_interval)
         should_stop = False
         try:
             state = _process_manager.get_state()
-            # Keep polling while the current run is still the same log file
             current_log = state.get("log_path")
             if current_log != log_path:
                 # A newer run has started — this thread is stale; stop.
                 should_stop = True
             elif not state["running"]:
-                # Process has exited — do the final flush and stop the thread.
+                # Process has exited — final flush includes the last epoch block.
                 if log_path.exists():
                     final_text = log_path.read_text(encoding="utf-8", errors="replace")
-                    last_written = _sse_init_last_written_epoch(active_cfg_folder)
-                    _sse_flush_epoch_csv(final_text, active_cfg_folder, last_written, include_last=True)
+                    _sse_flush_epoch_csv(final_text, active_cfg_folder, last_written_epoch, include_last=True)
                 should_stop = True
+            else:
+                # Run still active — flush completed epoch blocks only.
+                if log_path.exists():
+                    log_text = log_path.read_text(encoding="utf-8", errors="replace")
+                    last_written_epoch = _sse_flush_epoch_csv(log_text, active_cfg_folder, last_written_epoch)
         except Exception as exc:
             LOGGER.warning("csv_completion_writer: unexpected error: %s", exc)
             should_stop = True
@@ -622,8 +663,9 @@ def _sse_flush_epoch_csv(
     epochs_to_write = all_epochs if include_last else all_epochs[:-1]
     for ep in epochs_to_write:
         if ep > last_written_epoch:
-            _write_epoch_csv(active_cfg_folder=active_cfg_folder, epoch=ep, **epoch_blocks[ep])
-            last_written_epoch = ep
+            written = _write_epoch_csv(active_cfg_folder=active_cfg_folder, epoch=ep, **epoch_blocks[ep])
+            if written:
+                last_written_epoch = ep
     return last_written_epoch
 
 
