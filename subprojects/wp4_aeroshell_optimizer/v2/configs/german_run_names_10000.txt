@@ -4250,7 +4250,6 @@ golden-kraft
 golden-krone
 golden-kursor
 golden-laser
-golden-linie
 golden-lotse
 golden-magnet
 golden-mantel
@@ -7347,7 +7346,6 @@ qualitativ-klang
 qualitativ-kompass
 qualitativ-kraft
 qualitativ-krone
-qualitativ-kursor
 qualitativ-laser
 qualitativ-linie
 qualitativ-lotse
