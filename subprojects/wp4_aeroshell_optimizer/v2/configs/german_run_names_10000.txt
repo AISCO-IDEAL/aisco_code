@@ -297,7 +297,6 @@ akurat-torus
 akurat-triebwerk
 akurat-turm
 akurat-vektor
-akurat-wirbel
 aktiv-adler
 aktiv-anker
 aktiv-antrieb
