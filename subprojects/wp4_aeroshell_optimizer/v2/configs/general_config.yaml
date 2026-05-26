@@ -42,7 +42,7 @@ vis_manager: "v2"
 
 storage_paths: # Note that paths have to start with "/cluster/...", if you use "cluster/..." you create stuff in AISCO_code
   storage_dir: "/cluster/work/fuge/AISCO/ROLLOUT_data"  # DEFAULT: /cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage, used in main_v1_1_one_model.py, basic_MLP_v1.py, storage_utils.py
-  local_storage_dir: "./local_storage_dir" # only used for testing on local machine, not on cluster  #  main_v1_1_one_model.py, storage_utils.py (when run_locally=True)
+  local_storage_dir: "/home/eschaerer/Focus_Rollout" # only used for testing on local machine, not on cluster  #  main_v1_1_one_model.py, storage_utils.py (when run_locally=True)
   beast_storage_dir: "/home/aisco/Focus_Rollout" # only used for testing on local machine, not on cluster, used when run_locally=True  # main_v1_1_one_model.py, storage_utils.py (when run_locally=True)
 
 early_stopping:
