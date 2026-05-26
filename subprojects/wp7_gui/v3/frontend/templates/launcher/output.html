@@ -1004,9 +1004,9 @@
             } else {
                 var cloud = data.wandb_upload || {};
                 var sd = data.sd_export || {};
+                var sdText = sd.ok ? "SD done!" : (sd.message || "SD failed");
                 var cloudText = cloud.ok ? "W&B done!" : "W&B not uploaded";
-                var sdText = sd.ok ? "SD done!" : "SD not found";
-                if (printMeshStatus) printMeshStatus.textContent = "Local done! " + cloudText + " " + sdText;
+                if (printMeshStatus) printMeshStatus.textContent = "Local done! " + sdText + " " + cloudText;
                 await fetchLiveArtifacts();
             }
             printMeshBtn.disabled = false;

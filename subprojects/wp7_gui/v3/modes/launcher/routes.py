@@ -559,15 +559,35 @@ def _load_wandb_target(session_dir: Path | None, run_dir: Path) -> dict[str, str
     return None
 
 
-def _windows_volume_roots_by_label(label: str) -> list[Path]:
-    """Resolve Windows drive roots that match a filesystem label."""
-    if os.name != "nt":
+def _is_wsl() -> bool:
+    """Return True when the GUI is running in WSL on a Windows host."""
+    if os.name == "nt":
+        return False
+    if os.environ.get("WSL_DISTRO_NAME") or os.environ.get("WSL_INTEROP"):
+        return True
+    try:
+        return "microsoft" in Path("/proc/version").read_text(encoding="utf-8").lower()
+    except OSError:
+        return False
+
+
+def _windows_drive_root(letter: str) -> Path:
+    """Map a Windows drive letter to the usable root path for this process."""
+    letter = letter.strip().rstrip(":")
+    if os.name == "nt":
+        return Path(f"{letter.upper()}:/")
+    return Path("/mnt") / letter.lower()
+
+
+def _windows_volume_drive_letters_by_label(label: str) -> list[str]:
+    """Resolve Windows drive letters that match a filesystem label."""
+    if os.name != "nt" and not _is_wsl():
         return []
 
-    roots: list[Path] = []
+    drive_letters: list[str] = []
     commands = [
         [
-            "powershell",
+            "powershell.exe" if os.name != "nt" else "powershell",
             "-NoProfile",
             "-Command",
             f"(Get-Volume -FileSystemLabel '{label}' -ErrorAction SilentlyContinue).DriveLetter",
@@ -589,7 +609,32 @@ def _windows_volume_roots_by_label(label: str) -> list[Path]:
                 line = line.split("=", 1)[1].strip()
             line = line.rstrip(":")
             if len(line) == 1 and line.isalpha():
-                roots.append(Path(f"{line}:/"))
+                drive_letters.append(line.upper())
+    return drive_letters
+
+
+def _windows_volume_roots_by_label(label: str) -> list[Path]:
+    """Resolve Windows drive roots that match a filesystem label."""
+    roots: list[Path] = []
+    for letter in _windows_volume_drive_letters_by_label(label):
+        roots.append(_windows_drive_root(letter))
+    return roots
+
+
+def _mount_roots_with_label(label: str) -> list[Path]:
+    """Return Linux/macOS removable-media mount paths matching label."""
+    roots: list[Path] = [
+        Path("/media") / label,
+        Path("/mnt") / label,
+        Path("/Volumes") / label,
+    ]
+
+    for parent in (Path("/media"), Path("/run/media")):
+        try:
+            roots.extend(parent.glob(f"*/{label}"))
+        except OSError:
+            continue
+
     return roots
 
 
@@ -598,32 +643,22 @@ def _candidate_sd_roots() -> list[Path]:
     label = "AISCO_BCKUP"
     roots: list[Path] = []
 
-    explicit = os.environ.get("AISCO_BCKUP_DIR")
-    if explicit:
-        roots.append(Path(explicit).expanduser())
+    for env_name in ("AISCO_BCKUP_DIR", "AISCO_SD_DIR"):
+        explicit = os.environ.get(env_name)
+        if explicit:
+            roots.append(Path(explicit).expanduser())
+
+    explicit = os.environ.get("AISCO_BCKUP_DRIVE")
+    explicit_drive = explicit.strip().rstrip(":") if explicit else ""
+    if len(explicit_drive) == 1 and explicit_drive.isalpha():
+        roots.append(_windows_drive_root(explicit_drive))
 
     roots.extend(_windows_volume_roots_by_label(label))
-
-    for env_name in ("USER", "USERNAME"):
-        username = os.environ.get(env_name)
-        if username:
-            roots.extend(
-                [
-                    Path("/media") / username / label,
-                    Path("/run/media") / username / label,
-                ]
-            )
-
-    roots.extend(
-        [
-            Path("/media") / label,
-            Path("/mnt") / label,
-            Path("/Volumes") / label,
-        ]
-    )
+    roots.extend(_mount_roots_with_label(label))
 
     # Fallback for Windows setups that mount the card under a folder with this name.
-    roots.extend(Path(f"{letter}:/") / label for letter in "DEFGHIJKLMNOPQRSTUVWXYZ")
+    if os.name == "nt":
+        roots.extend(Path(f"{letter}:/") / label for letter in "DEFGHIJKLMNOPQRSTUVWXYZ")
 
     seen: set[str] = set()
     unique_roots: list[Path] = []
@@ -646,6 +681,93 @@ def _find_sd_backup_root() -> Path | None:
     return None
 
 
+def _windows_sd_drive_root() -> str | None:
+    """Return the Windows drive root for the backup card, e.g. D:\\."""
+    for letter in _windows_volume_drive_letters_by_label("AISCO_BCKUP"):
+        return f"{letter}:\\"
+    return None
+
+
+def _powershell_quote(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _wsl_windows_path_candidates(path: Path) -> list[str]:
+    """Return Windows-visible paths for a WSL file."""
+    try:
+        completed = subprocess.run(
+            ["wslpath", "-w", str(path)],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if completed.returncode != 0:
+        return []
+
+    converted = completed.stdout.strip()
+    if not converted:
+        return []
+
+    candidates = [converted]
+    prefix = "\\\\wsl.localhost\\"
+    if converted.lower().startswith(prefix):
+        candidates.insert(0, "\\\\wsl$\\" + converted[len(prefix) :])
+
+    seen: set[str] = set()
+    unique: list[str] = []
+    for candidate in candidates:
+        key = candidate.lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(candidate)
+    return unique
+
+
+def _copy_printables_to_windows_sd(
+    run_dir: Path,
+    files: list[Path],
+) -> dict[str, Any]:
+    """Copy printable files from WSL to a Windows-mounted AISCO_BCKUP card."""
+    drive_root = _windows_sd_drive_root()
+    if not drive_root:
+        return {"enabled": True, "ok": False, "message": "sd card not found"}
+
+    dest_dir = f"{drive_root}AISCO_print_exports\\{run_dir.name}"
+    copied: list[str] = []
+    for file_path in files:
+        last_error = ""
+        for source_path in _wsl_windows_path_candidates(file_path):
+            dest_file = f"{dest_dir}\\{file_path.name}"
+            script = (
+                f"$dest = {_powershell_quote(dest_dir)}; "
+                "New-Item -ItemType Directory -Force -Path $dest | Out-Null; "
+                f"Copy-Item -LiteralPath {_powershell_quote(source_path)} "
+                f"-Destination {_powershell_quote(dest_file)} -Force"
+            )
+            try:
+                completed = subprocess.run(
+                    ["powershell.exe", "-NoProfile", "-Command", script],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                last_error = str(exc)
+                continue
+            if completed.returncode == 0:
+                copied.append(dest_file)
+                last_error = ""
+                break
+            last_error = (completed.stderr or completed.stdout or "").strip()
+        if last_error:
+            return {"enabled": True, "ok": False, "path": dest_dir, "message": last_error}
+    return {"enabled": True, "ok": True, "path": dest_dir, "files": copied, "method": "powershell"}
+
+
 def _copy_printables_to_sd(
     run_dir: Path,
     stl_path: str | None,
@@ -653,15 +775,14 @@ def _copy_printables_to_sd(
     report_path: Path,
 ) -> dict[str, Any]:
     """Best-effort copy of printable files to the AISCO_BCKUP microSD card."""
-    files = [Path(p) for p in (stl_path, three_mf_path) if p]
-    if report_path.exists():
-        files.append(report_path)
-    files = [p for p in files if p.is_file()]
+    files = _printable_export_files(stl_path, three_mf_path, report_path)
     if not files:
         return {"enabled": False, "ok": False, "message": "no printable files to copy"}
 
     sd_root = _find_sd_backup_root()
     if sd_root is None:
+        if _is_wsl():
+            return _copy_printables_to_windows_sd(run_dir, files)
         return {"enabled": True, "ok": False, "message": "sd card not found"}
 
     dest_dir = sd_root / "AISCO_print_exports" / run_dir.name
@@ -677,6 +798,40 @@ def _copy_printables_to_sd(
         return {"enabled": True, "ok": False, "path": str(dest_dir), "message": str(exc)}
 
 
+def _printable_export_files(stl_path: str | None, three_mf_path: str | None, report_path: Path) -> list[Path]:
+    files = [Path(p) for p in (stl_path, three_mf_path) if p]
+    if report_path.exists():
+        files.append(report_path)
+    return [p for p in files if p.is_file()]
+
+
+def _load_printable_output_paths(run_dir: Path) -> tuple[str | None, str | None, Path]:
+    """Load printable STL/3MF paths from print_report.json, with a filesystem fallback."""
+    out_dir = run_dir / "printables_3d"
+    report_path = out_dir / "print_report.json"
+    outputs: dict[str, Any] = {}
+    if report_path.exists():
+        try:
+            with report_path.open(encoding="utf-8") as fh:
+                outputs = (json.load(fh) or {}).get("outputs", {})
+        except (OSError, json.JSONDecodeError):
+            outputs = {}
+
+    stl_path = outputs.get("rollout_unmodified_mesh_flat_bottom")
+    three_mf_path = outputs.get("rollout_unmodified_flat_bottom_3mf")
+
+    if not stl_path:
+        stl_matches = sorted(out_dir.glob("*flat_bottom*.stl"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if stl_matches:
+            stl_path = str(stl_matches[0])
+    if not three_mf_path:
+        three_mf_matches = sorted(out_dir.glob("*flat_bottom*.3mf"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if three_mf_matches:
+            three_mf_path = str(three_mf_matches[0])
+
+    return stl_path, three_mf_path, report_path
+
+
 def _upload_printables_to_wandb(
     run_dir: Path,
     out_dir: Path,
@@ -686,10 +841,7 @@ def _upload_printables_to_wandb(
     session_dir: Path | None,
 ) -> dict[str, Any]:
     """Best-effort W&B artifact upload for exported printable files."""
-    files = [Path(p) for p in (stl_path, three_mf_path) if p]
-    if report_path.exists():
-        files.append(report_path)
-    files = [p for p in files if p.is_file()]
+    files = _printable_export_files(stl_path, three_mf_path, report_path)
     if not files:
         return {"enabled": False, "ok": False, "message": "no printable files to upload"}
 
@@ -800,18 +952,14 @@ def run_print_mesh() -> JSONResponse:
             },
         )
 
-    report_path = run_dir / "printables_3d" / "print_report.json"
-    outputs: dict[str, Any] = {}
-    if report_path.exists():
-        try:
-            with report_path.open(encoding="utf-8") as fh:
-                outputs = (json.load(fh) or {}).get("outputs", {})
-        except (OSError, json.JSONDecodeError):
-            outputs = {}
-
-    stl_path = outputs.get("rollout_unmodified_mesh_flat_bottom")
-    three_mf_path = outputs.get("rollout_unmodified_flat_bottom_3mf")
+    stl_path, three_mf_path, report_path = _load_printable_output_paths(run_dir)
     out_dir = run_dir / "printables_3d"
+    sd_export = _copy_printables_to_sd(
+        run_dir=run_dir,
+        stl_path=stl_path,
+        three_mf_path=three_mf_path,
+        report_path=report_path,
+    )
     wandb_upload = _upload_printables_to_wandb(
         run_dir=run_dir,
         out_dir=out_dir,
@@ -819,12 +967,6 @@ def run_print_mesh() -> JSONResponse:
         three_mf_path=three_mf_path,
         report_path=report_path,
         session_dir=session_dir,
-    )
-    sd_export = _copy_printables_to_sd(
-        run_dir=run_dir,
-        stl_path=stl_path,
-        three_mf_path=three_mf_path,
-        report_path=report_path,
     )
 
     return JSONResponse(
@@ -835,8 +977,8 @@ def run_print_mesh() -> JSONResponse:
             "stl_path": stl_path,
             "three_mf_path": three_mf_path,
             "report_path": str(report_path),
-            "wandb_upload": wandb_upload,
             "sd_export": sd_export,
+            "wandb_upload": wandb_upload,
             "stdout": completed.stdout[-4000:],
         }
     )
