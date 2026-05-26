@@ -68,6 +68,7 @@ class SolarMRRT(ParentLoss):
             device=self.device,
             bbox=cfg["bbox"],
             isovalue=float(cfg.get("isovalue", 0.0)),
+            base_resolution=int(cfg.get("resolution", mesh_cfg_extract.base_resolution)),
         )
         self.extractor = MeshSDFExtractor(config=mesh_cfg_extract)
         self.extractor.set_grid(cfg["bbox"], mesh_cfg_extract.base_resolution)

@@ -70,6 +70,31 @@ def _parse_color_rgba_float(c: str | list, alpha: float = 1.0) -> tuple[float, f
     return (r / 255.0, g / 255.0, b / 255.0, alpha)
 
 
+def _build_truncated_cmap(
+    cmap_name: str,
+    cmap_min: float,
+    cmap_max: float,
+    n: int = 256,
+) -> Any:
+    """Return a truncated matplotlib colormap for [cmap_min, cmap_max].
+
+    Falls back to the original cmap name if matplotlib is unavailable.
+    """
+    lo = float(min(max(cmap_min, 0.0), 1.0))
+    hi = float(min(max(cmap_max, 0.0), 1.0))
+    if hi <= lo:
+        hi = min(lo + 1e-3, 1.0)
+
+    try:
+        from matplotlib import cm  # noqa: PLC0415
+        from matplotlib.colors import ListedColormap  # noqa: PLC0415
+
+        base = cm.get_cmap(cmap_name)
+        return ListedColormap(base(np.linspace(lo, hi, int(max(16, n)))))
+    except Exception:
+        return cmap_name
+
+
 # ---------------------------------------------------------------------------
 # Domain constants — prism bounds (mm) matching the wp2 assembler definition
 # ---------------------------------------------------------------------------
@@ -599,6 +624,48 @@ def _compute_solar_selection_mask(
         return binary_mask
 
 
+def _compute_solar_quality_face_values(
+    aeroshell_mesh: trimesh.Trimesh,
+    device: torch.device,
+    sun_dir_xyz: tuple[float, float, float],
+    cone_face_mask: Tensor | None = None,
+) -> np.ndarray | None:
+    """Compute per-face solar quality in [0, 1] from face normal alignment.
+
+    Quality is max(dot(n, sun_dir), 0), normalized over valid faces.
+    """
+    try:
+        from subprojects.wp3_solar_estimator.utils.rollout_utils.mesh_area_normals import (  # noqa: PLC0415
+            compute_face_areas_and_normals,
+        )
+
+        epsilon = 1e-12
+        verts = torch.tensor(aeroshell_mesh.vertices, dtype=torch.float32, device=device)
+        faces = torch.tensor(aeroshell_mesh.faces, dtype=torch.long, device=device)
+        _, _face_area_m2, face_normals_unit = compute_face_areas_and_normals(verts, faces)
+
+        sun_dir = torch.tensor(sun_dir_xyz, dtype=torch.float32, device=device)
+        sun_dir = sun_dir / torch.linalg.norm(sun_dir).clamp_min(epsilon)
+        quality = torch.clamp((face_normals_unit * sun_dir).sum(-1), min=0.0)
+
+        if cone_face_mask is not None and int(cone_face_mask.numel()) == int(quality.numel()):
+            mask = cone_face_mask.to(device=device, dtype=torch.bool)
+            quality = quality.masked_fill(mask, 0.0)
+
+        q_max = float(quality.max().item()) if quality.numel() > 0 else 0.0
+        if q_max > epsilon:
+            quality = quality / q_max
+    except Exception as exc:
+        warnings.warn(
+            f"[latent_rollout] solar quality mask failed: {exc}. Skipping.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+    else:
+        return quality.detach().cpu().numpy().astype(np.float32)
+
+
 def _build_face_overlay_mesh(
     base_mesh: trimesh.Trimesh,
     face_mask: np.ndarray,
@@ -982,6 +1049,11 @@ def render_mesh(
     assembly_smooth_shading: bool = True,
     pressure_field: np.ndarray | None = None,
     pressure_field_enabled: bool = False,
+    solar_quality_face: np.ndarray | None = None,
+    solar_quality_enabled: bool = False,
+    solar_quality_cmap: str = "viridis",
+    solar_quality_cmap_min: float = 0.0,
+    solar_quality_cmap_max: float = 1.0,
 ) -> np.ndarray:
     """Render mesh and inner assembly using PyVista with Order-Independent Transparency."""
     # 1. Initialize offscreen plotter (removing the multi_samples keyword argument)
@@ -1020,6 +1092,25 @@ def render_mesh(
             specular=0.1,
             smooth_shading=True,
             show_scalar_bar=False,
+        )
+    elif solar_quality_enabled and solar_quality_face is not None and len(solar_quality_face) == len(mesh.faces):
+        quality_cmap = _build_truncated_cmap(
+            cmap_name=solar_quality_cmap,
+            cmap_min=solar_quality_cmap_min,
+            cmap_max=solar_quality_cmap_max,
+        )
+        plotter.add_mesh(
+            pv_mesh,
+            scalars=np.asarray(solar_quality_face, dtype=np.float32),
+            cmap=quality_cmap,
+            clim=[0.0, 1.0],
+            opacity=1.0,
+            ambient=0.3,
+            diffuse=0.7,
+            specular=0.1,
+            smooth_shading=True,
+            show_scalar_bar=False,
+            preference="cell",
         )
     else:
         plotter.add_mesh(
@@ -1318,10 +1409,24 @@ def box_builder(
     )
     # Grid — clipped to rounded corners via a binary mask so corners stay round
     grid_step = max(28, int(40 * scale))
-    for gx in range(1, box_w, grid_step):
-        draw.line([(gx, 1), (gx, box_h - 2)], fill=_CARD_GRID_COL, width=1)
-    for gy in range(1, box_h, grid_step):
-        draw.line([(1, gy), (box_w - 2, gy)], fill=_CARD_GRID_COL, width=1)
+    # Keep grid origin aligned with right-box latent axes (same inner-center math).
+    pad_x = max(8, int(12 * scale))
+    pad_y = max(6, int(10 * scale))
+    icx = pad_x + ((box_w - 2 * pad_x) // 2)
+    icy = pad_y + ((box_h - 2 * pad_y) // 2)
+
+    x_min, x_max = 1, box_w - 2
+    y_min, y_max = 1, box_h - 2
+
+    for gx in range(icx, x_min - 1, -grid_step):
+        draw.line([(gx, y_min), (gx, y_max)], fill=_CARD_GRID_COL, width=1)
+    for gx in range(icx + grid_step, x_max + 1, grid_step):
+        draw.line([(gx, y_min), (gx, y_max)], fill=_CARD_GRID_COL, width=1)
+
+    for gy in range(icy, y_min - 1, -grid_step):
+        draw.line([(x_min, gy), (x_max, gy)], fill=_CARD_GRID_COL, width=1)
+    for gy in range(icy + grid_step, y_max + 1, grid_step):
+        draw.line([(x_min, gy), (x_max, gy)], fill=_CARD_GRID_COL, width=1)
     # Clip alpha channel to rounded rect so grid lines don't bleed into sharp corners
     clip_mask = Image.new("L", (box_w, box_h), 0)
     ImageDraw.Draw(clip_mask).rounded_rectangle(((0, 0), (box_w - 1, box_h - 1)), radius=radius, fill=255)
@@ -2076,12 +2181,14 @@ def _spiral_point(
     r_start: float,
     r_end: float,
     turns: float,
+    start_angle_rad: float = 0.0,
+    center: tuple[float, float] = (0.0, 0.0),
 ) -> tuple[float, float]:
     """Evaluate Archimedean spiral point for normalized parameter t in [0, 1]."""
     tt = min(max(float(t), 0.0), 1.0)
     r = r_start + (r_end - r_start) * tt
-    a = 2.0 * math.pi * turns * tt
-    return (r * math.cos(a), r * math.sin(a))
+    a = start_angle_rad + (2.0 * math.pi * turns * tt)
+    return (center[0] + (r * math.cos(a)), center[1] + (r * math.sin(a)))
 
 
 def _build_spiral_equal_chord_coords(
@@ -2089,14 +2196,16 @@ def _build_spiral_equal_chord_coords(
     r_start: float,
     r_end: float,
     turns: float,
+    start_angle_rad: float = 0.0,
+    center: tuple[float, float] = (0.0, 0.0),
 ) -> list[tuple[float, float]]:
     """Sample spiral with (approximately) equal Euclidean distance between neighbours."""
     if n_frames <= 1:
-        return [_spiral_point(0.0, r_start, r_end, turns)]
+        return [_spiral_point(0.0, r_start, r_end, turns, start_angle_rad=start_angle_rad, center=center)]
 
     def _dist_sq(t0: float, t1: float) -> float:
-        x0, y0 = _spiral_point(t0, r_start, r_end, turns)
-        x1, y1 = _spiral_point(t1, r_start, r_end, turns)
+        x0, y0 = _spiral_point(t0, r_start, r_end, turns, start_angle_rad=start_angle_rad, center=center)
+        x1, y1 = _spiral_point(t1, r_start, r_end, turns, start_angle_rad=start_angle_rad, center=center)
         dx = x1 - x0
         dy = y1 - y0
         return dx * dx + dy * dy
@@ -2154,10 +2263,21 @@ def _build_spiral_equal_chord_coords(
 
     # Ensure exact final endpoint.
     best_ts[-1] = 1.0
-    return [_spiral_point(t, r_start, r_end, turns) for t in best_ts]
+    return [_spiral_point(t, r_start, r_end, turns, start_angle_rad=start_angle_rad, center=center) for t in best_ts]
 
 
-def _build_trajectory(  # noqa: PLR0912  # supports 4 traversal modes; branches are mode dispatches, not complexity
+def _nearest_coord_index(
+    coords: list[tuple[float, float]],
+    target: tuple[float, float],
+) -> int:
+    """Return index of trajectory coordinate closest to target point."""
+    if not coords:
+        return 0
+    tx, ty = float(target[0]), float(target[1])
+    return int(min(range(len(coords)), key=lambda i: (coords[i][0] - tx) ** 2 + (coords[i][1] - ty) ** 2))
+
+
+def _build_trajectory(  # noqa: PLR0912, PLR0915  # supports 4 traversal modes; branches are mode dispatches, not complexity
     mode: str,
     n_frames: int,
     z_radius: float,
@@ -2165,10 +2285,16 @@ def _build_trajectory(  # noqa: PLR0912  # supports 4 traversal modes; branches 
     spiral_radius_start: float = 0.0,
     spiral_radius_end: float | None = None,
     spiral_equal_distance: bool = False,
+    spiral_start_angle_deg: float = 0.0,
+    spiral_center: tuple[float, float] = (0.0, 0.0),
+    spiral_fast_forward_to: tuple[float, float] | None = None,
     line_start: tuple[float, float] = (0.0, -2.0),
     line_end: tuple[float, float] = (0.0, 2.0),
     line_bounces: int = 1,
     cross_radius: float | None = None,
+    cross_center: tuple[float, float] = (0.0, 0.0),
+    cross_start_corner: str = "pp",
+    cross_fast_forward_to: tuple[float, float] | None = None,
 ) -> tuple[list[tuple[float, float]], float]:
     """Build the (z0, z1) trajectory and return the panel scale radius.
 
@@ -2180,10 +2306,16 @@ def _build_trajectory(  # noqa: PLR0912  # supports 4 traversal modes; branches 
         spiral_radius_start: Inner radius for spiral (0.0 = start at origin).
         spiral_radius_end: Outer radius for spiral (None → use z_radius).
         spiral_equal_distance: If True, resample spiral to equal arc-length spacing.
+        spiral_start_angle_deg: Spiral start angle in degrees.
+        spiral_center: (z0, z1) center offset for the spiral trajectory.
+        spiral_fast_forward_to: Optional target (z0, z1) for spiral fast-forward start.
         line_start: (z0, z1) start point for line mode.
         line_end: (z0, z1) end point for line mode.
         line_bounces: Complete back-and-forth oscillations for line mode.
         cross_radius: Half-width of the X pattern (None → use z_radius).
+        cross_center: (z0, z1) center offset for the cross trajectory.
+        cross_start_corner: Start corner for cross mode: pp | nn | pn | np.
+        cross_fast_forward_to: Optional target (z0, z1) for cross fast-forward start.
 
     Returns:
         z_coords: List of (z0, z1) tuples, one per frame.
@@ -2196,8 +2328,19 @@ def _build_trajectory(  # noqa: PLR0912  # supports 4 traversal modes; branches 
 
     if mode == "spiral":
         r_end = spiral_radius_end if spiral_radius_end is not None else z_radius
+        spiral_angle_rad = math.radians(float(spiral_start_angle_deg))
+        spiral_center_xy = (float(spiral_center[0]), float(spiral_center[1]))
         if n_frames <= 1:
-            return [(spiral_radius_start, 0.0)], max(r_end, 1e-6)
+            return [
+                _spiral_point(
+                    0.0,
+                    spiral_radius_start,
+                    r_end,
+                    spiral_turns,
+                    start_angle_rad=spiral_angle_rad,
+                    center=spiral_center_xy,
+                )
+            ], max(r_end, 1e-6)
 
         if spiral_equal_distance:
             coords = _build_spiral_equal_chord_coords(
@@ -2205,15 +2348,33 @@ def _build_trajectory(  # noqa: PLR0912  # supports 4 traversal modes; branches 
                 r_start=spiral_radius_start,
                 r_end=r_end,
                 turns=spiral_turns,
+                start_angle_rad=spiral_angle_rad,
+                center=spiral_center_xy,
             )
         else:
             coords = []
             for i in range(n_frames):
                 t = i / max(n_frames - 1, 1)
-                r = spiral_radius_start + (r_end - spiral_radius_start) * t
-                angle = 2.0 * math.pi * spiral_turns * t
-                coords.append((r * math.cos(angle), r * math.sin(angle)))
-        return coords, max(r_end, 1e-6)
+                coords.append(
+                    _spiral_point(
+                        t,
+                        spiral_radius_start,
+                        r_end,
+                        spiral_turns,
+                        start_angle_rad=spiral_angle_rad,
+                        center=spiral_center_xy,
+                    )
+                )
+        if spiral_fast_forward_to is not None and coords:
+            ff_idx = _nearest_coord_index(coords, spiral_fast_forward_to)
+            coords = coords[ff_idx:]
+            # Spiral is non-periodic; after fast-forward we hold the endpoint to keep frame count stable.
+            if len(coords) < n_frames:
+                coords.extend([coords[-1]] * (n_frames - len(coords)))
+            else:
+                coords = coords[:n_frames]
+        scale_r = max(r_end + abs(spiral_center_xy[0]), r_end + abs(spiral_center_xy[1]), 1e-6)
+        return coords, scale_r
 
     if mode == "line":
         x0, y0 = line_start
@@ -2239,19 +2400,24 @@ def _build_trajectory(  # noqa: PLR0912  # supports 4 traversal modes; branches 
 
     if mode == "cross":
         r = cross_radius if cross_radius is not None else z_radius
+        cx, cy = float(cross_center[0]), float(cross_center[1])
+        corner_pp = (cx + r, cy + r)
+        corner_nn = (cx - r, cy - r)
+        corner_pn = (cx + r, cy - r)
+        corner_np = (cx - r, cy + r)
+        center_pt = (cx, cy)
+
+        corner_paths = {
+            "pp": [corner_pp, center_pt, corner_nn, center_pt, corner_pn, center_pt, corner_np, center_pt, corner_pp],
+            "nn": [corner_nn, center_pt, corner_pp, center_pt, corner_np, center_pt, corner_pn, center_pt, corner_nn],
+            "pn": [corner_pn, center_pt, corner_np, center_pt, corner_pp, center_pt, corner_nn, center_pt, corner_pn],
+            "np": [corner_np, center_pt, corner_pn, center_pt, corner_nn, center_pt, corner_pp, center_pt, corner_np],
+        }
+        if cross_start_corner not in corner_paths:
+            raise ValueError(f"Unknown cross_start_corner '{cross_start_corner}'. Expected one of: pp | nn | pn | np")
         # Visit all 4 diagonal corners (±r, ±r) through the origin, forming an X.
         # All 8 segments have equal length r√2, so frames are distributed evenly.
-        waypoints: list[tuple[float, float]] = [
-            (r, r),
-            (0.0, 0.0),
-            (-r, -r),
-            (0.0, 0.0),
-            (r, -r),
-            (0.0, 0.0),
-            (-r, r),
-            (0.0, 0.0),
-            (r, r),
-        ]
+        waypoints = corner_paths[cross_start_corner]
         n_segs = len(waypoints) - 1
         cross_coords: list[tuple[float, float]] = []
         for i in range(n_frames):
@@ -2266,7 +2432,12 @@ def _build_trajectory(  # noqa: PLR0912  # supports 4 traversal modes; branches 
             x0a, y0a = waypoints[seg]
             x1a, y1a = waypoints[seg + 1]
             cross_coords.append((x0a + (x1a - x0a) * frac, y0a + (y1a - y0a) * frac))
-        return cross_coords, max(r, z_radius, 1e-6)
+        if cross_fast_forward_to is not None and cross_coords:
+            ff_idx = _nearest_coord_index(cross_coords, cross_fast_forward_to)
+            # Cross path is cyclic; re-phase by rotating the sampled points.
+            cross_coords = cross_coords[ff_idx:] + cross_coords[:ff_idx]
+        scale_r = max(abs(cx) + r, abs(cy) + r, z_radius, 1e-6)
+        return cross_coords, scale_r
 
     raise ValueError(f"Unknown traversal mode '{mode}'. Expected: circle | spiral | line | cross")
 
@@ -2396,6 +2567,33 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         help="Show/hide solar selection overlay on the aeroshell",
     )
     parser.add_argument(
+        "--show-solar-quality-mask",
+        dest="show_solar_quality_mask",
+        action=argparse.BooleanOptionalAction,
+        default=bool(_c("show_solar_quality_mask", False)),
+        help="Show/hide continuous solar quality mask on aeroshell faces",
+    )
+    parser.add_argument(
+        "--solar-quality-cmap",
+        dest="solar_quality_cmap",
+        default=str(_c("solar_quality_cmap", "viridis")),
+        help="Matplotlib colormap used for the solar quality mask",
+    )
+    parser.add_argument(
+        "--solar-quality-cmap-min",
+        dest="solar_quality_cmap_min",
+        type=float,
+        default=float(_c("solar_quality_cmap_min", 0.0)),
+        help="Lower bound of sampled colormap range in [0,1] for solar quality mask",
+    )
+    parser.add_argument(
+        "--solar-quality-cmap-max",
+        dest="solar_quality_cmap_max",
+        type=float,
+        default=float(_c("solar_quality_cmap_max", 1.0)),
+        help="Upper bound of sampled colormap range in [0,1] for solar quality mask",
+    )
+    parser.add_argument(
         "--show-pressure-field",
         dest="show_pressure_field",
         action=argparse.BooleanOptionalAction,
@@ -2518,6 +2716,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         action=argparse.BooleanOptionalAction,
         default=bool(_c("show_latent_panel", True)),
         help="Show the latent spiral card in the right panel (including epoch_gif mode)",
+    )
+    parser.add_argument(
+        "--show-epoch-label",
+        dest="show_epoch_label",
+        action=argparse.BooleanOptionalAction,
+        default=bool(_c("show_epoch_label", True)),
+        help="Show/hide the epoch counter label",
     )
     parser.add_argument(
         "--export-final-png",
@@ -2696,6 +2901,28 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         default=_c("spiral_radius_end"),
         help="Outer radius for spiral (default: use z_radius from checkpoint)",
     )
+    parser.add_argument(
+        "--spiral_start_angle_deg",
+        type=float,
+        default=float(_c("spiral_start_angle_deg", 0.0)),
+        help="Start angle in degrees for spiral mode",
+    )
+    parser.add_argument(
+        "--spiral_center",
+        type=float,
+        nargs=2,
+        default=_c("spiral_center", [0.0, 0.0]),
+        metavar=("Z0", "Z1"),
+        help="Center offset [z0 z1] for spiral mode",
+    )
+    parser.add_argument(
+        "--spiral_fast_forward_to",
+        type=float,
+        nargs=2,
+        default=_c("spiral_fast_forward_to"),
+        metavar=("Z0", "Z1"),
+        help="Fast-forward spiral to nearest sampled point to target [z0 z1]",
+    )
     # Line-mode params
     parser.add_argument(
         "--line_start",
@@ -2725,6 +2952,28 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         type=float,
         default=_c("cross_radius"),
         help="Half-width of the X pattern in cross mode (default: use z_radius from checkpoint)",
+    )
+    parser.add_argument(
+        "--cross_center",
+        type=float,
+        nargs=2,
+        default=_c("cross_center", [0.0, 0.0]),
+        metavar=("Z0", "Z1"),
+        help="Center offset [z0 z1] for cross mode",
+    )
+    parser.add_argument(
+        "--cross_start_corner",
+        choices=["pp", "nn", "pn", "np"],
+        default=str(_c("cross_start_corner", "pp")),
+        help="Start corner for cross mode: pp(+,+) | nn(-,-) | pn(+,-) | np(-,+)",
+    )
+    parser.add_argument(
+        "--cross_fast_forward_to",
+        type=float,
+        nargs=2,
+        default=_c("cross_fast_forward_to"),
+        metavar=("Z0", "Z1"),
+        help="Fast-forward cross to nearest sampled point to target [z0 z1]",
     )
     args = parser.parse_args()
     if args.cutoff_wheel:
@@ -2874,6 +3123,18 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     # --- Build z-vector sequence for selected traversal mode ---
     line_start_pt = (float(args.line_start[0]), float(args.line_start[1]))
     line_end_pt = (float(args.line_end[0]), float(args.line_end[1]))
+    spiral_center_pt = (float(args.spiral_center[0]), float(args.spiral_center[1]))
+    cross_center_pt = (float(args.cross_center[0]), float(args.cross_center[1]))
+    spiral_ff_pt = (
+        (float(args.spiral_fast_forward_to[0]), float(args.spiral_fast_forward_to[1]))
+        if args.spiral_fast_forward_to is not None
+        else None
+    )
+    cross_ff_pt = (
+        (float(args.cross_fast_forward_to[0]), float(args.cross_fast_forward_to[1]))
+        if args.cross_fast_forward_to is not None
+        else None
+    )
     frame_checkpoints: list[Path | None]
     if active_mode == "epoch_gif":
         fixed_z0 = float(args.epoch_coords[0])
@@ -2890,10 +3151,16 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             spiral_equal_distance=bool(args.spiral_equal_distance),
             spiral_radius_start=args.spiral_radius_start,
             spiral_radius_end=args.spiral_radius_end,
+            spiral_start_angle_deg=float(args.spiral_start_angle_deg),
+            spiral_center=spiral_center_pt,
+            spiral_fast_forward_to=spiral_ff_pt,
             line_start=line_start_pt,
             line_end=line_end_pt,
             line_bounces=args.line_bounces,
             cross_radius=args.cross_radius,
+            cross_center=cross_center_pt,
+            cross_start_corner=str(args.cross_start_corner),
+            cross_fast_forward_to=cross_ff_pt,
         )
         frame_checkpoints = [None] * len(z_coords)
 
@@ -3032,7 +3299,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                         outer_margin_x,
                     )
                     composite_skip = _composite_box_on_frame(composite_skip, right_img, right_x, skip_box_y)
-                composite_skip = draw_epoch_label_on_frame(composite_skip, frame_epoch_num, box_color=(20, 24, 30))
+                if bool(args.show_epoch_label):
+                    composite_skip = draw_epoch_label_on_frame(composite_skip, frame_epoch_num, box_color=(20, 24, 30))
                 frames.append(composite_skip)
             continue
 
@@ -3046,7 +3314,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         mask_mesh = mesh
         pressure_field_cp_t: Tensor | None = None
         pressure_field_cp_np: np.ndarray | None = None
+        solar_quality_face_np: np.ndarray | None = None
         show_pressure_field_now = bool(args.show_pressure_field) and gaot_loader is not None and int(args.gaot_version) == 3
+        show_solar_quality_mask_now = bool(args.show_solar_quality_mask) and (not show_pressure_field_now)
         if show_pressure_field_now:
             pressure_field_cp_t = _estimate_pressure_field_cp(
                 gaot_loader=gaot_loader,
@@ -3056,7 +3326,19 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             if pressure_field_cp_t is not None:
                 pressure_field_cp_np = pressure_field_cp_t.detach().cpu().numpy().squeeze(-1)
 
-        if (not show_pressure_field_now) and (args.show_windshield or args.show_solar_selection):
+        if show_solar_quality_mask_now:
+            solar_quality_face_np = _compute_solar_quality_face_values(
+                mesh,
+                device=device,
+                sun_dir_xyz=(float(args.solar_sun_dir[0]), float(args.solar_sun_dir[1]), float(args.solar_sun_dir[2])),
+                cone_face_mask=None,
+            )
+
+        if (
+            (not show_pressure_field_now)
+            and (not show_solar_quality_mask_now)
+            and (args.show_windshield or args.show_solar_selection)
+        ):
             refine_subdiv = args.mask_refine_subdivisions
             if args.show_solar_selection:
                 refine_subdiv = max(refine_subdiv, args.solar_mask_refine_subdivisions)
@@ -3064,7 +3346,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             cone_face_mask = _compute_windshield_face_mask(
                 mask_mesh, args.windshield_assembly_id, device, precomputed_cone=_cached_cone_mesh
             )
-        if (not show_pressure_field_now) and args.show_windshield and cone_face_mask is not None:
+        if (
+            (not show_pressure_field_now)
+            and (not show_solar_quality_mask_now)
+            and args.show_windshield
+            and cone_face_mask is not None
+        ):
             cone_np = cone_face_mask.detach().cpu().numpy()
             cutout_mesh = _cutout_faces_from_mesh(mask_mesh, cone_np)
             if cutout_mesh is not None:
@@ -3081,7 +3368,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                     cone_np,
                     normal_offset_mm=1.5,
                 )
-        if (not show_pressure_field_now) and args.show_solar_selection:
+        if (not show_pressure_field_now) and (not show_solar_quality_mask_now) and args.show_solar_selection:
             solar_mask = _compute_solar_selection_mask(
                 mask_mesh,
                 device=device,
@@ -3176,6 +3463,11 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             assembly_smooth_shading=assembly_smooth_shading,
             pressure_field=pressure_field_cp_np,
             pressure_field_enabled=show_pressure_field_now,
+            solar_quality_face=solar_quality_face_np,
+            solar_quality_enabled=show_solar_quality_mask_now,
+            solar_quality_cmap=str(args.solar_quality_cmap),
+            solar_quality_cmap_min=float(args.solar_quality_cmap_min),
+            solar_quality_cmap_max=float(args.solar_quality_cmap_max),
         )
         composite = np.array(rgb, copy=True)
         lbox_x, box_y, rbox_x, _ = box_position(
@@ -3235,7 +3527,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             )
             composite = _composite_box_on_frame(composite, left_img, lbox_x, box_y)
 
-        composite = draw_epoch_label_on_frame(composite, frame_epoch_num, box_color=(20, 24, 30))
+        if bool(args.show_epoch_label):
+            composite = draw_epoch_label_on_frame(composite, frame_epoch_num, box_color=(20, 24, 30))
         frames.append(composite)
         last_valid_rgb = rgb
         last_aeroshell_rgb = rgb
@@ -3347,14 +3640,42 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         out_path = Path(args.out)
         print(f"\nWriting {len(frames)} frames → {out_path}  (fps={args.fps})")
 
-        # Force imageio to calculate an optimized palette per frame rather than a single blurry global palette
-        imageio.mimsave(
+        gif_frames = frames
+        if bool(args.transparent_background):
+            # GIF supports 1-bit transparency via a designated palette index.
+            # Convert each frame to RGBA: render-region pixels that match the
+            # background color become alpha=0; the panel region stays opaque.
+            bg_rgb = np.array(_parse_color_rgb(args.render_bg), dtype=np.uint8)
+            render_w = int(args.width)
+            rgba_frames: list[np.ndarray] = []
+            for f in frames:
+                alpha = np.full(f.shape[:2], 255, dtype=np.uint8)
+                # Only punch out bg pixels in the 3-D render region (left side)
+                render_region = f[:, :render_w, :]
+                bg_mask = np.all(render_region == bg_rgb[None, None, :], axis=-1)
+                alpha[:, :render_w][bg_mask] = 0
+                rgba_frames.append(np.dstack([f, alpha]))
+            gif_frames = rgba_frames
+
+        # Use PIL writer with disposal=2 so transparent GIF frames do not stack/ghost.
+        frame_duration_ms = round(1000.0 / max(int(args.fps), 1))
+        pil_frames: list[Image.Image] = []
+        for f in gif_frames:
+            arr = np.asarray(f, dtype=np.uint8)
+            if arr.ndim == 3 and arr.shape[2] == 4:
+                pil_frames.append(Image.fromarray(arr, mode="RGBA"))
+            else:
+                pil_frames.append(Image.fromarray(arr, mode="RGB"))
+        if not pil_frames:
+            sys.exit("ERROR: GIF encoding failed because no frames were available")
+        pil_frames[0].save(
             out_path,
-            frames,
-            fps=args.fps,
+            save_all=True,
+            append_images=pil_frames[1:],
+            duration=frame_duration_ms,
             loop=0,
-            quantizer="nq",  # NeuQuant high-quality neural network quantizer
-            palettesize=256,
+            disposal=2,
+            optimize=False,
         )
         print(f"Done.  GIF saved to: {out_path}")
 
