@@ -231,7 +231,7 @@
 
             <!-- LEFT: Primary GLB mesh -->
             <div class="output-col">
-                <div class="visual-card" style="grid-template-rows: auto 1fr auto auto auto;">
+                <div class="visual-card" style="grid-template-rows: auto 1fr auto;">
                     <div class="visual-title">Aeroshell Mesh (GLB)</div>
 
                     <div id="primaryGlbMeshBox">
@@ -245,16 +245,6 @@
                         style="display:none; padding:6px 8px; border:1px solid color-mix(in srgb, var(--theme-text-box) 65%, var(--theme-white) 35%); border-radius:6px; background:color-mix(in srgb, var(--theme-text-box) 24%, var(--theme-white) 76%); gap:6px;">
                     </div>
 
-                    <div
-                        style="display:flex; gap:8px; align-items:center; font-size:0.78rem; color:var(--theme-muted);">
-                        <span style="white-space:nowrap;">Epoch</span>
-                        <input type="range" id="primaryGlbSlider" min="0" max="0" value="0" disabled style="flex:1;">
-                    </div>
-
-                    <div>
-                        <button id="primaryGlbPlay" class="btn secondary" style="font-size:0.78rem; padding:5px 14px;"
-                            disabled>&#9654; Play</button>
-                    </div>
                 </div>
             </div>
 
@@ -282,7 +272,7 @@
 
             <!-- RIGHT: Single visualization with radio selection -->
             <div class="output-col">
-                <div class="visual-card" style="grid-template-rows: auto 1fr auto auto auto;">
+                <div class="visual-card" style="grid-template-rows: auto 1fr auto;">
                     <div style="display:flex; align-items:center; gap:8px;">
                         <div class="visual-title">Secondary Visualization</div>
                     </div>
@@ -298,19 +288,19 @@
                         style="display:none; padding:6px 8px; border:1px solid color-mix(in srgb, var(--theme-text-box) 65%, var(--theme-white) 35%); border-radius:6px; background:color-mix(in srgb, var(--theme-text-box) 24%, var(--theme-white) 76%); gap:6px;">
                     </div>
 
-                    <div
-                        style="display:flex; gap:8px; align-items:center; font-size:0.78rem; color:var(--theme-muted);">
-                        <span style="white-space:nowrap;">Epoch</span>
-                        <input type="range" id="rightPanelSlider" min="0" max="0" value="0" disabled style="flex:1;">
-                    </div>
-
-                    <div>
-                        <button id="rightPanelPlay" class="btn secondary" style="font-size:0.78rem; padding:5px 14px;"
-                            disabled>&#9654; Play</button>
+                    <div style="display:none;">
+                        <input type="range" id="rightPanelSlider" min="0" max="0" value="0" disabled>
+                        <button id="rightPanelPlay" class="btn secondary" disabled>&#9654; Play</button>
                     </div>
                 </div>
             </div>
 
+        </div>
+
+        <div class="dark-card" style="display:flex; gap:10px; align-items:center; margin:10px auto 0; max-width:980px;">
+            <span style="white-space:nowrap; font-size:0.82rem; color:var(--theme-muted);">Global Epoch</span>
+            <input type="range" id="primaryGlbSlider" min="0" max="0" value="0" disabled style="flex:1;">
+            <button id="primaryGlbPlay" class="btn secondary" style="font-size:0.78rem; padding:5px 14px;" disabled>&#9654; Play</button>
         </div>
     </div>
 
@@ -396,6 +386,7 @@
     let rightPanelPlayInterval = null;
 
     let syncPlayInterval = null;
+    let syncPlayStartIdx = null;
     let primaryUserView = null;
     let rightPanelUserView = null;
 
@@ -445,6 +436,50 @@
         const accent = getComputedStyle(document.documentElement)
             .getPropertyValue("--theme-slider-accent").trim();
         if (accent) slider.style.accentColor = accent;
+    }
+
+    function applySyncedViewState(targetViewer, sourceViewState) {
+        if (!targetViewer || !sourceViewState || !sourceViewState.camera || !sourceViewState.target) return;
+        var srcCam = sourceViewState.camera;
+        var srcTarget = sourceViewState.target;
+        var dx = srcCam.x - srcTarget.x;
+        var dy = srcCam.y - srcTarget.y;
+        var dz = srcCam.z - srcTarget.z;
+        var dirLen = Math.hypot(dx, dy, dz);
+        if (!(dirLen > 1e-6)) {
+            targetViewer.setViewState(sourceViewState);
+            return;
+        }
+
+        var current = typeof targetViewer.getViewState === "function" ? targetViewer.getViewState() : null;
+        var desiredDist = 0;
+        if (current && current.camera && current.target) {
+            desiredDist = Math.hypot(
+                current.camera.x - current.target.x,
+                current.camera.y - current.target.y,
+                current.camera.z - current.target.z,
+            );
+        }
+        var sourceDist = Math.hypot(dx, dy, dz);
+        var dist = desiredDist > 1e-6 ? desiredDist : (sourceDist > 1e-6 ? sourceDist : 2.0);
+        var ux = dx / dirLen;
+        var uy = dy / dirLen;
+        var uz = dz / dirLen;
+
+        targetViewer.setViewState({
+            camera: {
+                x: srcTarget.x + ux * dist,
+                y: srcTarget.y + uy * dist,
+                z: srcTarget.z + uz * dist,
+            },
+            target: {
+                x: srcTarget.x,
+                y: srcTarget.y,
+                z: srcTarget.z,
+            },
+            up: sourceViewState.up,
+            quaternion: sourceViewState.quaternion,
+        });
     }
 
     function fmtTime(ts) {
@@ -559,7 +594,7 @@
                     primaryUserView = vs;
                     if (cameraSyncToggle.checked && rightPanelViewer) {
                         rightPanelUserView = vs;
-                        rightPanelViewer.setViewState(vs);
+                        applySyncedViewState(rightPanelViewer, vs);
                     }
                 });
             }
@@ -571,7 +606,7 @@
                     const vc = info && info.hasVertexColors ? "yes" : "no";
                     primaryGlbStatus.textContent =
                         file.name + " (" + (primaryGlbIdx + 1) + "/" + primaryGlbFiles.length + ") \u00b7 VC:" + vc;
-                    if (primaryUserView) primaryGlbViewer.setViewState(primaryUserView);
+                    if (primaryUserView) applySyncedViewState(primaryGlbViewer, primaryUserView);
                 },
                 function (err) {
                     primaryGlbPlaceholder.style.display = "none";
@@ -605,10 +640,11 @@
         primaryGlbPlayBtn.disabled = primaryGlbFiles.length <= 1;
         paintSlider(primaryGlbSlider);
         loadPrimaryGlb();
+        syncRightEpochToPrimary();
     }
 
     function syncRightEpochToPrimary() {
-        if (!cameraSyncToggle.checked || !rightPanelFiles.length || !primaryGlbFiles.length) return;
+        if (!rightPanelFiles.length || !primaryGlbFiles.length) return;
         var pct = primaryGlbFiles.length > 1 ? primaryGlbIdx / (primaryGlbFiles.length - 1) : 0;
         rightPanelIdx = Math.round(pct * (rightPanelFiles.length - 1));
         rightPanelSlider.value = String(rightPanelIdx);
@@ -621,7 +657,7 @@
     }
 
     function syncPrimaryEpochToRight() {
-        if (!cameraSyncToggle.checked || !primaryGlbFiles.length || !rightPanelFiles.length) return;
+        if (!primaryGlbFiles.length || !rightPanelFiles.length) return;
         var pct = rightPanelFiles.length > 1 ? rightPanelIdx / (rightPanelFiles.length - 1) : 0;
         primaryGlbIdx = Math.round(pct * (primaryGlbFiles.length - 1));
         primaryGlbSlider.value = String(primaryGlbIdx);
@@ -631,6 +667,7 @@
 
     function stopSyncedPlay() {
         if (syncPlayInterval) { clearInterval(syncPlayInterval); syncPlayInterval = null; }
+        syncPlayStartIdx = null;
         primaryGlbPlaying = false; rightPanelPlaying = false;
         primaryGlbPlayBtn.textContent = "\u25b6 Play";
         rightPanelPlayBtn.textContent = "\u25b6 Play";
@@ -640,6 +677,7 @@
         stopSyncedPlay();
         if (!primaryGlbFiles.length) return;
         primaryGlbPlaying = true; rightPanelPlaying = true;
+        syncPlayStartIdx = primaryGlbIdx;
         primaryGlbPlayBtn.textContent = "\u23f8 Pause";
         rightPanelPlayBtn.textContent = "\u23f8 Pause";
         syncPlayInterval = setInterval(function () {
@@ -656,16 +694,12 @@
             }
             var _f = primaryGlbFiles[primaryGlbIdx];
             if (_f && _f.epoch != null) applyMetricDisplaysForEpoch(_f.epoch);
-            if (primaryGlbIdx === 0) { stopSyncedPlay(); }
+            if (syncPlayStartIdx !== null && primaryGlbIdx === syncPlayStartIdx) { stopSyncedPlay(); }
         }, 500);
     }
 
     primaryGlbSlider.addEventListener("input", function (e) {
-        if (primaryGlbPlaying) {
-            primaryGlbPlaying = false;
-            clearInterval(primaryGlbPlayInterval);
-            primaryGlbPlayBtn.textContent = "\u25b6 Play";
-        }
+        stopSyncedPlay();
         primaryGlbIdx = parseInt(e.target.value, 10);
         paintSlider(primaryGlbSlider);
         loadPrimaryGlb();
@@ -675,31 +709,7 @@
     });
 
     primaryGlbPlayBtn.addEventListener("click", function () {
-        if (cameraSyncToggle.checked) {
-            if (primaryGlbPlaying) { stopSyncedPlay(); } else { startSyncedPlay(); }
-            return;
-        }
-        if (primaryGlbPlaying) {
-            primaryGlbPlaying = false;
-            clearInterval(primaryGlbPlayInterval);
-            primaryGlbPlayBtn.textContent = "\u25b6 Play";
-        } else {
-            primaryGlbPlaying = true;
-            primaryGlbPlayBtn.textContent = "\u23f8 Pause";
-            primaryGlbPlayInterval = setInterval(function () {
-                primaryGlbIdx = (primaryGlbIdx + 1) % primaryGlbFiles.length;
-                primaryGlbSlider.value = String(primaryGlbIdx);
-                paintSlider(primaryGlbSlider);
-                loadPrimaryGlb();
-                var _f = primaryGlbFiles[primaryGlbIdx];
-                if (_f && _f.epoch != null) applyMetricDisplaysForEpoch(_f.epoch);
-                if (primaryGlbIdx === 0) {
-                    primaryGlbPlaying = false;
-                    clearInterval(primaryGlbPlayInterval);
-                    primaryGlbPlayBtn.textContent = "\u25b6 Play";
-                }
-            }, 500);
-        }
+        if (primaryGlbPlaying) { stopSyncedPlay(); } else { startSyncedPlay(); }
     });
 
     // ── Right panel (priority selector) ──────────────────────────────────────
@@ -748,13 +758,13 @@
                     rightPanelUserView = vs;
                     if (cameraSyncToggle.checked && primaryGlbViewer) {
                         primaryUserView = vs;
-                        primaryGlbViewer.setViewState(vs);
+                        applySyncedViewState(primaryGlbViewer, vs);
                     }
                 });
                 if (cameraSyncToggle.checked && primaryGlbViewer) {
                     var vs = primaryGlbViewer.getViewState();
                     if (vs) {
-                        rightPanelViewer.setViewState(vs);
+                        applySyncedViewState(rightPanelViewer, vs);
                         rightPanelUserView = vs;
                     }
                 }
@@ -767,7 +777,7 @@
                     var vc = info && info.hasVertexColors ? "yes" : "no";
                     rightPanelStatus.textContent =
                         file.name + " (" + (rightPanelIdx + 1) + "/" + rightPanelFiles.length + ") \u00b7 VC:" + vc;
-                    if (rightPanelUserView) rightPanelViewer.setViewState(rightPanelUserView);
+                    if (rightPanelUserView) applySyncedViewState(rightPanelViewer, rightPanelUserView);
                 },
                 function (err) {
                     rightPanelPlaceholder.style.display = "none";
@@ -821,6 +831,7 @@
         rightPanelPlaceholder.style.display = "block";
         rightPanelStatus.style.display = "none";
         loadRightPanel();
+        syncPrimaryEpochToRight();
     }
 
     function renderPrioritySelector() {
@@ -896,15 +907,12 @@
             rightPanelSlider.disabled = rightPanelFiles.length <= 1;
             rightPanelPlayBtn.disabled = rightPanelFiles.length <= 1;
             paintSlider(rightPanelSlider);
+            syncPrimaryEpochToRight();
         }
     }
 
     rightPanelSlider.addEventListener("input", function (e) {
-        if (rightPanelPlaying) {
-            rightPanelPlaying = false;
-            clearInterval(rightPanelPlayInterval);
-            rightPanelPlayBtn.textContent = "\u25b6 Play";
-        }
+        stopSyncedPlay();
         rightPanelIdx = parseInt(e.target.value, 10);
         paintSlider(rightPanelSlider);
         loadRightPanel();
@@ -912,29 +920,7 @@
     });
 
     rightPanelPlayBtn.addEventListener("click", function () {
-        if (cameraSyncToggle.checked) {
-            if (rightPanelPlaying) { stopSyncedPlay(); } else { startSyncedPlay(); }
-            return;
-        }
-        if (rightPanelPlaying) {
-            rightPanelPlaying = false;
-            clearInterval(rightPanelPlayInterval);
-            rightPanelPlayBtn.textContent = "\u25b6 Play";
-        } else {
-            rightPanelPlaying = true;
-            rightPanelPlayBtn.textContent = "\u23f8 Pause";
-            rightPanelPlayInterval = setInterval(function () {
-                rightPanelIdx = (rightPanelIdx + 1) % rightPanelFiles.length;
-                rightPanelSlider.value = String(rightPanelIdx);
-                paintSlider(rightPanelSlider);
-                loadRightPanel();
-                if (rightPanelIdx === 0) {
-                    rightPanelPlaying = false;
-                    clearInterval(rightPanelPlayInterval);
-                    rightPanelPlayBtn.textContent = "\u25b6 Play";
-                }
-            }, 500);
-        }
+        if (rightPanelPlaying) { stopSyncedPlay(); } else { startSyncedPlay(); }
     });
 
     // ── Reset viewers when changing runs ──────────────────────────────────────

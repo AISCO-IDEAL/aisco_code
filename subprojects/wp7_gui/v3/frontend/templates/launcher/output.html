@@ -195,7 +195,7 @@
         {% endif %}
 
         {% if pipeline == 'live' %}
-        <div style="flex:1; padding:0 10px;">
+        <div id="progressHost" style="flex:1; padding:0 10px; display:none;">
             <div class="progress-bar-wrap" id="progressWrap">
                 <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
             </div>
@@ -231,7 +231,7 @@
 
             <!-- LEFT: Primary GLB mesh -->
             <div class="output-col">
-                <div class="visual-card" style="grid-template-rows: auto 1fr auto auto auto;">
+                <div class="visual-card" style="grid-template-rows: auto 1fr auto;">
                     <div class="visual-title">Aeroshell Mesh (GLB, Vision Cone)</div>
 
                     <div id="primaryGlbMeshBox">
@@ -245,16 +245,6 @@
                         style="display:none; padding:6px 8px; border:1px solid color-mix(in srgb, var(--theme-text-box) 65%, var(--theme-white) 35%); border-radius:6px; background:color-mix(in srgb, var(--theme-text-box) 24%, var(--theme-white) 76%); gap:6px;">
                     </div>
 
-                    <div
-                        style="display:flex; gap:8px; align-items:center; font-size:0.78rem; color:var(--theme-muted);">
-                        <span style="white-space:nowrap;">Epoch</span>
-                        <input type="range" id="primaryGlbSlider" min="0" max="0" value="0" disabled style="flex:1;">
-                    </div>
-
-                    <div>
-                        <button id="primaryGlbPlay" class="btn secondary" style="font-size:0.78rem; padding:5px 14px;"
-                            disabled>&#9654; Play</button>
-                    </div>
                 </div>
             </div>
 
@@ -282,7 +272,7 @@
 
             <!-- RIGHT: Single visualization with radio selection -->
             <div class="output-col">
-                <div class="visual-card" style="grid-template-rows: auto 1fr auto auto auto;">
+                <div class="visual-card" style="grid-template-rows: auto 1fr auto;">
                     <div class="visual-title">Secondary Visualization</div>
 
                     <div id="rightPanelMeshBox" class="priority-mesh-box">
@@ -296,19 +286,19 @@
                         style="display:none; padding:6px 8px; border:1px solid color-mix(in srgb, var(--theme-text-box) 65%, var(--theme-white) 35%); border-radius:6px; background:color-mix(in srgb, var(--theme-text-box) 24%, var(--theme-white) 76%); gap:6px;">
                     </div>
 
-                    <div
-                        style="display:flex; gap:8px; align-items:center; font-size:0.78rem; color:var(--theme-muted);">
-                        <span style="white-space:nowrap;">Epoch</span>
-                        <input type="range" id="rightPanelSlider" min="0" max="0" value="0" disabled style="flex:1;">
-                    </div>
-
-                    <div>
-                        <button id="rightPanelPlay" class="btn secondary" style="font-size:0.78rem; padding:5px 14px;"
-                            disabled>&#9654; Play</button>
+                    <div style="display:none;">
+                        <input type="range" id="rightPanelSlider" min="0" max="0" value="0" disabled>
+                        <button id="rightPanelPlay" class="btn secondary" disabled>&#9654; Play</button>
                     </div>
                 </div>
             </div>
 
+        </div>
+
+        <div class="dark-card" style="display:flex; gap:10px; align-items:center; margin:10px auto 0; max-width:980px;">
+            <span style="white-space:nowrap; font-size:0.82rem; color:var(--theme-muted);">Global Epoch</span>
+            <input type="range" id="primaryGlbSlider" min="0" max="0" value="0" disabled style="flex:1;">
+            <button id="primaryGlbPlay" class="btn secondary" style="font-size:0.78rem; padding:5px 14px;" disabled>&#9654; Play</button>
         </div>
     </div>
 
@@ -345,6 +335,7 @@
     var MESH_PRIORITY = window._MESH_PRIORITY;
     const INCLUDE_GRADIENTS_KEY = "aiscoOutputIncludeGradientsV3";
     const LEGACY_EXPERT_MODE_KEY = "aiscoOutputExpertModeV3";
+    const RUN_KEY = "aiscoRunLaunchedV3";
 
     // ── DOM references ─────────────────────────────────────────────────────────
     const runNameDisplay = document.getElementById("runNameDisplay");
@@ -387,6 +378,7 @@
 
     // Shared play interval used when epoch-sync is active
     let syncPlayInterval = null;
+    let syncPlayStartIdx = null;
 
     // Persistent user-controlled camera states, updated by onControlsChange.
     // Restored after each epoch load so the camera never jumps to a stale
@@ -403,6 +395,22 @@
     let metricsPollTimer = null;
     let _metricsHistory = null; // retained across slider moves
     let _epochLocked = false;   // true when user has scrubbed away from latest
+
+    function nearestEpochIndex(files, targetEpoch) {
+        if (!Array.isArray(files) || !files.length) return 0;
+        var bestIdx = 0;
+        var bestDist = Infinity;
+        for (var i = 0; i < files.length; i++) {
+            var ep = files[i] && files[i].epoch;
+            if (ep === null || ep === undefined || !Number.isFinite(Number(ep))) continue;
+            var dist = Math.abs(Number(ep) - Number(targetEpoch));
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestIdx = i;
+            }
+        }
+        return bestIdx;
+    }
 
     if (includeGradientsToggle) {
         includeGradientsToggle.checked = includeGradientsEnabled;
@@ -423,6 +431,50 @@
         const accent = getComputedStyle(document.documentElement)
             .getPropertyValue("--theme-slider-accent").trim();
         if (accent) slider.style.accentColor = accent;
+    }
+
+    function applySyncedViewState(targetViewer, sourceViewState) {
+        if (!targetViewer || !sourceViewState || !sourceViewState.camera || !sourceViewState.target) return;
+        var srcCam = sourceViewState.camera;
+        var srcTarget = sourceViewState.target;
+        var dx = srcCam.x - srcTarget.x;
+        var dy = srcCam.y - srcTarget.y;
+        var dz = srcCam.z - srcTarget.z;
+        var dirLen = Math.hypot(dx, dy, dz);
+        if (!(dirLen > 1e-6)) {
+            targetViewer.setViewState(sourceViewState);
+            return;
+        }
+
+        var current = typeof targetViewer.getViewState === "function" ? targetViewer.getViewState() : null;
+        var desiredDist = 0;
+        if (current && current.camera && current.target) {
+            desiredDist = Math.hypot(
+                current.camera.x - current.target.x,
+                current.camera.y - current.target.y,
+                current.camera.z - current.target.z,
+            );
+        }
+        var sourceDist = Math.hypot(dx, dy, dz);
+        var dist = desiredDist > 1e-6 ? desiredDist : (sourceDist > 1e-6 ? sourceDist : 2.0);
+        var ux = dx / dirLen;
+        var uy = dy / dirLen;
+        var uz = dz / dirLen;
+
+        targetViewer.setViewState({
+            camera: {
+                x: srcTarget.x + ux * dist,
+                y: srcTarget.y + uy * dist,
+                z: srcTarget.z + uz * dist,
+            },
+            target: {
+                x: srcTarget.x,
+                y: srcTarget.y,
+                z: srcTarget.z,
+            },
+            up: sourceViewState.up,
+            quaternion: sourceViewState.quaternion,
+        });
     }
 
     function _metricColor(cssVarName, fallback) {
@@ -501,6 +553,44 @@
         drawMetricTrend(metricSolarGraph, _metricsHistory.solar_power_w || [], _metricColor("--theme-metric-solar-border", "#FFD966"), frac);
     }
 
+    function applyMetricDisplaysForFraction(frac) {
+        if (!_metricsHistory || !_metricsHistory.epoch || !_metricsHistory.epoch.length) return false;
+        var clamped = Math.max(0, Math.min(1, Number(frac) || 0));
+        var idx = _metricsHistory.epoch.length > 1
+            ? Math.round(clamped * (_metricsHistory.epoch.length - 1))
+            : 0;
+        var speedMs = _metricsHistory.cruising_speed_ms ? _metricsHistory.cruising_speed_ms[idx] : null;
+        var speedKmh = speedMs == null ? null : Number(speedMs) * 3.6;
+        if (metricSpeedValue) metricSpeedValue.textContent = _formatMetric(speedKmh, 2, "km/h");
+        if (metricDragValue) metricDragValue.textContent = _formatMetric(_metricsHistory.drag_value ? _metricsHistory.drag_value[idx] : null, 2, "N");
+        if (metricSolarValue) metricSolarValue.textContent = _formatMetric(_metricsHistory.solar_power_w ? _metricsHistory.solar_power_w[idx] : null, 1, "W");
+        var speedSeriesKmh = (_metricsHistory.cruising_speed_ms || []).map(function (v) { return v == null ? null : Number(v) * 3.6; });
+        drawMetricTrend(metricSpeedGraph, speedSeriesKmh, _metricColor("--theme-metric-speed-border", "#66CC99"), clamped);
+        drawMetricTrend(metricDragGraph, _metricsHistory.drag_value || [], _metricColor("--theme-metric-drag-border", "#66A3FF"), clamped);
+        drawMetricTrend(metricSolarGraph, _metricsHistory.solar_power_w || [], _metricColor("--theme-metric-solar-border", "#FFD966"), clamped);
+        return true;
+    }
+
+    function applyMetricDisplaysForCurrentView() {
+        var _lf = primaryGlbFiles[primaryGlbIdx];
+        if (_lf && _lf.epoch != null) {
+            applyMetricDisplaysForEpoch(_lf.epoch);
+            return true;
+        }
+        var _rf = rightPanelFiles[rightPanelIdx];
+        if (_rf && _rf.epoch != null) {
+            applyMetricDisplaysForEpoch(_rf.epoch);
+            return true;
+        }
+        if (primaryGlbFiles.length > 1) {
+            return applyMetricDisplaysForFraction(primaryGlbIdx / (primaryGlbFiles.length - 1));
+        }
+        if (rightPanelFiles.length > 1) {
+            return applyMetricDisplaysForFraction(rightPanelIdx / (rightPanelFiles.length - 1));
+        }
+        return applyMetricDisplaysForFraction(0);
+    }
+
     function applyMetricDisplays(latestMetrics, history) {
         var speedMs = latestMetrics ? latestMetrics.cruising_speed_ms : null;
         var speedKmh = speedMs == null ? null : Number(speedMs) * 3.6;
@@ -538,15 +628,7 @@
                 }
             }
             _metricsHistory = history;
-            if (_epochLocked) {
-                var _lf = primaryGlbFiles[primaryGlbIdx];
-                if (_lf && _lf.epoch != null) {
-                    applyMetricDisplaysForEpoch(_lf.epoch);
-                } else {
-                    var _rf = rightPanelFiles[rightPanelIdx];
-                    if (_rf && _rf.epoch != null) applyMetricDisplaysForEpoch(_rf.epoch);
-                }
-            } else {
+            if (!applyMetricDisplaysForCurrentView()) {
                 applyMetricDisplays(latestMetrics, history);
             }
         } catch (err) {
@@ -567,7 +649,7 @@
                     primaryUserView = vs;
                     if (rightPanelViewer) {
                         rightPanelUserView = vs;
-                        rightPanelViewer.setViewState(vs);
+                        applySyncedViewState(rightPanelViewer, vs);
                     }
                 });
             }
@@ -579,7 +661,7 @@
                     const vc = info && info.hasVertexColors ? "yes" : "no";
                     primaryGlbStatus.textContent =
                         file.name + " (" + (primaryGlbIdx + 1) + "/" + primaryGlbFiles.length + ") \u00b7 VC:" + vc;
-                    if (primaryUserView) primaryGlbViewer.setViewState(primaryUserView);
+                    if (primaryUserView) applySyncedViewState(primaryGlbViewer, primaryUserView);
                 },
                 function (err) {
                     primaryGlbPlaceholder.style.display = "none";
@@ -619,13 +701,19 @@
         primaryGlbPlayBtn.disabled = primaryGlbFiles.length <= 1;
         paintSlider(primaryGlbSlider);
         loadPrimaryGlb();
+        syncRightEpochToPrimary();
     }
 
-    // Helper: sync right epoch to match the current primary epoch (proportional)
+    // Helper: sync right epoch to match the current primary epoch (by epoch number)
     function syncRightEpochToPrimary() {
         if (!rightPanelFiles.length || !primaryGlbFiles.length) return;
-        var pct = primaryGlbFiles.length > 1 ? primaryGlbIdx / (primaryGlbFiles.length - 1) : 0;
-        rightPanelIdx = Math.round(pct * (rightPanelFiles.length - 1));
+        var source = primaryGlbFiles[primaryGlbIdx];
+        if (source && source.epoch != null) {
+            rightPanelIdx = nearestEpochIndex(rightPanelFiles, source.epoch);
+        } else {
+            var pct = primaryGlbFiles.length > 1 ? primaryGlbIdx / (primaryGlbFiles.length - 1) : 0;
+            rightPanelIdx = Math.round(pct * (rightPanelFiles.length - 1));
+        }
         rightPanelSlider.value = String(rightPanelIdx);
         paintSlider(rightPanelSlider);
         // Ensure the right panel restores to the primary's current camera after load.
@@ -636,11 +724,16 @@
         loadRightPanel();
     }
 
-    // Helper: sync primary epoch to match the current right epoch (proportional)
+    // Helper: sync primary epoch to match the current right epoch (by epoch number)
     function syncPrimaryEpochToRight() {
         if (!primaryGlbFiles.length || !rightPanelFiles.length) return;
-        var pct = rightPanelFiles.length > 1 ? rightPanelIdx / (rightPanelFiles.length - 1) : 0;
-        primaryGlbIdx = Math.round(pct * (primaryGlbFiles.length - 1));
+        var source = rightPanelFiles[rightPanelIdx];
+        if (source && source.epoch != null) {
+            primaryGlbIdx = nearestEpochIndex(primaryGlbFiles, source.epoch);
+        } else {
+            var pct = rightPanelFiles.length > 1 ? rightPanelIdx / (rightPanelFiles.length - 1) : 0;
+            primaryGlbIdx = Math.round(pct * (primaryGlbFiles.length - 1));
+        }
         primaryGlbSlider.value = String(primaryGlbIdx);
         paintSlider(primaryGlbSlider);
         loadPrimaryGlb();
@@ -649,6 +742,7 @@
     // Shared synced-play helpers
     function stopSyncedPlay() {
         if (syncPlayInterval) { clearInterval(syncPlayInterval); syncPlayInterval = null; }
+        syncPlayStartIdx = null;
         primaryGlbPlaying = false; rightPanelPlaying = false;
         primaryGlbPlayBtn.textContent = "\u25b6 Play";
         rightPanelPlayBtn.textContent = "\u25b6 Play";
@@ -658,6 +752,7 @@
         stopSyncedPlay();
         if (!primaryGlbFiles.length) return;
         primaryGlbPlaying = true; rightPanelPlaying = true;
+        syncPlayStartIdx = primaryGlbIdx;
         primaryGlbPlayBtn.textContent = "\u23f8 Pause";
         rightPanelPlayBtn.textContent = "\u23f8 Pause";
         syncPlayInterval = setInterval(function () {
@@ -666,62 +761,44 @@
             paintSlider(primaryGlbSlider);
             loadPrimaryGlb();
             if (rightPanelFiles.length) {
-                var pct = primaryGlbFiles.length > 1 ? primaryGlbIdx / (primaryGlbFiles.length - 1) : 0;
-                rightPanelIdx = Math.round(pct * (rightPanelFiles.length - 1));
+                var _src = primaryGlbFiles[primaryGlbIdx];
+                if (_src && _src.epoch != null) {
+                    rightPanelIdx = nearestEpochIndex(rightPanelFiles, _src.epoch);
+                } else {
+                    var _pct = primaryGlbFiles.length > 1 ? primaryGlbIdx / (primaryGlbFiles.length - 1) : 0;
+                    rightPanelIdx = Math.round(_pct * (rightPanelFiles.length - 1));
+                }
                 rightPanelSlider.value = String(rightPanelIdx);
                 paintSlider(rightPanelSlider);
                 loadRightPanel();
             }
-            var _f = primaryGlbFiles[primaryGlbIdx];
-            if (_f && _f.epoch != null) applyMetricDisplaysForEpoch(_f.epoch);
-            if (primaryGlbIdx === 0) { stopSyncedPlay(); }
+            applyMetricDisplaysForCurrentView();
+            if (syncPlayStartIdx !== null && primaryGlbIdx === syncPlayStartIdx) { stopSyncedPlay(); }
         }, 500);
     }
 
     primaryGlbSlider.addEventListener("input", function (e) {
-        if (primaryGlbPlaying) {
-            primaryGlbPlaying = false;
-            clearInterval(primaryGlbPlayInterval);
-            primaryGlbPlayBtn.textContent = "\u25b6 Play";
-        }
+        stopSyncedPlay();
         primaryGlbIdx = parseInt(e.target.value, 10);
         paintSlider(primaryGlbSlider);
         loadPrimaryGlb();
         syncRightEpochToPrimary();
         var _f = primaryGlbFiles[primaryGlbIdx];
         if (_f && _f.epoch != null) {
-            _epochLocked = primaryGlbIdx < primaryGlbFiles.length - 1;
-            applyMetricDisplaysForEpoch(_f.epoch);
+            var _last = primaryGlbFiles[primaryGlbFiles.length - 1];
+            _epochLocked = _last && _last.epoch != null ? Number(_f.epoch) < Number(_last.epoch) : false;
+            applyMetricDisplaysForCurrentView();
         } else {
             _epochLocked = false;
+            applyMetricDisplaysForCurrentView();
         }
     });
 
     primaryGlbPlayBtn.addEventListener("click", function () {
-        if (cameraSyncToggle.checked) {
-            if (primaryGlbPlaying) { stopSyncedPlay(); } else { startSyncedPlay(); }
-            return;
-        }
-        if (primaryGlbPlaying) {
-            primaryGlbPlaying = false;
-            clearInterval(primaryGlbPlayInterval);
-            primaryGlbPlayBtn.textContent = "\u25b6 Play";
+        if (primaryGlbPlaying || rightPanelPlaying) {
+            stopSyncedPlay();
         } else {
-            primaryGlbPlaying = true;
-            primaryGlbPlayBtn.textContent = "\u23f8 Pause";
-            primaryGlbPlayInterval = setInterval(function () {
-                primaryGlbIdx = (primaryGlbIdx + 1) % primaryGlbFiles.length;
-                primaryGlbSlider.value = String(primaryGlbIdx);
-                paintSlider(primaryGlbSlider);
-                loadPrimaryGlb();
-                var _f = primaryGlbFiles[primaryGlbIdx];
-                if (_f && _f.epoch != null) applyMetricDisplaysForEpoch(_f.epoch);
-                if (primaryGlbIdx === 0) {
-                    primaryGlbPlaying = false;
-                    clearInterval(primaryGlbPlayInterval);
-                    primaryGlbPlayBtn.textContent = "\u25b6 Play";
-                }
-            }, 500);
+            startSyncedPlay();
         }
     });
 
@@ -802,13 +879,13 @@
                     rightPanelUserView = vs;
                     if (primaryGlbViewer) {
                         primaryUserView = vs;
-                        primaryGlbViewer.setViewState(vs);
+                        applySyncedViewState(primaryGlbViewer, vs);
                     }
                 });
                 if (primaryGlbViewer) {
                     var vs = primaryGlbViewer.getViewState();
                     if (vs) {
-                        rightPanelViewer.setViewState(vs);
+                        applySyncedViewState(rightPanelViewer, vs);
                         rightPanelUserView = vs;
                     }
                 }
@@ -821,7 +898,7 @@
                     var vc = info && info.hasVertexColors ? "yes" : "no";
                     rightPanelStatus.textContent =
                         file.name + " (" + (rightPanelIdx + 1) + "/" + rightPanelFiles.length + ") \u00b7 VC:" + vc;
-                    if (rightPanelUserView) rightPanelViewer.setViewState(rightPanelUserView);
+                    if (rightPanelUserView) applySyncedViewState(rightPanelViewer, rightPanelUserView);
                 },
                 function (err) {
                     rightPanelPlaceholder.style.display = "none";
@@ -839,11 +916,7 @@
         if (activeRightLabel === label) return;
 
         // Stop any playback
-        if (rightPanelPlaying) {
-            rightPanelPlaying = false;
-            clearInterval(rightPanelPlayInterval);
-            rightPanelPlayBtn.textContent = "\u25b6 Play";
-        }
+        stopSyncedPlay();
 
         activeRightLabel = label;
 
@@ -876,7 +949,11 @@
         paintSlider(rightPanelSlider);
         rightPanelPlaceholder.style.display = "block";
         rightPanelStatus.style.display = "none";
-        loadRightPanel();
+        if (primaryGlbFiles.length) {
+            syncRightEpochToPrimary();
+        } else {
+            loadRightPanel();
+        }
     }
 
     function renderPrioritySelector() {
@@ -939,26 +1016,29 @@
             rightPanelSlider.disabled = rightPanelFiles.length <= 1;
             rightPanelPlayBtn.disabled = rightPanelFiles.length <= 1;
             paintSlider(rightPanelSlider);
+            if (primaryGlbFiles.length) {
+                syncRightEpochToPrimary();
+            } else {
+                loadRightPanel();
+            }
         }
     }
 
     // Right panel slider / play button
     rightPanelSlider.addEventListener("input", function (e) {
-        if (rightPanelPlaying) {
-            rightPanelPlaying = false;
-            clearInterval(rightPanelPlayInterval);
-            rightPanelPlayBtn.textContent = "\u25b6 Play";
-        }
+        stopSyncedPlay();
         rightPanelIdx = parseInt(e.target.value, 10);
         paintSlider(rightPanelSlider);
-        loadRightPanel();
         syncPrimaryEpochToRight();
+        syncRightEpochToPrimary();
         var _f = rightPanelFiles[rightPanelIdx];
         if (_f && _f.epoch != null) {
-            _epochLocked = rightPanelIdx < rightPanelFiles.length - 1;
-            applyMetricDisplaysForEpoch(_f.epoch);
+            var _last = rightPanelFiles[rightPanelFiles.length - 1];
+            _epochLocked = _last && _last.epoch != null ? Number(_f.epoch) < Number(_last.epoch) : false;
+            applyMetricDisplaysForCurrentView();
         } else {
             _epochLocked = false;
+            applyMetricDisplaysForCurrentView();
         }
     });
 
@@ -1045,7 +1125,9 @@
                     var metData = await metResp.json();
                     if (metData && metData.found && metData.history) {
                         _metricsHistory = metData.history;
-                        applyMetricDisplays(metData.latest, metData.history);
+                        if (!applyMetricDisplaysForCurrentView()) {
+                            applyMetricDisplays(metData.latest, metData.history);
+                        }
                     }
                 }
             } catch (_metErr) { /* metrics optional */ }
@@ -1058,9 +1140,14 @@
     // ── Progress bar (live pipeline only) ──────────────────────────────────────
     var _progressFill = isLive ? document.getElementById("progressFill") : null;
     var _progressLabel = isLive ? document.getElementById("progressLabel") : null;
+    var _progressHost = isLive ? document.getElementById("progressHost") : null;
     var _progressEventSource = null;
     var _progressReconnectTimer = null;
     var _progressCompleted = false;
+
+    function _setProgressVisible(visible) {
+        if (_progressHost) _progressHost.style.display = visible ? "block" : "none";
+    }
 
     function _startProgressSSE() {
         if (_progressEventSource) { _progressEventSource.close(); _progressEventSource = null; }
@@ -1100,31 +1187,42 @@
 
     // ── Boot ───────────────────────────────────────────────────────────────────
     if (isLive) {
+        if (!localStorage.getItem(RUN_KEY)) {
+            _setProgressVisible(false);
+        } else {
+            _setProgressVisible(true);
+        }
         // Seed progress bar from last known run state
-        fetch(LAUNCHER_API + "/run/progress").then(function (r) { return r.json(); }).then(function (prog) {
-            if (prog.completed) {
-                if (_progressFill) _progressFill.style.width = "100%";
-                if (_progressLabel) _progressLabel.textContent = "Completed.";
-                _progressCompleted = true;
-            } else if (prog.current_epoch >= 0) {
-                if (_progressFill) _progressFill.style.width = prog.progress_percent + "%";
-                if (_progressLabel) _progressLabel.textContent = "Epoch " + (prog.current_epoch + 1) + " / " + prog.num_epochs + " (" + prog.progress_percent.toFixed(1) + "%)";
-            }
-        }).catch(function () {});
+        if (localStorage.getItem(RUN_KEY)) {
+            fetch(LAUNCHER_API + "/run/progress").then(function (r) { return r.json(); }).then(function (prog) {
+                if (prog.completed) {
+                    if (_progressFill) _progressFill.style.width = "100%";
+                    if (_progressLabel) _progressLabel.textContent = "Completed.";
+                    _progressCompleted = true;
+                } else if (prog.current_epoch >= 0) {
+                    if (_progressFill) _progressFill.style.width = prog.progress_percent + "%";
+                    if (_progressLabel) _progressLabel.textContent = "Epoch " + (prog.current_epoch + 1) + " / " + prog.num_epochs + " (" + prog.progress_percent.toFixed(1) + "%)";
+                }
+            }).catch(function () {});
+        }
 
         fetch(LAUNCHER_API + "/run/state")
             .then(function (r) { return r.json(); })
             .then(function (state) {
                 fetchLiveArtifacts();
                 refreshLiveMetrics();
-                if (state.running) {
+                if (state.running && localStorage.getItem(RUN_KEY)) {
                     artifactPollTimer = setInterval(fetchLiveArtifacts, 3000);
                     metricsPollTimer = setInterval(refreshLiveMetrics, 1000);
                     _startProgressSSE();
                 } else {
-                    statusLabel.textContent = "Run complete \u2014 showing final artifacts.";
+                    if (localStorage.getItem(RUN_KEY)) {
+                        statusLabel.textContent = "Run complete \u2014 showing final artifacts.";
+                    } else {
+                        statusLabel.textContent = "Run not started yet \u2014 waiting for artifacts from this session.";
+                    }
                     metricsPollTimer = setInterval(refreshLiveMetrics, 3000);
-                    if (!_progressCompleted) {
+                    if (!_progressCompleted && localStorage.getItem(RUN_KEY)) {
                         if (_progressFill) _progressFill.style.width = "100%";
                         if (_progressLabel) _progressLabel.textContent = "Completed.";
                         _progressCompleted = true;
