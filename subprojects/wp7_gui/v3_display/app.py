@@ -36,10 +36,15 @@ from subprojects.wp7_gui.v3_display.core.settings import (  # noqa: E402
     HOST,
     LEADERBOARD_CSV,
     LEADERBOARD_REFRESH_MS,
+    PINNED_TOP_COUNT,
     PORT,
+    ROTATING_WINDOW_SIZE,
+    SPONSOR_LOGO_MAX_WIDTH_PERCENT,
+    SPONSOR_LOGO_URLS,
     STATIC_DIR,
     TEMPLATES_DIR,
     VIDEO_PATH,
+    WINDOW_ADVANCE_MS,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -47,6 +52,34 @@ LOGGER = logging.getLogger(__name__)
 
 app = FastAPI(title="AISCO Display")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+
+def _clamp_percent(value: int) -> int:
+    return max(1, min(100, value))
+
+
+def _resolve_static_path(static_url: str) -> Path | None:
+    if not static_url.startswith("/static/"):
+        return None
+    relative = static_url.removeprefix("/static/")
+    return (STATIC_DIR / relative).resolve()
+
+
+def _build_sponsor_logos() -> list[dict[str, Any]]:
+    sponsor_logos: list[dict[str, Any]] = []
+    for idx, logo_url in enumerate(SPONSOR_LOGO_URLS):
+        static_path = _resolve_static_path(logo_url)
+        exists = bool(static_path and static_path.exists())
+        sponsor_logos.append(
+            {
+                "idx": idx,
+                "url": logo_url,
+                "exists": exists,
+                "expected_path": str(static_path) if static_path else "",
+                "filename": Path(logo_url).name,
+            }
+        )
+    return sponsor_logos
 
 # ---------------------------------------------------------------------------
 # Page routes
@@ -62,7 +95,12 @@ def root(request: Request) -> Response:
         {
             "page_title": "AISCO — Live Leaderboard",
             "leaderboard_refresh_ms": LEADERBOARD_REFRESH_MS,
+            "pinned_top_count": PINNED_TOP_COUNT,
+            "rotating_window_size": ROTATING_WINDOW_SIZE,
+            "window_advance_ms": WINDOW_ADVANCE_MS,
             "video_available": VIDEO_PATH.exists(),
+            "sponsor_logos": _build_sponsor_logos(),
+            "sponsor_logo_max_width_percent": _clamp_percent(SPONSOR_LOGO_MAX_WIDTH_PERCENT),
             **theme_ctx,
         },
     )
@@ -70,7 +108,13 @@ def root(request: Request) -> Response:
 
 @app.get("/healthz")
 def healthz() -> JSONResponse:
-    return JSONResponse({"status": "ok", "video_path": str(VIDEO_PATH)})
+    return JSONResponse(
+        {
+            "status": "ok",
+            "video_path": str(VIDEO_PATH),
+            "sponsor_logo_urls": list(SPONSOR_LOGO_URLS),
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +240,11 @@ def main() -> None:
     print(
         f"Video           : {VIDEO_PATH} ({'found' if VIDEO_PATH.exists() else 'NOT FOUND — update VIDEO_PATH in core/settings.py'})"
     )
+    print(f"Sponsor width   : {SPONSOR_LOGO_MAX_WIDTH_PERCENT}%")
+    for logo_url in SPONSOR_LOGO_URLS:
+        logo_path = _resolve_static_path(logo_url)
+        exists = bool(logo_path and logo_path.exists())
+        print(f"Sponsor logo    : {logo_url} ({'found' if exists else 'NOT FOUND'})")
     print(f"Static assets   : {STATIC_DIR}")
     print(f"Templates       : {TEMPLATES_DIR}")
     print(f"Local URL       : http://localhost:{PORT}")
