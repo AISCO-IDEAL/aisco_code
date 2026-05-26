@@ -1409,10 +1409,24 @@ def box_builder(
     )
     # Grid — clipped to rounded corners via a binary mask so corners stay round
     grid_step = max(28, int(40 * scale))
-    for gx in range(1, box_w, grid_step):
-        draw.line([(gx, 1), (gx, box_h - 2)], fill=_CARD_GRID_COL, width=1)
-    for gy in range(1, box_h, grid_step):
-        draw.line([(1, gy), (box_w - 2, gy)], fill=_CARD_GRID_COL, width=1)
+    # Keep grid origin aligned with right-box latent axes (same inner-center math).
+    pad_x = max(8, int(12 * scale))
+    pad_y = max(6, int(10 * scale))
+    icx = pad_x + ((box_w - 2 * pad_x) // 2)
+    icy = pad_y + ((box_h - 2 * pad_y) // 2)
+
+    x_min, x_max = 1, box_w - 2
+    y_min, y_max = 1, box_h - 2
+
+    for gx in range(icx, x_min - 1, -grid_step):
+        draw.line([(gx, y_min), (gx, y_max)], fill=_CARD_GRID_COL, width=1)
+    for gx in range(icx + grid_step, x_max + 1, grid_step):
+        draw.line([(gx, y_min), (gx, y_max)], fill=_CARD_GRID_COL, width=1)
+
+    for gy in range(icy, y_min - 1, -grid_step):
+        draw.line([(x_min, gy), (x_max, gy)], fill=_CARD_GRID_COL, width=1)
+    for gy in range(icy + grid_step, y_max + 1, grid_step):
+        draw.line([(x_min, gy), (x_max, gy)], fill=_CARD_GRID_COL, width=1)
     # Clip alpha channel to rounded rect so grid lines don't bleed into sharp corners
     clip_mask = Image.new("L", (box_w, box_h), 0)
     ImageDraw.Draw(clip_mask).rounded_rectangle(((0, 0), (box_w - 1, box_h - 1)), radius=radius, fill=255)
@@ -2167,12 +2181,14 @@ def _spiral_point(
     r_start: float,
     r_end: float,
     turns: float,
+    start_angle_rad: float = 0.0,
+    center: tuple[float, float] = (0.0, 0.0),
 ) -> tuple[float, float]:
     """Evaluate Archimedean spiral point for normalized parameter t in [0, 1]."""
     tt = min(max(float(t), 0.0), 1.0)
     r = r_start + (r_end - r_start) * tt
-    a = 2.0 * math.pi * turns * tt
-    return (r * math.cos(a), r * math.sin(a))
+    a = start_angle_rad + (2.0 * math.pi * turns * tt)
+    return (center[0] + (r * math.cos(a)), center[1] + (r * math.sin(a)))
 
 
 def _build_spiral_equal_chord_coords(
@@ -2180,14 +2196,16 @@ def _build_spiral_equal_chord_coords(
     r_start: float,
     r_end: float,
     turns: float,
+    start_angle_rad: float = 0.0,
+    center: tuple[float, float] = (0.0, 0.0),
 ) -> list[tuple[float, float]]:
     """Sample spiral with (approximately) equal Euclidean distance between neighbours."""
     if n_frames <= 1:
-        return [_spiral_point(0.0, r_start, r_end, turns)]
+        return [_spiral_point(0.0, r_start, r_end, turns, start_angle_rad=start_angle_rad, center=center)]
 
     def _dist_sq(t0: float, t1: float) -> float:
-        x0, y0 = _spiral_point(t0, r_start, r_end, turns)
-        x1, y1 = _spiral_point(t1, r_start, r_end, turns)
+        x0, y0 = _spiral_point(t0, r_start, r_end, turns, start_angle_rad=start_angle_rad, center=center)
+        x1, y1 = _spiral_point(t1, r_start, r_end, turns, start_angle_rad=start_angle_rad, center=center)
         dx = x1 - x0
         dy = y1 - y0
         return dx * dx + dy * dy
@@ -2245,10 +2263,21 @@ def _build_spiral_equal_chord_coords(
 
     # Ensure exact final endpoint.
     best_ts[-1] = 1.0
-    return [_spiral_point(t, r_start, r_end, turns) for t in best_ts]
+    return [_spiral_point(t, r_start, r_end, turns, start_angle_rad=start_angle_rad, center=center) for t in best_ts]
 
 
-def _build_trajectory(  # noqa: PLR0912  # supports 4 traversal modes; branches are mode dispatches, not complexity
+def _nearest_coord_index(
+    coords: list[tuple[float, float]],
+    target: tuple[float, float],
+) -> int:
+    """Return index of trajectory coordinate closest to target point."""
+    if not coords:
+        return 0
+    tx, ty = float(target[0]), float(target[1])
+    return int(min(range(len(coords)), key=lambda i: (coords[i][0] - tx) ** 2 + (coords[i][1] - ty) ** 2))
+
+
+def _build_trajectory(  # noqa: PLR0912, PLR0915  # supports 4 traversal modes; branches are mode dispatches, not complexity
     mode: str,
     n_frames: int,
     z_radius: float,
@@ -2256,10 +2285,16 @@ def _build_trajectory(  # noqa: PLR0912  # supports 4 traversal modes; branches 
     spiral_radius_start: float = 0.0,
     spiral_radius_end: float | None = None,
     spiral_equal_distance: bool = False,
+    spiral_start_angle_deg: float = 0.0,
+    spiral_center: tuple[float, float] = (0.0, 0.0),
+    spiral_fast_forward_to: tuple[float, float] | None = None,
     line_start: tuple[float, float] = (0.0, -2.0),
     line_end: tuple[float, float] = (0.0, 2.0),
     line_bounces: int = 1,
     cross_radius: float | None = None,
+    cross_center: tuple[float, float] = (0.0, 0.0),
+    cross_start_corner: str = "pp",
+    cross_fast_forward_to: tuple[float, float] | None = None,
 ) -> tuple[list[tuple[float, float]], float]:
     """Build the (z0, z1) trajectory and return the panel scale radius.
 
@@ -2271,10 +2306,16 @@ def _build_trajectory(  # noqa: PLR0912  # supports 4 traversal modes; branches 
         spiral_radius_start: Inner radius for spiral (0.0 = start at origin).
         spiral_radius_end: Outer radius for spiral (None → use z_radius).
         spiral_equal_distance: If True, resample spiral to equal arc-length spacing.
+        spiral_start_angle_deg: Spiral start angle in degrees.
+        spiral_center: (z0, z1) center offset for the spiral trajectory.
+        spiral_fast_forward_to: Optional target (z0, z1) for spiral fast-forward start.
         line_start: (z0, z1) start point for line mode.
         line_end: (z0, z1) end point for line mode.
         line_bounces: Complete back-and-forth oscillations for line mode.
         cross_radius: Half-width of the X pattern (None → use z_radius).
+        cross_center: (z0, z1) center offset for the cross trajectory.
+        cross_start_corner: Start corner for cross mode: pp | nn | pn | np.
+        cross_fast_forward_to: Optional target (z0, z1) for cross fast-forward start.
 
     Returns:
         z_coords: List of (z0, z1) tuples, one per frame.
@@ -2287,8 +2328,19 @@ def _build_trajectory(  # noqa: PLR0912  # supports 4 traversal modes; branches 
 
     if mode == "spiral":
         r_end = spiral_radius_end if spiral_radius_end is not None else z_radius
+        spiral_angle_rad = math.radians(float(spiral_start_angle_deg))
+        spiral_center_xy = (float(spiral_center[0]), float(spiral_center[1]))
         if n_frames <= 1:
-            return [(spiral_radius_start, 0.0)], max(r_end, 1e-6)
+            return [
+                _spiral_point(
+                    0.0,
+                    spiral_radius_start,
+                    r_end,
+                    spiral_turns,
+                    start_angle_rad=spiral_angle_rad,
+                    center=spiral_center_xy,
+                )
+            ], max(r_end, 1e-6)
 
         if spiral_equal_distance:
             coords = _build_spiral_equal_chord_coords(
@@ -2296,15 +2348,33 @@ def _build_trajectory(  # noqa: PLR0912  # supports 4 traversal modes; branches 
                 r_start=spiral_radius_start,
                 r_end=r_end,
                 turns=spiral_turns,
+                start_angle_rad=spiral_angle_rad,
+                center=spiral_center_xy,
             )
         else:
             coords = []
             for i in range(n_frames):
                 t = i / max(n_frames - 1, 1)
-                r = spiral_radius_start + (r_end - spiral_radius_start) * t
-                angle = 2.0 * math.pi * spiral_turns * t
-                coords.append((r * math.cos(angle), r * math.sin(angle)))
-        return coords, max(r_end, 1e-6)
+                coords.append(
+                    _spiral_point(
+                        t,
+                        spiral_radius_start,
+                        r_end,
+                        spiral_turns,
+                        start_angle_rad=spiral_angle_rad,
+                        center=spiral_center_xy,
+                    )
+                )
+        if spiral_fast_forward_to is not None and coords:
+            ff_idx = _nearest_coord_index(coords, spiral_fast_forward_to)
+            coords = coords[ff_idx:]
+            # Spiral is non-periodic; after fast-forward we hold the endpoint to keep frame count stable.
+            if len(coords) < n_frames:
+                coords.extend([coords[-1]] * (n_frames - len(coords)))
+            else:
+                coords = coords[:n_frames]
+        scale_r = max(r_end + abs(spiral_center_xy[0]), r_end + abs(spiral_center_xy[1]), 1e-6)
+        return coords, scale_r
 
     if mode == "line":
         x0, y0 = line_start
@@ -2330,19 +2400,26 @@ def _build_trajectory(  # noqa: PLR0912  # supports 4 traversal modes; branches 
 
     if mode == "cross":
         r = cross_radius if cross_radius is not None else z_radius
+        cx, cy = float(cross_center[0]), float(cross_center[1])
+        corner_pp = (cx + r, cy + r)
+        corner_nn = (cx - r, cy - r)
+        corner_pn = (cx + r, cy - r)
+        corner_np = (cx - r, cy + r)
+        center_pt = (cx, cy)
+
+        corner_paths = {
+            "pp": [corner_pp, center_pt, corner_nn, center_pt, corner_pn, center_pt, corner_np, center_pt, corner_pp],
+            "nn": [corner_nn, center_pt, corner_pp, center_pt, corner_np, center_pt, corner_pn, center_pt, corner_nn],
+            "pn": [corner_pn, center_pt, corner_np, center_pt, corner_pp, center_pt, corner_nn, center_pt, corner_pn],
+            "np": [corner_np, center_pt, corner_pn, center_pt, corner_nn, center_pt, corner_pp, center_pt, corner_np],
+        }
+        if cross_start_corner not in corner_paths:
+            raise ValueError(
+                f"Unknown cross_start_corner '{cross_start_corner}'. Expected one of: pp | nn | pn | np"
+            )
         # Visit all 4 diagonal corners (±r, ±r) through the origin, forming an X.
         # All 8 segments have equal length r√2, so frames are distributed evenly.
-        waypoints: list[tuple[float, float]] = [
-            (r, r),
-            (0.0, 0.0),
-            (-r, -r),
-            (0.0, 0.0),
-            (r, -r),
-            (0.0, 0.0),
-            (-r, r),
-            (0.0, 0.0),
-            (r, r),
-        ]
+        waypoints = corner_paths[cross_start_corner]
         n_segs = len(waypoints) - 1
         cross_coords: list[tuple[float, float]] = []
         for i in range(n_frames):
@@ -2357,7 +2434,12 @@ def _build_trajectory(  # noqa: PLR0912  # supports 4 traversal modes; branches 
             x0a, y0a = waypoints[seg]
             x1a, y1a = waypoints[seg + 1]
             cross_coords.append((x0a + (x1a - x0a) * frac, y0a + (y1a - y0a) * frac))
-        return cross_coords, max(r, z_radius, 1e-6)
+        if cross_fast_forward_to is not None and cross_coords:
+            ff_idx = _nearest_coord_index(cross_coords, cross_fast_forward_to)
+            # Cross path is cyclic; re-phase by rotating the sampled points.
+            cross_coords = cross_coords[ff_idx:] + cross_coords[:ff_idx]
+        scale_r = max(abs(cx) + r, abs(cy) + r, z_radius, 1e-6)
+        return cross_coords, scale_r
 
     raise ValueError(f"Unknown traversal mode '{mode}'. Expected: circle | spiral | line | cross")
 
@@ -2821,6 +2903,28 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         default=_c("spiral_radius_end"),
         help="Outer radius for spiral (default: use z_radius from checkpoint)",
     )
+    parser.add_argument(
+        "--spiral_start_angle_deg",
+        type=float,
+        default=float(_c("spiral_start_angle_deg", 0.0)),
+        help="Start angle in degrees for spiral mode",
+    )
+    parser.add_argument(
+        "--spiral_center",
+        type=float,
+        nargs=2,
+        default=_c("spiral_center", [0.0, 0.0]),
+        metavar=("Z0", "Z1"),
+        help="Center offset [z0 z1] for spiral mode",
+    )
+    parser.add_argument(
+        "--spiral_fast_forward_to",
+        type=float,
+        nargs=2,
+        default=_c("spiral_fast_forward_to"),
+        metavar=("Z0", "Z1"),
+        help="Fast-forward spiral to nearest sampled point to target [z0 z1]",
+    )
     # Line-mode params
     parser.add_argument(
         "--line_start",
@@ -2850,6 +2954,28 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
         type=float,
         default=_c("cross_radius"),
         help="Half-width of the X pattern in cross mode (default: use z_radius from checkpoint)",
+    )
+    parser.add_argument(
+        "--cross_center",
+        type=float,
+        nargs=2,
+        default=_c("cross_center", [0.0, 0.0]),
+        metavar=("Z0", "Z1"),
+        help="Center offset [z0 z1] for cross mode",
+    )
+    parser.add_argument(
+        "--cross_start_corner",
+        choices=["pp", "nn", "pn", "np"],
+        default=str(_c("cross_start_corner", "pp")),
+        help="Start corner for cross mode: pp(+,+) | nn(-,-) | pn(+,-) | np(-,+)",
+    )
+    parser.add_argument(
+        "--cross_fast_forward_to",
+        type=float,
+        nargs=2,
+        default=_c("cross_fast_forward_to"),
+        metavar=("Z0", "Z1"),
+        help="Fast-forward cross to nearest sampled point to target [z0 z1]",
     )
     args = parser.parse_args()
     if args.cutoff_wheel:
@@ -2999,6 +3125,18 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
     # --- Build z-vector sequence for selected traversal mode ---
     line_start_pt = (float(args.line_start[0]), float(args.line_start[1]))
     line_end_pt = (float(args.line_end[0]), float(args.line_end[1]))
+    spiral_center_pt = (float(args.spiral_center[0]), float(args.spiral_center[1]))
+    cross_center_pt = (float(args.cross_center[0]), float(args.cross_center[1]))
+    spiral_ff_pt = (
+        (float(args.spiral_fast_forward_to[0]), float(args.spiral_fast_forward_to[1]))
+        if args.spiral_fast_forward_to is not None
+        else None
+    )
+    cross_ff_pt = (
+        (float(args.cross_fast_forward_to[0]), float(args.cross_fast_forward_to[1]))
+        if args.cross_fast_forward_to is not None
+        else None
+    )
     frame_checkpoints: list[Path | None]
     if active_mode == "epoch_gif":
         fixed_z0 = float(args.epoch_coords[0])
@@ -3015,10 +3153,16 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             spiral_equal_distance=bool(args.spiral_equal_distance),
             spiral_radius_start=args.spiral_radius_start,
             spiral_radius_end=args.spiral_radius_end,
+            spiral_start_angle_deg=float(args.spiral_start_angle_deg),
+            spiral_center=spiral_center_pt,
+            spiral_fast_forward_to=spiral_ff_pt,
             line_start=line_start_pt,
             line_end=line_end_pt,
             line_bounces=args.line_bounces,
             cross_radius=args.cross_radius,
+            cross_center=cross_center_pt,
+            cross_start_corner=str(args.cross_start_corner),
+            cross_fast_forward_to=cross_ff_pt,
         )
         frame_checkpoints = [None] * len(z_coords)
 

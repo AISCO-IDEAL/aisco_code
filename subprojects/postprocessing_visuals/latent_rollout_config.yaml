@@ -114,6 +114,9 @@ spiral_turns: 3.0
 spiral_equal_distance: true
 spiral_radius_start: 0.0
 spiral_radius_end: null
+spiral_start_angle_deg: 0.0
+spiral_center: [0.0, 0.0]
+spiral_fast_forward_to: null
 
 # ---------------------------------------------------------------------------
 # Line mode  (only active when mode: line)
@@ -126,6 +129,9 @@ line_bounces: 1
 # Cross mode  (only active when mode: cross)
 # ---------------------------------------------------------------------------
 cross_radius: null
+cross_center: [0.0, 0.0]
+cross_start_corner: "pp"
+cross_fast_forward_to: null
 
 # ---------------------------------------------------------------------------
 # Mesh extraction
