@@ -187,10 +187,31 @@
             min-width: 140px;
         }
     }
+
+    /* ── Launch loading overlay ─────────────────────────────────────────────── */
+    @keyframes launch-spin { to { transform: rotate(360deg); } }
+    .launch-spinner {
+        width: 56px; height: 56px;
+        border: 5px solid color-mix(in srgb, var(--theme-accent, #4fa) 18%, transparent);
+        border-top-color: var(--theme-accent, #4fa);
+        border-radius: 50%;
+        animation: launch-spin 0.9s linear infinite;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
+{% if pipeline == 'live' %}
+<!-- Loading overlay — shown from run launch until first epoch is received -->
+<div id="launchLoadingOverlay" style="display:none; position:fixed; inset:0; z-index:9000;
+     background:color-mix(in srgb, var(--theme-bg, #0d1117) 88%, transparent);
+     backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+     flex-direction:column; align-items:center; justify-content:center; gap:24px;">
+    <div class="launch-spinner"></div>
+    <div style="font-size:1.4rem; font-weight:700; color:var(--theme-text);">Starting run&hellip;</div>
+    <div style="font-size:0.88rem; color:var(--theme-muted);">Waiting for the first epoch to be written.</div>
+</div>
+{% endif %}
 <div class="section-grid" style="grid-template-rows: auto 1fr;">
 
     <!-- ── TOOLBAR ─────────────────────────────────────────────────────────── -->
@@ -407,7 +428,7 @@
     let activeRightLabel = null; // currently selected label
     let latestArtifactData = null;
     let includeGradientsEnabled =
-        localStorage.getItem(INCLUDE_GRADIENTS_KEY) === "1" || localStorage.getItem(LEGACY_EXPERT_MODE_KEY) === "1";
+        localStorage.getItem(INCLUDE_GRADIENTS_KEY) === "1";
     let artifactPollTimer = null;
     let metricsPollTimer = null;
     let liveRunIsRunning = isLive;
@@ -513,13 +534,13 @@
 
     function drawTacho(canvas, speedKmh) {
         if (!canvas) return;
-        var maxKmh = 160;
+        var maxKmh = 120;
         var w = canvas.width, h = canvas.height;
         var ctx2 = canvas.getContext("2d");
         ctx2.clearRect(0, 0, w, h);
         var cx = w / 2;
-        var cy = h * 0.50;
-        var r = Math.min(cx * 0.78, cy * 0.80);
+        var cy = h * 0.55;
+        var r = Math.min(cx * 0.78, cy * 0.70);
         var trackW = Math.max(5, r * 0.12);
         var startA = Math.PI * 5 / 6;  // 150° – 0 km/h
         var totalA = Math.PI * 4 / 3;  // 240° sweep clockwise through top
@@ -1262,12 +1283,16 @@
         _progressCompleted = false;
         _progressEventSource = new EventSource(LAUNCHER_API + "/run/stream/logs");
         _progressEventSource.addEventListener("epoch", function (ev) {
+            var _ov = document.getElementById("launchLoadingOverlay");
+            if (_ov) _ov.style.display = "none";
             var d = JSON.parse(ev.data);
             var pct = d.total > 0 ? Math.min(100, ((d.epoch + 1) / d.total) * 100) : 0;
             if (_progressFill) _progressFill.style.width = pct + "%";
             if (_progressLabel) _progressLabel.textContent = "Epoch " + (d.epoch + 1) + " / " + d.total + " (" + pct.toFixed(1) + "%)";
         });
         _progressEventSource.addEventListener("done", function (ev) {
+            var _ov = document.getElementById("launchLoadingOverlay");
+            if (_ov) _ov.style.display = "none";
             var d = JSON.parse(ev.data);
             if (_progressFill) _progressFill.style.width = "100%";
             if (_progressLabel) _progressLabel.textContent = d.return_code === 0 ? "Completed." : "Finished (code " + d.return_code + ")";
@@ -1312,6 +1337,9 @@
             } else if (prog.current_epoch >= 0) {
                 if (_progressFill) _progressFill.style.width = prog.progress_percent + "%";
                 if (_progressLabel) _progressLabel.textContent = "Epoch " + (prog.current_epoch + 1) + " / " + prog.num_epochs + " (" + prog.progress_percent.toFixed(1) + "%)";
+                // Epochs already written — dismiss loading overlay immediately
+                var _ov = document.getElementById("launchLoadingOverlay");
+                if (_ov) _ov.style.display = "none";
             }
         }).catch(function () {});
 
@@ -1322,6 +1350,9 @@
                 fetchLiveArtifacts();
                 refreshLiveMetrics();
                 if (state.running && localStorage.getItem(RUN_KEY)) {
+                    // Show loading overlay — hidden once first epoch arrives or progress already has data
+                    var _ov = document.getElementById("launchLoadingOverlay");
+                    if (_ov) _ov.style.display = "flex";
                     artifactPollTimer = setInterval(fetchLiveArtifacts, 3000);
                     metricsPollTimer = setInterval(refreshLiveMetrics, 1000);
                     _startProgressSSE();

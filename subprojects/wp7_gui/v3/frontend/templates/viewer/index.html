@@ -513,13 +513,13 @@
 
     function drawTacho(canvas, speedKmh) {
         if (!canvas) return;
-        var maxKmh = 160;
+        var maxKmh = 120;
         var w = canvas.width, h = canvas.height;
         var ctx2 = canvas.getContext("2d");
         ctx2.clearRect(0, 0, w, h);
         var cx = w / 2;
-        var cy = h * 0.50;
-        var r = Math.min(cx * 0.78, cy * 0.80);
+        var cy = h * 0.55;
+        var r = Math.min(cx * 0.78, cy * 0.70);
         var trackW = Math.max(5, r * 0.12);
         var startA = Math.PI * 5 / 6;  // 150° – 0 km/h
         var totalA = Math.PI * 4 / 3;  // 240° sweep clockwise through top
