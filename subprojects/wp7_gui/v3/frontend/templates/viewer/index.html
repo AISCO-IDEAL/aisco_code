@@ -61,6 +61,13 @@
         background: color-mix(in srgb, var(--theme-panel-2) 30%, transparent 70%);
     }
 
+    .metric-card__tacho {
+        width: 100%;
+        height: 140px;
+        border-radius: 6px;
+        display: block;
+    }
+
     .metric-card__hint {
         font-size: 0.64rem;
         color: var(--theme-muted);
@@ -231,7 +238,7 @@
 
             <!-- LEFT: Primary GLB mesh -->
             <div class="output-col">
-                <div class="visual-card" style="grid-template-rows: auto 1fr auto auto auto;">
+                <div class="visual-card" style="grid-template-rows: auto 1fr auto;">
                     <div class="visual-title">Aeroshell Mesh (GLB)</div>
 
                     <div id="primaryGlbMeshBox">
@@ -245,16 +252,6 @@
                         style="display:none; padding:6px 8px; border:1px solid color-mix(in srgb, var(--theme-text-box) 65%, var(--theme-white) 35%); border-radius:6px; background:color-mix(in srgb, var(--theme-text-box) 24%, var(--theme-white) 76%); gap:6px;">
                     </div>
 
-                    <div
-                        style="display:flex; gap:8px; align-items:center; font-size:0.78rem; color:var(--theme-muted);">
-                        <span style="white-space:nowrap;">Epoch</span>
-                        <input type="range" id="primaryGlbSlider" min="0" max="0" value="0" disabled style="flex:1;">
-                    </div>
-
-                    <div>
-                        <button id="primaryGlbPlay" class="btn secondary" style="font-size:0.78rem; padding:5px 14px;"
-                            disabled>&#9654; Play</button>
-                    </div>
                 </div>
             </div>
 
@@ -262,7 +259,7 @@
             <div class="output-col">
                 <div class="metric-card" data-metric="speed">
                     <div class="metric-card__name">Speed (km/h)</div>
-                    <div class="metric-card__value" id="metricCS">&#x2014;</div>
+                    <canvas class="metric-card__tacho" id="metricSpeedTacho" width="300" height="140"></canvas>
                     <canvas class="metric-card__graph" id="metricSpeedGraph" width="420" height="96"></canvas>
                     <div class="metric-card__hint">Final epoch metrics from run</div>
                 </div>
@@ -282,7 +279,7 @@
 
             <!-- RIGHT: Single visualization with radio selection -->
             <div class="output-col">
-                <div class="visual-card" style="grid-template-rows: auto 1fr auto auto auto;">
+                <div class="visual-card" style="grid-template-rows: auto 1fr auto;">
                     <div style="display:flex; align-items:center; gap:8px;">
                         <div class="visual-title">Secondary Visualization</div>
                     </div>
@@ -298,19 +295,19 @@
                         style="display:none; padding:6px 8px; border:1px solid color-mix(in srgb, var(--theme-text-box) 65%, var(--theme-white) 35%); border-radius:6px; background:color-mix(in srgb, var(--theme-text-box) 24%, var(--theme-white) 76%); gap:6px;">
                     </div>
 
-                    <div
-                        style="display:flex; gap:8px; align-items:center; font-size:0.78rem; color:var(--theme-muted);">
-                        <span style="white-space:nowrap;">Epoch</span>
-                        <input type="range" id="rightPanelSlider" min="0" max="0" value="0" disabled style="flex:1;">
-                    </div>
-
-                    <div>
-                        <button id="rightPanelPlay" class="btn secondary" style="font-size:0.78rem; padding:5px 14px;"
-                            disabled>&#9654; Play</button>
+                    <div style="display:none;">
+                        <input type="range" id="rightPanelSlider" min="0" max="0" value="0" disabled>
+                        <button id="rightPanelPlay" class="btn secondary" disabled>&#9654; Play</button>
                     </div>
                 </div>
             </div>
 
+        </div>
+
+        <div class="dark-card" style="display:flex; gap:10px; align-items:center; margin:10px auto 0; max-width:980px;">
+            <span style="white-space:nowrap; font-size:0.82rem; color:var(--theme-muted);">Global Epoch</span>
+            <input type="range" id="primaryGlbSlider" min="0" max="0" value="0" disabled style="flex:1;">
+            <button id="primaryGlbPlay" class="btn secondary" style="font-size:0.78rem; padding:5px 14px;" disabled>&#9654; Play</button>
         </div>
     </div>
 
@@ -320,7 +317,7 @@
 
 <script>
     const VIEWER_API = "/viewer/api";
-    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260525_4";
+    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260526_2";
     const PANEL_VISIBILITY_DEFAULTS = {{ panel_visibility_defaults_json | safe }};
     const PANEL_DEFAULTS = PANEL_VISIBILITY_DEFAULTS.viewer;
 
@@ -367,9 +364,10 @@
     const rightPanelSlider = document.getElementById("rightPanelSlider");
     const rightPanelPlayBtn = document.getElementById("rightPanelPlay");
 
-    const metricSpeedValue = document.getElementById("metricCS");
+    const metricSpeedValue = document.getElementById("metricCS");  // null after tacho migration; kept for compat
     const metricDragValue = document.getElementById("metricDrag");
     const metricSolarValue = document.getElementById("metricSolar");
+    const metricSpeedTacho = document.getElementById("metricSpeedTacho");
     const metricSpeedGraph = document.getElementById("metricSpeedGraph");
     const metricDragGraph = document.getElementById("metricDragGraph");
     const metricSolarGraph = document.getElementById("metricSolarGraph");
@@ -396,6 +394,7 @@
     let rightPanelPlayInterval = null;
 
     let syncPlayInterval = null;
+    let syncPlayStartIdx = null;
     let primaryUserView = null;
     let rightPanelUserView = null;
 
@@ -445,6 +444,11 @@
         const accent = getComputedStyle(document.documentElement)
             .getPropertyValue("--theme-slider-accent").trim();
         if (accent) slider.style.accentColor = accent;
+    }
+
+    function applySyncedViewState(targetViewer, sourceViewState) {
+        if (!targetViewer || !sourceViewState || !sourceViewState.camera || !sourceViewState.target) return;
+        targetViewer.setViewState(sourceViewState);
     }
 
     function fmtTime(ts) {
@@ -507,6 +511,84 @@
         }
     }
 
+    function drawTacho(canvas, speedKmh) {
+        if (!canvas) return;
+        var maxKmh = 160;
+        var w = canvas.width, h = canvas.height;
+        var ctx2 = canvas.getContext("2d");
+        ctx2.clearRect(0, 0, w, h);
+        var cx = w / 2;
+        var cy = h * 0.50;
+        var r = Math.min(cx * 0.78, cy * 0.80);
+        var trackW = Math.max(5, r * 0.12);
+        var startA = Math.PI * 5 / 6;  // 150° – 0 km/h
+        var totalA = Math.PI * 4 / 3;  // 240° sweep clockwise through top
+        var endA   = Math.PI / 6;       // 30°  – max km/h
+        ctx2.save();
+        ctx2.lineWidth = trackW;
+        ctx2.strokeStyle = "rgba(60,72,90,0.70)";
+        ctx2.lineCap = "round";
+        ctx2.beginPath();
+        ctx2.arc(cx, cy, r - trackW / 2, startA, endA, false);
+        ctx2.stroke();
+        ctx2.restore();
+        if (speedKmh != null && isFinite(speedKmh) && speedKmh > 0) {
+            var frac0 = Math.max(0, Math.min(1, speedKmh / maxKmh));
+            ctx2.save();
+            ctx2.lineWidth = trackW;
+            ctx2.globalAlpha = 0.78;
+            ctx2.strokeStyle = _metricColor("--theme-metric-speed-border", "#66CC99");
+            ctx2.lineCap = "round";
+            ctx2.beginPath();
+            ctx2.arc(cx, cy, r - trackW / 2, startA, startA + totalA * frac0, false);
+            ctx2.stroke();
+            ctx2.restore();
+        }
+        var labelFont = Math.max(9, Math.round(r * 0.19));
+        var labelR = r + Math.max(12, r * 0.26);
+        ctx2.save();
+        ctx2.font = labelFont + "px monospace";
+        ctx2.textAlign = "center";
+        ctx2.textBaseline = "middle";
+        [0, 0.25, 0.5, 0.75, 1.0].forEach(function (tf) {
+            var ang = startA + totalA * tf;
+            var cosA = Math.cos(ang), sinA = Math.sin(ang);
+            ctx2.lineWidth = 1.5;
+            ctx2.strokeStyle = "rgba(130,150,185,0.65)";
+            ctx2.beginPath();
+            ctx2.moveTo(cx + (r - trackW * 1.8) * cosA, cy + (r - trackW * 1.8) * sinA);
+            ctx2.lineTo(cx + (r + 2) * cosA, cy + (r + 2) * sinA);
+            ctx2.stroke();
+            ctx2.fillStyle = "rgba(150,170,210,0.80)";
+            ctx2.fillText(String(Math.round(maxKmh * tf)), cx + labelR * cosA, cy + labelR * sinA);
+        });
+        ctx2.restore();
+        var needleA = (speedKmh != null && isFinite(speedKmh))
+            ? startA + totalA * Math.max(0, Math.min(1, speedKmh / maxKmh))
+            : startA;
+        ctx2.save();
+        ctx2.strokeStyle = "rgba(235,76,66,0.95)";
+        ctx2.lineWidth = Math.max(2, r * 0.048);
+        ctx2.lineCap = "round";
+        ctx2.beginPath();
+        ctx2.moveTo(cx, cy);
+        ctx2.lineTo(cx + r * 0.82 * Math.cos(needleA), cy + r * 0.82 * Math.sin(needleA));
+        ctx2.stroke();
+        ctx2.fillStyle = "rgba(235,76,66,0.95)";
+        ctx2.beginPath();
+        ctx2.arc(cx, cy, Math.max(3, r * 0.07), 0, Math.PI * 2);
+        ctx2.fill();
+        ctx2.restore();
+        ctx2.save();
+        ctx2.fillStyle = "rgba(195,215,245,0.92)";
+        ctx2.font = "bold " + Math.max(11, Math.round(r * 0.22)) + "px monospace";
+        ctx2.textAlign = "center";
+        ctx2.textBaseline = "top";
+        var tachoTxt = (speedKmh != null && isFinite(speedKmh)) ? Number(speedKmh).toFixed(1) + " km/h" : "n/a";
+        ctx2.fillText(tachoTxt, cx, cy + r * 0.15);
+        ctx2.restore();
+    }
+
     function applyMetricDisplaysForEpoch(epochNum) {
         if (!_metricsHistory || !_metricsHistory.epoch || !_metricsHistory.epoch.length) return;
         var epochs = _metricsHistory.epoch;
@@ -520,6 +602,7 @@
         var speedMs = _metricsHistory.cruising_speed_ms ? _metricsHistory.cruising_speed_ms[bestIdx] : null;
         var speedKmh = speedMs == null ? null : Number(speedMs) * 3.6;
         if (metricSpeedValue) metricSpeedValue.textContent = _formatMetric(speedKmh, 2, "km/h");
+        drawTacho(metricSpeedTacho, speedKmh);
         if (metricDragValue) metricDragValue.textContent = _formatMetric(_metricsHistory.drag_value ? _metricsHistory.drag_value[bestIdx] : null, 2, "N");
         if (metricSolarValue) metricSolarValue.textContent = _formatMetric(_metricsHistory.solar_power_w ? _metricsHistory.solar_power_w[bestIdx] : null, 1, "W");
         var speedSeriesKmh = (_metricsHistory.cruising_speed_ms || []).map(function (v) { return v == null ? null : Number(v) * 3.6; });
@@ -528,10 +611,50 @@
         drawMetricTrend(metricSolarGraph, _metricsHistory.solar_power_w || [], _metricColor("--theme-metric-solar-border", "#FFD966"), frac);
     }
 
+    function applyMetricDisplaysForFraction(frac) {
+        if (!_metricsHistory || !_metricsHistory.epoch || !_metricsHistory.epoch.length) return false;
+        var clamped = Math.max(0, Math.min(1, Number(frac) || 0));
+        var idx = _metricsHistory.epoch.length > 1
+            ? Math.round(clamped * (_metricsHistory.epoch.length - 1))
+            : 0;
+        var speedMs = _metricsHistory.cruising_speed_ms ? _metricsHistory.cruising_speed_ms[idx] : null;
+        var speedKmh = speedMs == null ? null : Number(speedMs) * 3.6;
+        if (metricSpeedValue) metricSpeedValue.textContent = _formatMetric(speedKmh, 2, "km/h");
+        drawTacho(metricSpeedTacho, speedKmh);
+        if (metricDragValue) metricDragValue.textContent = _formatMetric(_metricsHistory.drag_value ? _metricsHistory.drag_value[idx] : null, 2, "N");
+        if (metricSolarValue) metricSolarValue.textContent = _formatMetric(_metricsHistory.solar_power_w ? _metricsHistory.solar_power_w[idx] : null, 1, "W");
+        var speedSeriesKmh = (_metricsHistory.cruising_speed_ms || []).map(function (v) { return v == null ? null : Number(v) * 3.6; });
+        drawMetricTrend(metricSpeedGraph, speedSeriesKmh, _metricColor("--theme-metric-speed-border", "#66CC99"), clamped);
+        drawMetricTrend(metricDragGraph, _metricsHistory.drag_value || [], _metricColor("--theme-metric-drag-border", "#66A3FF"), clamped);
+        drawMetricTrend(metricSolarGraph, _metricsHistory.solar_power_w || [], _metricColor("--theme-metric-solar-border", "#FFD966"), clamped);
+        return true;
+    }
+
+    function applyMetricDisplaysForCurrentView() {
+        var _lf = primaryGlbFiles[primaryGlbIdx];
+        if (_lf && _lf.epoch != null) {
+            applyMetricDisplaysForEpoch(_lf.epoch);
+            return true;
+        }
+        var _rf = rightPanelFiles[rightPanelIdx];
+        if (_rf && _rf.epoch != null) {
+            applyMetricDisplaysForEpoch(_rf.epoch);
+            return true;
+        }
+        if (primaryGlbFiles.length > 1) {
+            return applyMetricDisplaysForFraction(primaryGlbIdx / (primaryGlbFiles.length - 1));
+        }
+        if (rightPanelFiles.length > 1) {
+            return applyMetricDisplaysForFraction(rightPanelIdx / (rightPanelFiles.length - 1));
+        }
+        return applyMetricDisplaysForFraction(0);
+    }
+
     function applyMetricDisplays(latest, history) {
         var speedMs = latest ? latest.cruising_speed_ms : null;
         var speedKmh = speedMs == null ? null : Number(speedMs) * 3.6;
         if (metricSpeedValue) metricSpeedValue.textContent = _formatMetric(speedKmh, 2, "km/h");
+        drawTacho(metricSpeedTacho, speedKmh);
         if (metricDragValue) metricDragValue.textContent = _formatMetric(latest ? latest.drag_value : null, 2, "N");
         if (metricSolarValue) metricSolarValue.textContent = _formatMetric(latest ? latest.solar_power_w : null, 1, "W");
 
@@ -559,7 +682,7 @@
                     primaryUserView = vs;
                     if (cameraSyncToggle.checked && rightPanelViewer) {
                         rightPanelUserView = vs;
-                        rightPanelViewer.setViewState(vs);
+                        applySyncedViewState(rightPanelViewer, vs);
                     }
                 });
             }
@@ -571,7 +694,7 @@
                     const vc = info && info.hasVertexColors ? "yes" : "no";
                     primaryGlbStatus.textContent =
                         file.name + " (" + (primaryGlbIdx + 1) + "/" + primaryGlbFiles.length + ") \u00b7 VC:" + vc;
-                    if (primaryUserView) primaryGlbViewer.setViewState(primaryUserView);
+                    if (primaryUserView) applySyncedViewState(primaryGlbViewer, primaryUserView);
                 },
                 function (err) {
                     primaryGlbPlaceholder.style.display = "none";
@@ -605,10 +728,11 @@
         primaryGlbPlayBtn.disabled = primaryGlbFiles.length <= 1;
         paintSlider(primaryGlbSlider);
         loadPrimaryGlb();
+        syncRightEpochToPrimary();
     }
 
     function syncRightEpochToPrimary() {
-        if (!cameraSyncToggle.checked || !rightPanelFiles.length || !primaryGlbFiles.length) return;
+        if (!rightPanelFiles.length || !primaryGlbFiles.length) return;
         var pct = primaryGlbFiles.length > 1 ? primaryGlbIdx / (primaryGlbFiles.length - 1) : 0;
         rightPanelIdx = Math.round(pct * (rightPanelFiles.length - 1));
         rightPanelSlider.value = String(rightPanelIdx);
@@ -621,7 +745,7 @@
     }
 
     function syncPrimaryEpochToRight() {
-        if (!cameraSyncToggle.checked || !primaryGlbFiles.length || !rightPanelFiles.length) return;
+        if (!primaryGlbFiles.length || !rightPanelFiles.length) return;
         var pct = rightPanelFiles.length > 1 ? rightPanelIdx / (rightPanelFiles.length - 1) : 0;
         primaryGlbIdx = Math.round(pct * (primaryGlbFiles.length - 1));
         primaryGlbSlider.value = String(primaryGlbIdx);
@@ -631,6 +755,7 @@
 
     function stopSyncedPlay() {
         if (syncPlayInterval) { clearInterval(syncPlayInterval); syncPlayInterval = null; }
+        syncPlayStartIdx = null;
         primaryGlbPlaying = false; rightPanelPlaying = false;
         primaryGlbPlayBtn.textContent = "\u25b6 Play";
         rightPanelPlayBtn.textContent = "\u25b6 Play";
@@ -640,6 +765,7 @@
         stopSyncedPlay();
         if (!primaryGlbFiles.length) return;
         primaryGlbPlaying = true; rightPanelPlaying = true;
+        syncPlayStartIdx = primaryGlbIdx;
         primaryGlbPlayBtn.textContent = "\u23f8 Pause";
         rightPanelPlayBtn.textContent = "\u23f8 Pause";
         syncPlayInterval = setInterval(function () {
@@ -654,52 +780,22 @@
                 paintSlider(rightPanelSlider);
                 loadRightPanel();
             }
-            var _f = primaryGlbFiles[primaryGlbIdx];
-            if (_f && _f.epoch != null) applyMetricDisplaysForEpoch(_f.epoch);
-            if (primaryGlbIdx === 0) { stopSyncedPlay(); }
+            applyMetricDisplaysForCurrentView();
+            if (syncPlayStartIdx !== null && primaryGlbIdx === syncPlayStartIdx) { stopSyncedPlay(); }
         }, 500);
     }
 
     primaryGlbSlider.addEventListener("input", function (e) {
-        if (primaryGlbPlaying) {
-            primaryGlbPlaying = false;
-            clearInterval(primaryGlbPlayInterval);
-            primaryGlbPlayBtn.textContent = "\u25b6 Play";
-        }
+        stopSyncedPlay();
         primaryGlbIdx = parseInt(e.target.value, 10);
         paintSlider(primaryGlbSlider);
         loadPrimaryGlb();
         syncRightEpochToPrimary();
-        var _f = primaryGlbFiles[primaryGlbIdx];
-        if (_f && _f.epoch != null) applyMetricDisplaysForEpoch(_f.epoch);
+        applyMetricDisplaysForCurrentView();
     });
 
     primaryGlbPlayBtn.addEventListener("click", function () {
-        if (cameraSyncToggle.checked) {
-            if (primaryGlbPlaying) { stopSyncedPlay(); } else { startSyncedPlay(); }
-            return;
-        }
-        if (primaryGlbPlaying) {
-            primaryGlbPlaying = false;
-            clearInterval(primaryGlbPlayInterval);
-            primaryGlbPlayBtn.textContent = "\u25b6 Play";
-        } else {
-            primaryGlbPlaying = true;
-            primaryGlbPlayBtn.textContent = "\u23f8 Pause";
-            primaryGlbPlayInterval = setInterval(function () {
-                primaryGlbIdx = (primaryGlbIdx + 1) % primaryGlbFiles.length;
-                primaryGlbSlider.value = String(primaryGlbIdx);
-                paintSlider(primaryGlbSlider);
-                loadPrimaryGlb();
-                var _f = primaryGlbFiles[primaryGlbIdx];
-                if (_f && _f.epoch != null) applyMetricDisplaysForEpoch(_f.epoch);
-                if (primaryGlbIdx === 0) {
-                    primaryGlbPlaying = false;
-                    clearInterval(primaryGlbPlayInterval);
-                    primaryGlbPlayBtn.textContent = "\u25b6 Play";
-                }
-            }, 500);
-        }
+        if (primaryGlbPlaying) { stopSyncedPlay(); } else { startSyncedPlay(); }
     });
 
     // ── Right panel (priority selector) ──────────────────────────────────────
@@ -748,13 +844,13 @@
                     rightPanelUserView = vs;
                     if (cameraSyncToggle.checked && primaryGlbViewer) {
                         primaryUserView = vs;
-                        primaryGlbViewer.setViewState(vs);
+                        applySyncedViewState(primaryGlbViewer, vs);
                     }
                 });
                 if (cameraSyncToggle.checked && primaryGlbViewer) {
                     var vs = primaryGlbViewer.getViewState();
                     if (vs) {
-                        rightPanelViewer.setViewState(vs);
+                        applySyncedViewState(rightPanelViewer, vs);
                         rightPanelUserView = vs;
                     }
                 }
@@ -767,7 +863,7 @@
                     var vc = info && info.hasVertexColors ? "yes" : "no";
                     rightPanelStatus.textContent =
                         file.name + " (" + (rightPanelIdx + 1) + "/" + rightPanelFiles.length + ") \u00b7 VC:" + vc;
-                    if (rightPanelUserView) rightPanelViewer.setViewState(rightPanelUserView);
+                    if (rightPanelUserView) applySyncedViewState(rightPanelViewer, rightPanelUserView);
                 },
                 function (err) {
                     rightPanelPlaceholder.style.display = "none";
@@ -821,6 +917,7 @@
         rightPanelPlaceholder.style.display = "block";
         rightPanelStatus.style.display = "none";
         loadRightPanel();
+        syncPrimaryEpochToRight();
     }
 
     function renderPrioritySelector() {
@@ -896,45 +993,21 @@
             rightPanelSlider.disabled = rightPanelFiles.length <= 1;
             rightPanelPlayBtn.disabled = rightPanelFiles.length <= 1;
             paintSlider(rightPanelSlider);
+            syncPrimaryEpochToRight();
         }
     }
 
     rightPanelSlider.addEventListener("input", function (e) {
-        if (rightPanelPlaying) {
-            rightPanelPlaying = false;
-            clearInterval(rightPanelPlayInterval);
-            rightPanelPlayBtn.textContent = "\u25b6 Play";
-        }
+        stopSyncedPlay();
         rightPanelIdx = parseInt(e.target.value, 10);
         paintSlider(rightPanelSlider);
         loadRightPanel();
         syncPrimaryEpochToRight();
+        applyMetricDisplaysForCurrentView();
     });
 
     rightPanelPlayBtn.addEventListener("click", function () {
-        if (cameraSyncToggle.checked) {
-            if (rightPanelPlaying) { stopSyncedPlay(); } else { startSyncedPlay(); }
-            return;
-        }
-        if (rightPanelPlaying) {
-            rightPanelPlaying = false;
-            clearInterval(rightPanelPlayInterval);
-            rightPanelPlayBtn.textContent = "\u25b6 Play";
-        } else {
-            rightPanelPlaying = true;
-            rightPanelPlayBtn.textContent = "\u23f8 Pause";
-            rightPanelPlayInterval = setInterval(function () {
-                rightPanelIdx = (rightPanelIdx + 1) % rightPanelFiles.length;
-                rightPanelSlider.value = String(rightPanelIdx);
-                paintSlider(rightPanelSlider);
-                loadRightPanel();
-                if (rightPanelIdx === 0) {
-                    rightPanelPlaying = false;
-                    clearInterval(rightPanelPlayInterval);
-                    rightPanelPlayBtn.textContent = "\u25b6 Play";
-                }
-            }, 500);
-        }
+        if (rightPanelPlaying) { stopSyncedPlay(); } else { startSyncedPlay(); }
     });
 
     // ── Reset viewers when changing runs ──────────────────────────────────────
@@ -1017,12 +1090,14 @@
                 fetch(VIEWER_API + "/runs/" + runId + "/metrics").then(function (r) { return r.json(); }),
             ]);
 
-            updatePrimaryGlb(artData.meshes_glb || []);
+            updatePrimaryGlb(artData.meshes_glb_cone || artData.meshes_glb || []);
             updatePriorityPanels(artData);
 
             if (metricsData && metricsData.found) {
                 _metricsHistory = metricsData.history || null;
-                applyMetricDisplays(metricsData.latest, metricsData.history);
+                if (!applyMetricDisplaysForCurrentView()) {
+                    applyMetricDisplays(metricsData.latest, metricsData.history);
+                }
             }
         } catch (err) {
             statusLabel.textContent = "Failed to load artifacts: " + err.message;

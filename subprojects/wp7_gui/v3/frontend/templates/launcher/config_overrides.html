@@ -90,7 +90,7 @@
   <div class="dark-card toolbar">
     <a id="btnBackToAssembly" href="/launcher/assembly-selection?pipeline={{ pipeline }}" class="btn secondary">← Back</a>
     {% if pipeline == 'live' %}
-    <div style="flex:1; padding:0 10px;">
+    <div id="progressHost" style="flex:1; padding:0 10px; display:none;">
       <div class="progress-bar-wrap" id="progressWrap">
         <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
       </div>
@@ -129,11 +129,8 @@
     <div class="toolbar" style="gap: 10px;">
       <button class="btn" id="btnRun" disabled>&#9654; Run</button>
       <button class="btn secondary" id="btnStop" disabled>&#9632; Stop</button>
-      <div style="flex:1; min-width:190px;">
-        <div class="progress-bar-wrap" id="progressWrap">
-          <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
-        </div>
-        <div id="progressLabel" style="font-size:0.9rem; color:var(--theme-muted); font-weight:600; margin-top:5px;">Idle</div>
+      <div style="flex:1; min-width:190px; font-size:0.82rem; color:var(--theme-muted);">
+        Progress is shown in the top navigation bar once Run is started.
       </div>
     </div>
   </div>
@@ -459,6 +456,7 @@
   // ---------------------------------------------------------------------------
   const progressFill  = document.getElementById("progressFill");
   const progressLabel = document.getElementById("progressLabel");
+  const progressHost  = document.getElementById("progressHost");
   const btnSaveChanges = document.getElementById("btnSaveChanges");
   const btnRun        = document.getElementById("btnRun");
   const btnStop       = document.getElementById("btnStop");
@@ -466,6 +464,11 @@
   let _runCompleted   = false;
   let _reconnectTimer = null;
   let _suppressBeforeUnloadOnce = false;
+
+  function setProgressVisible(visible) {
+    if (!progressHost) return;
+    progressHost.style.display = visible ? "block" : "none";
+  }
 
   // ── M7: beforeunload guard ─────────────────────────────────────────────────
   function _runUnloadGuard(e) {
@@ -505,6 +508,9 @@
   // Register guard immediately if run was launched in a previous page load
   if (localStorage.getItem(RUN_KEY)) {
     window.addEventListener("beforeunload", _runUnloadGuard);
+    setProgressVisible(true);
+  } else {
+    setProgressVisible(false);
   }
 
   // ── M6: Go Home from locked banner ────────────────────────────────────────
@@ -593,6 +599,7 @@
     btnSaveChanges.disabled = true;
     btnRun.disabled = true;
     btnStop.disabled = false;
+    setProgressVisible(true);
     progressFill.style.width = "0%";
     progressLabel.textContent = "Saving\u2026";
     try {
@@ -601,6 +608,7 @@
       // Freeze state and guard for active run.
       localStorage.setItem(FROZEN_KEY, "1");
       localStorage.setItem(RUN_KEY, "1");
+      localStorage.setItem(ASM_FROZEN_KEY, "1");
       applyConfigFreeze();
       window.addEventListener("beforeunload", _runUnloadGuard);
       console.info("[AISCO] Save & Run: config frozen, launching run.");
@@ -639,9 +647,11 @@
 
   // On page load: reconnect to an already-running process
   (async () => {
+    if (!localStorage.getItem(RUN_KEY)) return;
     try {
       const state = await fetch(`${API}/run/state`).then(r => r.json());
       if (state.running || state.log_path) {
+        setProgressVisible(true);
         if (state.running) { btnRun.disabled = true; btnStop.disabled = false; }
         const prog = await fetch(`${API}/run/progress`).then(r => r.json());
         if (prog.completed) {
@@ -657,6 +667,7 @@
   })();
 
   function _reconnectRunIfNeeded() {
+    if (!localStorage.getItem(RUN_KEY)) return;
     if (_runCompleted) return;
     if (progressEventSource && progressEventSource.readyState !== EventSource.CLOSED) return;
     fetch(`${API}/run/state`).then(r => r.json()).then(state => {

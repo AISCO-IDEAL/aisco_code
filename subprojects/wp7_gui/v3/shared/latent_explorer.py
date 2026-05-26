@@ -13,19 +13,23 @@ replicated here (they are ~80 lines of pure-stdlib + torch code).
 
 from __future__ import annotations
 
+import contextlib
 import glob
 import importlib.util
 import json
 import re
 import sys
 import types
+import warnings
 from collections import OrderedDict
 from dataclasses import replace as dc_replace
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import torch
 import trimesh
+import yaml
 from torch import Tensor
 
 # ---------------------------------------------------------------------------
@@ -102,6 +106,7 @@ def resolve_pretrained_path(wheels: int, solar: bool, drag: bool) -> Path:
 
 _ALLOWED_ROOTS: list[Path] = [
     Path("/cluster/work/fuge/AISCO"),
+    Path("/home/aisco/AISCO_rollout"),
     _REPO_ROOT,
 ]
 
@@ -434,6 +439,385 @@ def load_checkpoint_info(ckpt_path: Path, device: torch.device) -> dict[str, Any
     return {"z_dim": z_dim, "z_radius": z_radius, "z_pretrained": z_pretrained}
 
 
+# ---------------------------------------------------------------------------
+# Metric estimation: drag (GAOT3), solar (WP3 SR), cruising speed (WP4 CSE)
+#
+# All heavy imports are deferred inside function bodies (PLC0415) so that this
+# module can be imported at GUI server startup without requiring EGL/pyrender
+# or the full WP1/WP3/WP4 import chains.
+# ---------------------------------------------------------------------------
+
+# Physical / optimisation defaults — mirror latent_rollout_gif_pyvista.py.
+_SOLAR_SUN_DIR: tuple[float, float, float] = (-1.0, 0.0, 1.0)
+_SOLAR_AREA_BUDGET_MM2: float = 4_200_000.0
+_SOLAR_EFFECTIVE_IRRADIANCE_W_M2: float = 250.0
+_CSE_MASS_KG: float = 210.0
+_CSE_C_LOSSES_W: float = 20.0
+_CSE_ROLLING_FRICTION: float = 0.006
+
+# GAOT3 drag-estimator cache (keyed by device string).
+_GAOT_ESTIMATOR_CACHE: dict[str, Any] = {}
+
+
+def _load_wp4_default_cfd_config() -> dict[str, Any]:
+    """Load the CFD block from WP4 v2 losses_v0_config.yaml.
+
+    Returns:
+        Dict with keys like ``v_inf``, ``rho``, ``model_id``, ``version``, …
+        Returns an empty dict on any read/parse error.
+    """
+    cfg_path = _REPO_ROOT / "subprojects" / "wp4_aeroshell_optimizer" / "v2" / "configs" / "losses_v0_config.yaml"
+    if not cfg_path.exists():
+        return {}
+    try:
+        with open(cfg_path) as fh:
+            cfg = yaml.safe_load(fh) or {}
+    except Exception as exc:
+        warnings.warn(
+            f"[latent_explorer] failed to read default CFD config: {exc}",
+            UserWarning,
+            stacklevel=2,
+        )
+        return {}
+    return cfg.get("cfd", {}) if isinstance(cfg, dict) else {}
+
+
+def _mesh_has_valid_face_indices(mesh: trimesh.Trimesh) -> bool:
+    """Return True when all triangle indices are within vertex bounds."""
+    try:
+        faces = np.asarray(mesh.faces)
+        n_verts = len(mesh.vertices)
+    except Exception:
+        return False
+    if faces.ndim != 2 or faces.shape[1] != 3 or n_verts <= 0:
+        return False
+    if faces.size == 0:
+        return False
+    return int(faces.min()) >= 0 and int(faces.max()) < n_verts
+
+
+def _get_gaot_estimator(cfd_config: dict[str, Any], device: torch.device) -> Any | None:
+    """Return a cached GAOTPlyInference instance for GAOT3 drag estimation.
+
+    The estimator is keyed by device string and re-used across requests.
+
+    Args:
+        cfd_config: CFD configuration dict (must contain ``v_inf``, ``rho``).
+        device: Torch device for the estimator.
+
+    Returns:
+        A GAOTPlyInference instance, or None if initialisation fails.
+    """
+    device_str = str(device)
+    if device_str in _GAOT_ESTIMATOR_CACHE:
+        return _GAOT_ESTIMATOR_CACHE[device_str]
+    try:
+        from subprojects.postprocessing_visuals.cp_field_viz import GAOTPlyInference  # noqa: PLC0415
+
+        estimator = GAOTPlyInference(cfd_config=cfd_config, device=device_str)
+        _GAOT_ESTIMATOR_CACHE[device_str] = estimator
+    except Exception as exc:
+        warnings.warn(
+            f"[latent_explorer] failed to initialise GAOT3 drag estimator: {exc}",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+    else:
+        return estimator
+
+
+def _rdbu_colormap(values_01: np.ndarray) -> np.ndarray:
+    """Map normalised values [0, 1] to a RdBu-style RGB array (uint8).
+
+    0.0 → blue  (low pressure / suction side)
+    0.5 → white (neutral)
+    1.0 → red   (high pressure / stagnation)
+
+    Args:
+        values_01: 1-D float array with values in [0, 1].
+
+    Returns:
+        (N, 3) uint8 RGB array.
+    """
+    v = np.clip(values_01, 0.0, 1.0)
+    r = np.clip(2.0 * v, 0.0, 1.0)
+    b = np.clip(2.0 * (1.0 - v), 0.0, 1.0)
+    g = np.clip(1.0 - np.abs(2.0 * v - 1.0), 0.0, 1.0)
+    return (np.stack([r, g, b], axis=-1) * 255).astype(np.uint8)
+
+
+def _solar_quality_colormap(values_01: np.ndarray) -> np.ndarray:
+    """Map solar illumination quality [0, 1] to dark-grey → golden-yellow RGB.
+
+    Args:
+        values_01: 1-D float array with values in [0, 1].
+
+    Returns:
+        (N, 3) uint8 RGB array.
+    """
+    v = np.clip(values_01, 0.0, 1.0)[:, None]
+    low = np.array([35, 35, 35], dtype=np.float32)  # dark grey (shadowed)
+    high = np.array([255, 210, 0], dtype=np.float32)  # golden yellow (sun-facing)
+    return np.clip(low + v * (high - low), 0, 255).astype(np.uint8)
+
+
+def _make_vertex_colored_glb(mesh: trimesh.Trimesh, rgb: np.ndarray) -> bytes:
+    """Return GLB bytes for *mesh* with per-vertex RGB colouring.
+
+    Args:
+        mesh: Source trimesh (geometry is copied; existing colours are discarded).
+        rgb: (N_vertices, 3) uint8 colour array.
+
+    Returns:
+        GLB-encoded bytes.
+    """
+    alpha = np.full((len(rgb), 1), 220, dtype=np.uint8)
+    rgba = np.concatenate([rgb, alpha], axis=-1)
+    colored = trimesh.Trimesh(
+        vertices=mesh.vertices.copy(),
+        faces=mesh.faces.copy(),
+        process=False,
+    )
+    colored.visual = trimesh.visual.ColorVisuals(mesh=colored, vertex_colors=rgba)
+    result: bytes = colored.export(file_type="glb")  # type: ignore[assignment]
+    return result
+
+
+def _make_face_colored_glb(mesh: trimesh.Trimesh, rgb: np.ndarray) -> bytes:
+    """Return GLB bytes for *mesh* with per-face RGB colouring.
+
+    Args:
+        mesh: Source trimesh (geometry is copied; existing colours are discarded).
+        rgb: (N_faces, 3) uint8 colour array.
+
+    Returns:
+        GLB-encoded bytes.
+    """
+    alpha = np.full((len(rgb), 1), 220, dtype=np.uint8)
+    rgba = np.concatenate([rgb, alpha], axis=-1)
+    colored = trimesh.Trimesh(
+        vertices=mesh.vertices.copy(),
+        faces=mesh.faces.copy(),
+        process=False,
+    )
+    colored.visual.face_colors = rgba  # type: ignore[assignment]
+    result: bytes = colored.export(file_type="glb")  # type: ignore[assignment]
+    return result
+
+
+def _estimate_drag_newtons(
+    gaot_loader: Any,
+    mesh: trimesh.Trimesh,
+    cfd_config: dict[str, Any],
+) -> tuple[float | None, np.ndarray | None]:
+    """Estimate drag force (N) and per-vertex CP field using GAOT3.
+
+    Args:
+        gaot_loader: A GAOTPlyInference instance.
+        mesh: The extracted trimesh (vertices in mm).
+        cfd_config: CFD config dict with keys ``v_inf`` and ``rho``.
+
+    Returns:
+        A 2-tuple ``(drag_newtons, cp_field)``.  ``cp_field`` is a 1-D float32
+        numpy array of length N_vertices, or None on failure.
+    """
+    if not _mesh_has_valid_face_indices(mesh):
+        return None, None
+    if not (hasattr(gaot_loader, "_preprocess") and hasattr(gaot_loader, "_latent_tokens")):
+        return None, None
+    try:
+        from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.shear_force import ShearForce  # noqa: PLC0415
+        from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.pressure_integration import cp_field_to_drag  # noqa: PLC0415
+
+        loader_device = torch.device(getattr(gaot_loader, "device", "cpu"))
+        verts_t = torch.tensor(mesh.vertices, dtype=torch.float32, device=loader_device)
+        faces_t = torch.tensor(mesh.faces, dtype=torch.long, device=loader_device)
+
+        with torch.no_grad():
+            batch = gaot_loader._preprocess(verts_t, faces_t)
+            output = gaot_loader.gaot.forward(batch=batch, tokens_pos=gaot_loader._latent_tokens)
+            pressure_field = output["field"]
+
+            integration_normals = batch.c if hasattr(batch, "c") and batch.c is not None else batch.c_raw
+            integration_pos = batch.pos_raw if hasattr(batch, "pos_raw") and batch.pos_raw is not None else (verts_t * 1e-3)
+            pressure_drag = cp_field_to_drag(
+                cp_field=pressure_field,
+                normals=integration_normals,
+                face=faces_t.T,
+                pos=integration_pos,
+                v_inf=float(cfd_config["v_inf"]),
+                rho=float(cfd_config["rho"]),
+            )
+
+            if not hasattr(gaot_loader, "_shear_force_calculator"):
+                gaot_loader._shear_force_calculator = ShearForce(unit="mm^2")
+            shear_drag = gaot_loader._shear_force_calculator.calculate_shear_force(verts_t, faces_t)
+            drag_val = float((pressure_drag + shear_drag).detach().cpu().item())
+
+        # Extract per-vertex CP values for heatmap visualisation.
+        cp_np: np.ndarray | None = None
+        with contextlib.suppress(Exception):
+            cp_np = pressure_field.detach().cpu().squeeze(-1).numpy().astype(np.float32)
+
+        if not np.isfinite(drag_val):
+            return None, cp_np
+        return float(abs(drag_val)), cp_np
+    except Exception as exc:
+        warnings.warn(
+            f"[latent_explorer] drag estimation failed: {exc}",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None, None
+
+
+def _estimate_solar_power_watts(
+    mesh: trimesh.Trimesh,
+    device: torch.device,
+) -> float | None:
+    """Estimate solar power (W) using the SR solar loss on the current mesh.
+
+    Uses module-level defaults for sun direction, area budget, and irradiance.
+
+    Args:
+        mesh: The extracted trimesh (vertices in mm).
+        device: Torch device for computation.
+
+    Returns:
+        Solar power in Watts, or None on failure.
+    """
+    if not _mesh_has_valid_face_indices(mesh):
+        return None
+    try:
+        from subprojects.wp3_solar_estimator.rollout_losses.SR_SolarLoss import solar_loss_sr  # noqa: PLC0415
+
+        verts = torch.tensor(mesh.vertices, dtype=torch.float32, device=device)
+        faces = torch.tensor(mesh.faces, dtype=torch.long, device=device)
+        sun_dir = torch.tensor(_SOLAR_SUN_DIR, dtype=torch.float32, device=device)
+
+        power_w, _diagnostics = solar_loss_sr(
+            vertices=verts,
+            faces=faces,
+            sun_dir=sun_dir,
+            area_budget_mm2=_SOLAR_AREA_BUDGET_MM2,
+            effective_irradiance_W_m2=_SOLAR_EFFECTIVE_IRRADIANCE_W_M2,
+            cone_face_mask=None,
+            epoch_name=None,
+        )
+        power_val = float(power_w.detach().cpu().item())
+        return power_val if np.isfinite(power_val) else None
+    except Exception as exc:
+        warnings.warn(
+            f"[latent_explorer] solar estimation failed: {exc}",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+
+
+def _compute_cse_speed_ms(
+    drag_n: float,
+    solar_w: float,
+) -> float | None:
+    """Compute CSE cruising speed (m/s) from drag and solar estimates.
+
+    Args:
+        drag_n: Drag force in Newtons (must be > 0).
+        solar_w: Solar power in Watts.
+
+    Returns:
+        Cruising speed in m/s, or None on failure.
+    """
+    if drag_n <= 0.0:
+        return None
+    try:
+        from subprojects.wp4_aeroshell_optimizer.v1.src.losses.cruising_speed import cruising_speed  # noqa: PLC0415
+
+        drag_t = torch.tensor(float(drag_n), dtype=torch.float32)
+        solar_t = torch.tensor(float(max(solar_w, 0.0)), dtype=torch.float32)
+        speed_ms, _diag = cruising_speed(
+            solar_power=solar_t,
+            drag_force_at_25ms=drag_t,
+            mass=_CSE_MASS_KG,
+            c_losses=_CSE_C_LOSSES_W,
+            rolling_friction_coefficient=_CSE_ROLLING_FRICTION,
+            max_iter=12,
+            tol=1e-4,
+        )
+        speed_val = float(speed_ms.detach().cpu().item())
+        return speed_val if np.isfinite(speed_val) else None
+    except Exception as exc:
+        warnings.warn(
+            f"[latent_explorer] CSE computation failed: {exc}",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+
+
+def compute_mesh_metrics(
+    mesh: trimesh.Trimesh,
+    device: torch.device,
+) -> dict[str, Any]:
+    """Compute drag, solar, CSE metrics and secondary visualization GLBs.
+
+    This function is intentionally fault-tolerant: failures in any stage
+    produce ``None`` for that entry rather than raising.
+
+    Args:
+        mesh: The extracted aeroshell trimesh (vertices in mm).
+        device: Torch device for all computations.
+
+    Returns:
+        Dict with scalar keys ``drag_value`` (N), ``solar_power_w`` (W),
+        ``cruising_speed_ms`` (m/s) and visualization keys ``cp_glb`` (bytes),
+        ``solar_glb`` (bytes).  All values are ``None`` on failure.
+    """
+    cfd_config = _load_wp4_default_cfd_config()
+    drag_n: float | None = None
+    solar_w: float | None = None
+    speed_ms: float | None = None
+    cp_glb: bytes | None = None
+    solar_glb: bytes | None = None
+
+    if cfd_config:
+        gaot_estimator = _get_gaot_estimator(cfd_config, device)
+        if gaot_estimator is not None:
+            drag_n, cp_field_np = _estimate_drag_newtons(gaot_estimator, mesh, cfd_config)
+            if cp_field_np is not None and len(cp_field_np) == len(mesh.vertices):
+                try:
+                    cp_min, cp_max = float(cp_field_np.min()), float(cp_field_np.max())
+                    span = cp_max - cp_min
+                    cp_norm = (cp_field_np - cp_min) / span if span > 1e-9 else np.full_like(cp_field_np, 0.5)
+                    cp_glb = _make_vertex_colored_glb(mesh, _rdbu_colormap(cp_norm))
+                except Exception as exc:
+                    warnings.warn(f"[latent_explorer] CP GLB build failed: {exc}", UserWarning, stacklevel=2)
+
+    solar_w = _estimate_solar_power_watts(mesh, device)
+
+    # Build solar quality GLB from face normals + sun direction (no extra model call).
+    try:
+        face_normals = np.asarray(mesh.face_normals, dtype=np.float32)
+        sun = np.array(_SOLAR_SUN_DIR, dtype=np.float32)
+        sun /= max(float(np.linalg.norm(sun)), 1e-9)
+        illumination = np.clip((face_normals @ sun), 0.0, 1.0)
+        solar_glb = _make_face_colored_glb(mesh, _solar_quality_colormap(illumination))
+    except Exception as exc:
+        warnings.warn(f"[latent_explorer] solar GLB build failed: {exc}", UserWarning, stacklevel=2)
+
+    if drag_n is not None and solar_w is not None:
+        speed_ms = _compute_cse_speed_ms(drag_n, solar_w)
+
+    return {
+        "drag_value": drag_n,
+        "solar_power_w": solar_w,
+        "cruising_speed_ms": speed_ms,
+        "cp_glb": cp_glb,
+        "solar_glb": solar_glb,
+    }
+
+
 def extract_mesh_glb(
     ckpt_path: Path,
     z0: float,
@@ -441,8 +825,8 @@ def extract_mesh_glb(
     resolution: int,
     device: torch.device,
     bbox_padding: float = 0.0,
-) -> bytes:
-    """Extract the aeroshell mesh at latent point *(z0, z1)* and return GLB bytes.
+) -> tuple[bytes, dict[str, Any], bytes | None, bytes | None]:
+    """Extract the aeroshell mesh at latent point *(z0, z1)* and return GLB bytes plus metrics.
 
     The model must have been loaded (or cached) via :func:`load_checkpoint_info`
     before calling this function.  If the cache does not contain the model, it
@@ -458,7 +842,11 @@ def extract_mesh_glb(
             on all sides except Z-bottom.
 
     Returns:
-        GLB-encoded bytes of the extracted mesh.
+        A 4-tuple ``(glb_bytes, metrics, cp_glb, solar_glb)``.
+        ``metrics`` is a dict with ``drag_value``, ``solar_power_w``,
+        ``cruising_speed_ms`` (all ``float | None``).
+        ``cp_glb`` and ``solar_glb`` are GLB bytes for the CP field and solar
+        quality heatmaps respectively, or None when unavailable.
 
     Raises:
         ValueError: When the extracted mesh is empty or the path is not allowed.
@@ -513,6 +901,12 @@ def extract_mesh_glb(
     # Aeroshell blue (#5DADE2 = 93,173,226) — matches theme palette.
     sdf_mesh.visual.face_colors = [93, 173, 226, 210]  # type: ignore[assignment]
 
+    # Compute drag / solar / CSE metrics + visualization GLBs on the raw SDF mesh.
+    all_metrics = compute_mesh_metrics(sdf_mesh, device)
+    cp_glb: bytes | None = all_metrics.pop("cp_glb", None)
+    solar_glb: bytes | None = all_metrics.pop("solar_glb", None)
+    metrics: dict[str, Any] = all_metrics
+
     # Try to build a full-assembly scene (sdf_mesh + inner_assembly + outer_bbox)
     # by loading the nearest pre-generated slot_00_mesh.glb and replacing its sdf_mesh.
     assembly_glb = _find_assembly_glb(ckpt_path)
@@ -521,9 +915,10 @@ def extract_mesh_glb(
             scene = trimesh.load(str(assembly_glb), force="scene")
             if hasattr(scene, "geometry") and "sdf_mesh" in scene.geometry:
                 scene.geometry["sdf_mesh"] = sdf_mesh
-                return scene.export(file_obj=None, file_type="glb")  # type: ignore[return-value]
+                glb_bytes: bytes = scene.export(file_obj=None, file_type="glb")  # type: ignore[assignment]
+                return glb_bytes, metrics, cp_glb, solar_glb
         except Exception:
             pass  # fall through to single-mesh export
 
     # Fallback: export only the extracted SDF mesh.
-    return sdf_mesh.export(file_type="glb")  # type: ignore[return-value]
+    return sdf_mesh.export(file_type="glb"), metrics, cp_glb, solar_glb  # type: ignore[return-value]

@@ -166,7 +166,13 @@ def _is_prestart_run_dir(run_dir: Path) -> bool:
 
 def _resolve_active_run_dir(storage_root: Path, cfg_session: str | None) -> Path | None:
     """Resolve the active run dir, excluding stale dirs from previous runs."""
-    run_dir = detect_current_run_dir(storage_root, preferred_cfg_session=cfg_session or None)
+    run_dir: Path | None = None
+    if cfg_session:
+        tagged = [p for p in collect_run_dirs(storage_root) if read_cfg_session(p) == cfg_session]
+        if tagged:
+            run_dir = max(tagged, key=lambda p: p.stat().st_mtime)
+    else:
+        run_dir = detect_current_run_dir(storage_root, preferred_cfg_session=None)
     if run_dir is None:
         return None
     if _is_prestart_run_dir(run_dir):
@@ -1332,7 +1338,12 @@ async def run_stream_artifacts() -> StreamingResponse:
 # ---------------------------------------------------------------------------
 @router.post("/api/config-overrides/init")
 def cfg_init() -> dict[str, Any]:
-    return _config_manager.init_session()
+    session = _config_manager.init_session()
+    _runtime_state["active_cfg_folder"] = session.get("folder", "")
+    _runtime_state["run_started_at"] = None
+    # Every new live-pipeline entry starts from assembly map ID 0.
+    _assembly_service_live.reset_to_default(assembly_id=0)
+    return session
 
 
 @router.get("/api/config-overrides/schema")

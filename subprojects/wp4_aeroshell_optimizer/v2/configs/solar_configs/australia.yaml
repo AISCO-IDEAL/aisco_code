@@ -19,4 +19,4 @@ sun_generation:
 simulation: # If in race mode, this will determine where you 
   # Note that tweaking these 2 values to unreasonable values will cause a crash (to few points cause sampling issues) 
   average_speed: 19 #in m/s (used for validation metrics and RouteV2)  # USED — WP3
-  num_points: 10  # USED — WP3
+  num_points: 100  # USED — WP3

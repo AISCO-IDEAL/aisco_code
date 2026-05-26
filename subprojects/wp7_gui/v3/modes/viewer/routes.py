@@ -266,7 +266,7 @@ def api_latent_query_mesh(body: _QueryMeshBody) -> JSONResponse:
 
     try:
         device = torch.device(_DEFAULT_DEVICE)
-        glb_bytes = extract_mesh_glb(
+        glb_bytes, metrics, cp_glb, solar_glb = extract_mesh_glb(
             ckpt_path=ckpt_path,
             z0=body.z0,
             z1=body.z1,
@@ -279,9 +279,28 @@ def api_latent_query_mesh(body: _QueryMeshBody) -> JSONResponse:
         raise HTTPException(status_code=500, detail={"message": str(exc)}) from exc
 
     glb_path.write_bytes(glb_bytes)
-    # The ?path=mesh.glb suffix triggers GLTFLoader in mesh_viewer.js
     mesh_url = f"/viewer/api/latent/mesh-file?id={mesh_id}&path=mesh.glb"
-    return JSONResponse(content={"mesh_url": mesh_url})
+
+    cp_mesh_url: str | None = None
+    if cp_glb is not None:
+        (_LATENT_MESH_DIR / f"{mesh_id}_cp.glb").write_bytes(cp_glb)
+        cp_mesh_url = f"/viewer/api/latent/mesh-file?id={mesh_id}_cp&path=mesh.glb"
+
+    solar_mesh_url: str | None = None
+    if solar_glb is not None:
+        (_LATENT_MESH_DIR / f"{mesh_id}_solar.glb").write_bytes(solar_glb)
+        solar_mesh_url = f"/viewer/api/latent/mesh-file?id={mesh_id}_solar&path=mesh.glb"
+
+    return JSONResponse(
+        content={
+            "mesh_url": mesh_url,
+            "drag_value": metrics.get("drag_value"),
+            "solar_power_w": metrics.get("solar_power_w"),
+            "cruising_speed_ms": metrics.get("cruising_speed_ms"),
+            "cp_mesh_url": cp_mesh_url,
+            "solar_mesh_url": solar_mesh_url,
+        }
+    )
 
 
 @router.get("/api/latent/mesh-file")
