@@ -106,8 +106,8 @@ RaytracingConfigV4:
     margin_factor: 8e-3
     origin_offset_eps: 1e-2
     sun_distance_factor: 1.0
-    face_chunk_size: 500
-    blocker_chunk_size: 500
+    face_chunk_size: 1000
+    blocker_chunk_size: 1000
     smoothing_mode: "soft_barycentric_transmittance"
     face_samples: 7
     sample_pattern: "barycentric_ring"
