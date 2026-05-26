@@ -41,9 +41,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[4]
 _MODELS_DIR = _REPO_ROOT / "subprojects" / "wp4_aeroshell_optimizer" / "v2" / "src" / "models"
 
 # Prism bounds in mm — must match wp2 assembler definition.
-_PRISM_X = (-2900.0, 2900.0)
-_PRISM_Y = (-1150.0, 1150.0)
-_PRISM_Z = (0.0, 1650.0)
+_PRISM_X = (-5000.0, 5000.0)
+_PRISM_Y = (-2000.0, 2000.0)
+_PRISM_Z = (-100.0, 2500.0)
 
 # ---------------------------------------------------------------------------
 # Pretrained checkpoint registry

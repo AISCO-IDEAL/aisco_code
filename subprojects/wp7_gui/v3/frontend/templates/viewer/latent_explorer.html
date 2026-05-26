@@ -250,6 +250,13 @@
     let _secActiveTab = "cp";
     let _lastSolarMeshUrl = null;
 
+    // Sync camera across all three latent viewers when the user rotates any one.
+    function _syncLatentViews(vs, skip) {
+        if (skip !== "main" && viewer) viewer.setViewState(vs);
+        if (skip !== "cp" && secCpViewer) secCpViewer.setViewState(vs);
+        if (skip !== "solar" && secSolarViewer) secSolarViewer.setViewState(vs);
+    }
+
     function secShowTab(tab) {
         _secActiveTab = tab;
         const cpPane = document.getElementById("secCpPane");
@@ -261,17 +268,27 @@
             if (solarPane) solarPane.style.display = "none";
             if (cpBtn) { cpBtn.style.borderBottomColor = "var(--theme-accent)"; cpBtn.style.color = "var(--theme-text)"; cpBtn.style.fontWeight = "600"; }
             if (solarBtn) { solarBtn.style.borderBottomColor = "transparent"; solarBtn.style.color = "var(--theme-muted)"; solarBtn.style.fontWeight = "400"; }
+            // Resize then push current camera into the now-visible CP viewer.
+            requestAnimationFrame(() => {
+                window.dispatchEvent(new Event("resize"));
+                const ref = (viewer || secSolarViewer) ? (viewer || secSolarViewer).getViewState() : null;
+                if (ref && secCpViewer) secCpViewer.setViewState(ref);
+            });
         } else {
             if (solarPane) solarPane.style.display = "";
             if (cpPane) cpPane.style.display = "none";
             if (solarBtn) { solarBtn.style.borderBottomColor = "var(--theme-accent)"; solarBtn.style.color = "var(--theme-text)"; solarBtn.style.fontWeight = "600"; }
             if (cpBtn) { cpBtn.style.borderBottomColor = "transparent"; cpBtn.style.color = "var(--theme-muted)"; cpBtn.style.fontWeight = "400"; }
-            // Init solar viewer now that pane is visible (it was display:none during first load).
-            if (!secSolarViewer && _lastSolarMeshUrl) {
-                _loadSecViewer("solar", _lastSolarMeshUrl);
-            } else if (secSolarViewer) {
-                window.dispatchEvent(new Event("resize"));
-            }
+            // Init/resize solar viewer after layout, then push current camera into it.
+            requestAnimationFrame(() => {
+                if (!secSolarViewer && _lastSolarMeshUrl) {
+                    _loadSecViewer("solar", _lastSolarMeshUrl);
+                } else if (secSolarViewer) {
+                    window.dispatchEvent(new Event("resize"));
+                    const ref = (viewer || secCpViewer) ? (viewer || secCpViewer).getViewState() : null;
+                    if (ref) secSolarViewer.setViewState(ref);
+                }
+            });
         }
     }
 
@@ -584,6 +601,7 @@
             if (!viewer) {
                 const { initMeshViewer } = await import(MESH_VIEWER_MODULE);
                 viewer = initMeshViewer(container, { controlMode: "turntable" });
+                viewer.setOnControlsChange((vs) => _syncLatentViews(vs, "main"));
             }
 
             // Preserve camera position across latent-point switches.
@@ -619,6 +637,11 @@
     async function _loadSecViewer(tab, url) {
         if (!url) return;
         if (tab === "solar") _lastSolarMeshUrl = url;
+        // Don't initialise the viewer into a hidden pane — dimensions will be 0×0.
+        // secShowTab() will call us again once the pane is visible.
+        const paneId = tab === "cp" ? "secCpPane" : "secSolarPane";
+        const pane = document.getElementById(paneId);
+        if (pane && pane.style.display === "none") return;
         const boxId = tab === "cp" ? "secCpMeshBox" : "secSolarMeshBox";
         const placeholderId = tab === "cp" ? "secCpPlaceholder" : "secSolarPlaceholder";
         const container = document.getElementById(boxId);
@@ -629,11 +652,26 @@
 
         const { initMeshViewer } = await import(MESH_VIEWER_MODULE);
         if (tab === "cp") {
-            if (!secCpViewer) secCpViewer = initMeshViewer(container, { controlMode: "turntable" });
-            secCpViewer.loadMesh(url, null, null);
+            const isNew = !secCpViewer;
+            if (isNew) {
+                secCpViewer = initMeshViewer(container, { controlMode: "turntable" });
+                secCpViewer.setOnControlsChange((vs) => _syncLatentViews(vs, "cp"));
+            }
+            // For new viewers seed from a peer; for existing ones preserve current camera.
+            const savedView = isNew
+                ? (viewer ? viewer.getViewState() : (secSolarViewer ? secSolarViewer.getViewState() : null))
+                : secCpViewer.getViewState();
+            secCpViewer.loadMesh(url, savedView ? () => secCpViewer.setViewState(savedView) : null, null);
         } else {
-            if (!secSolarViewer) secSolarViewer = initMeshViewer(container, { controlMode: "turntable" });
-            secSolarViewer.loadMesh(url, null, null);
+            const isNew = !secSolarViewer;
+            if (isNew) {
+                secSolarViewer = initMeshViewer(container, { controlMode: "turntable" });
+                secSolarViewer.setOnControlsChange((vs) => _syncLatentViews(vs, "solar"));
+            }
+            const savedView = isNew
+                ? (viewer ? viewer.getViewState() : (secCpViewer ? secCpViewer.getViewState() : null))
+                : secSolarViewer.getViewState();
+            secSolarViewer.loadMesh(url, savedView ? () => secSolarViewer.setViewState(savedView) : null, null);
         }
     }
 
