@@ -213,16 +213,14 @@
         <span id="runNameDisplay">&#x2014;</span>
         {% endif %}
 
-<<<<<<< HEAD
         {% if pipeline == 'live' %}
         <button id="printMeshBtn" class="btn secondary">Print Mesh</button>
         <span id="printMeshStatus" style="max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.72rem; color:var(--theme-muted);"></span>
         {% endif %}
 
         <a href="/launcher/leaderboard?pipeline={{ pipeline }}" id="leaderboardBtn" class="btn">Next &rarr;</a>
-=======
-        <a href="/launcher/leaderboard?pipeline={{ pipeline }}" id="leaderboardBtn" class="btn" style="margin-left:auto;">Next &rarr;</a>
->>>>>>> 38ac5182f8ee433cd212943ba96c5ab66658d428
+
+
     </div>
 
     <!-- ── MAIN 3-COLUMN CONTENT ──────────────────────────────────────────── -->
@@ -1304,7 +1302,6 @@
             _setProgressVisible(true);
         }
         // Seed progress bar from last known run state
-<<<<<<< HEAD
         fetch(LAUNCHER_API + "/run/progress").then(function (r) { return r.json(); }).then(function (prog) {
             if (prog.completed) {
                 if (_progressFill) _progressFill.style.width = "100%";
@@ -1317,20 +1314,6 @@
                 if (_progressLabel) _progressLabel.textContent = "Epoch " + (prog.current_epoch + 1) + " / " + prog.num_epochs + " (" + prog.progress_percent.toFixed(1) + "%)";
             }
         }).catch(function () {});
-=======
-        if (localStorage.getItem(RUN_KEY)) {
-            fetch(LAUNCHER_API + "/run/progress").then(function (r) { return r.json(); }).then(function (prog) {
-                if (prog.completed) {
-                    if (_progressFill) _progressFill.style.width = "100%";
-                    if (_progressLabel) _progressLabel.textContent = "Completed.";
-                    _progressCompleted = true;
-                } else if (prog.current_epoch >= 0) {
-                    if (_progressFill) _progressFill.style.width = prog.progress_percent + "%";
-                    if (_progressLabel) _progressLabel.textContent = "Epoch " + (prog.current_epoch + 1) + " / " + prog.num_epochs + " (" + prog.progress_percent.toFixed(1) + "%)";
-                }
-            }).catch(function () {});
-        }
->>>>>>> 38ac5182f8ee433cd212943ba96c5ab66658d428
 
         fetch(LAUNCHER_API + "/run/state")
             .then(function (r) { return r.json(); })

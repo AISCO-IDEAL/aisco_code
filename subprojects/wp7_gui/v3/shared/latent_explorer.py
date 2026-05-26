@@ -527,12 +527,15 @@ def _get_gaot_estimator(cfd_config: dict[str, Any], device: torch.device) -> Any
         return estimator
 
 
-def _rdbu_colormap(values_01: np.ndarray) -> np.ndarray:
-    """Map normalised values [0, 1] to a RdBu-style RGB array (uint8).
+def _jet_colormap(values_01: np.ndarray) -> np.ndarray:
+    """Map normalised values [0, 1] to MATLAB jet colormap RGB (uint8).
 
-    0.0 → blue  (low pressure / suction side)
-    0.5 → white (neutral)
-    1.0 → red   (high pressure / stagnation)
+    Matches vis_config.yaml ``aero.cp_field.colormap: "jet"``.
+
+    0.0   → dark blue  (low pressure / suction)
+    0.375 → cyan
+    0.625 → yellow
+    1.0   → dark red   (high pressure / stagnation)
 
     Args:
         values_01: 1-D float array with values in [0, 1].
@@ -541,25 +544,33 @@ def _rdbu_colormap(values_01: np.ndarray) -> np.ndarray:
         (N, 3) uint8 RGB array.
     """
     v = np.clip(values_01, 0.0, 1.0)
-    r = np.clip(2.0 * v, 0.0, 1.0)
-    b = np.clip(2.0 * (1.0 - v), 0.0, 1.0)
-    g = np.clip(1.0 - np.abs(2.0 * v - 1.0), 0.0, 1.0)
+    xp = [0.0, 0.125, 0.375, 0.625, 0.875, 1.0]
+    r = np.interp(v, xp, [0.0, 0.0, 0.0, 1.0, 1.0, 0.5])
+    g = np.interp(v, xp, [0.0, 0.0, 1.0, 1.0, 0.0, 0.0])
+    b = np.interp(v, xp, [0.5, 1.0, 1.0, 0.0, 0.0, 0.0])
     return (np.stack([r, g, b], axis=-1) * 255).astype(np.uint8)
 
 
-def _solar_quality_colormap(values_01: np.ndarray) -> np.ndarray:
-    """Map solar illumination quality [0, 1] to dark-grey → golden-yellow RGB.
+def _solar_selection_colormap(soft_mask_01: np.ndarray) -> np.ndarray:
+    """Map per-face SR soft-selection mask [0, 1] to binary solar selection colours.
+
+    Colours from vis_config.yaml palette:
+    - < 0.5 (not selected): aeroshell blue  #5DADE2 → [93,  173, 226]
+    - ≥ 0.5 (selected):     assembly orange #F39C12 → [243, 156,  18]
 
     Args:
-        values_01: 1-D float array with values in [0, 1].
+        soft_mask_01: 1-D float array with per-face mask values in [0, 1].
 
     Returns:
         (N, 3) uint8 RGB array.
     """
-    v = np.clip(values_01, 0.0, 1.0)[:, None]
-    low = np.array([35, 35, 35], dtype=np.float32)  # dark grey (shadowed)
-    high = np.array([255, 210, 0], dtype=np.float32)  # golden yellow (sun-facing)
-    return np.clip(low + v * (high - low), 0, 255).astype(np.uint8)
+    selected = np.asarray(soft_mask_01, dtype=np.float32) >= 0.5
+    rgb = np.where(
+        selected[:, None],
+        np.array([243, 156, 18], dtype=np.uint8),   # selected: assembly orange #F39C12
+        np.array([93, 173, 226], dtype=np.uint8),    # not selected: aeroshell blue #5DADE2
+    )
+    return rgb.astype(np.uint8)
 
 
 def _make_vertex_colored_glb(mesh: trimesh.Trimesh, rgb: np.ndarray) -> bytes:
@@ -787,22 +798,35 @@ def compute_mesh_metrics(
             drag_n, cp_field_np = _estimate_drag_newtons(gaot_estimator, mesh, cfd_config)
             if cp_field_np is not None and len(cp_field_np) == len(mesh.vertices):
                 try:
-                    cp_min, cp_max = float(cp_field_np.min()), float(cp_field_np.max())
-                    span = cp_max - cp_min
-                    cp_norm = (cp_field_np - cp_min) / span if span > 1e-9 else np.full_like(cp_field_np, 0.5)
-                    cp_glb = _make_vertex_colored_glb(mesh, _rdbu_colormap(cp_norm))
+                    # Fixed vmin=-2.0, vmax=1.0 from vis_config.yaml aero.cp_field (jet colormap)
+                    cp_norm = np.clip((cp_field_np - (-2.0)) / 3.0, 0.0, 1.0)
+                    cp_glb = _make_vertex_colored_glb(mesh, _jet_colormap(cp_norm))
                 except Exception as exc:
                     warnings.warn(f"[latent_explorer] CP GLB build failed: {exc}", UserWarning, stacklevel=2)
 
     solar_w = _estimate_solar_power_watts(mesh, device)
 
-    # Build solar quality GLB from face normals + sun direction (no extra model call).
+    # Build solar selection GLB using SR area-budget soft mask (mirrors solar_loss_sr).
+    # vis_config.yaml solar.binary_mask: aeroshell blue = not selected, assembly orange = selected.
     try:
-        face_normals = np.asarray(mesh.face_normals, dtype=np.float32)
-        sun = np.array(_SOLAR_SUN_DIR, dtype=np.float32)
-        sun /= max(float(np.linalg.norm(sun)), 1e-9)
-        illumination = np.clip((face_normals @ sun), 0.0, 1.0)
-        solar_glb = _make_face_colored_glb(mesh, _solar_quality_colormap(illumination))
+        v_np = np.asarray(mesh.vertices, dtype=np.float32)
+        f_np = np.asarray(mesh.faces)
+        e1 = v_np[f_np[:, 1]] - v_np[f_np[:, 0]]
+        e2 = v_np[f_np[:, 2]] - v_np[f_np[:, 0]]
+        face_areas_m2 = np.linalg.norm(np.cross(e1, e2), axis=-1) * 0.5 * 1e-6
+        sun_np = np.array(_SOLAR_SUN_DIR, dtype=np.float32)
+        sun_np /= max(float(np.linalg.norm(sun_np)), 1e-9)
+        face_normals_np = np.asarray(mesh.face_normals, dtype=np.float32)
+        illum = face_normals_np @ sun_np
+        sort_idx = np.argsort(-illum)
+        cum_area = np.cumsum(face_areas_m2[sort_idx])
+        budget_m2 = _SOLAR_AREA_BUDGET_MM2 * 1e-6
+        dist = (budget_m2 - cum_area) / max(budget_m2, 1e-12)
+        # Sigmoid sharpness=10 matches solar_loss_sr default
+        soft_mask_sorted = 1.0 / (1.0 + np.exp(np.clip(-10.0 * dist, -80.0, 80.0)))
+        original_order = np.argsort(sort_idx)
+        soft_mask = soft_mask_sorted[original_order].astype(np.float32)
+        solar_glb = _make_face_colored_glb(mesh, _solar_selection_colormap(soft_mask))
     except Exception as exc:
         warnings.warn(f"[latent_explorer] solar GLB build failed: {exc}", UserWarning, stacklevel=2)
 

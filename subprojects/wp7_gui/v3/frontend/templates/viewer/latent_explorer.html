@@ -116,14 +116,15 @@
 
         <div class="ctrl-divider"></div>
 
-        <!-- Latent canvas -->
-        <div style="display:flex; flex-direction:column; gap:6px; align-items:center;">
-            <div style="font-size:0.72rem; color:var(--theme-muted); text-align:center; max-width:210px;">
-                Click a point to extract its mesh. Red dots&nbsp;= pretrained anchors.
+        <!-- Latent Canvas -->
+        <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
+            <div style="font-size:0.68rem; font-weight:700; color:var(--theme-muted); text-transform:uppercase; letter-spacing:0.06em;">Latent Space</div>
+            <div style="font-size:0.70rem; color:var(--theme-muted); text-align:center; line-height:1.4;">
+                Click a point to extract its mesh.<br>Red dots&nbsp;= pretrained anchors.
             </div>
-            <canvas id="latentCanvas" width="200" height="200"
-                style="background:#0d1117; border:1px solid var(--theme-border, #45475a); border-radius:4px; cursor:crosshair; display:block;"></canvas>
-            <div id="coordLabel" style="font-size:0.74rem; color:var(--theme-muted); min-height:1em;">—</div>
+            <canvas id="latentCanvas" width="300" height="300"
+                style="width:200px; height:200px; background:#0d1117; border:1px solid var(--theme-border, #45475a); border-radius:4px; cursor:crosshair; display:block;"></canvas>
+            <div id="coordLabel" style="font-size:0.74rem; color:var(--theme-muted); min-height:1em;">&#x2014;</div>
         </div>
 
         <div class="ctrl-divider"></div>
@@ -158,7 +159,7 @@
 
             <!-- LEFT: GLB mesh viewer -->
             <div class="output-col">
-                <div class="visual-card" style="grid-template-rows: auto 1fr auto;">
+                <div class="visual-card" style="grid-template-rows: auto 1fr;">
                     <div class="visual-title">Aeroshell Mesh</div>
                     <div id="meshContainer" style="position:relative; overflow:hidden; min-height:380px;">
                         <div id="meshPlaceholder" style="position:absolute; inset:0; display:flex; align-items:center;
@@ -166,10 +167,6 @@
                             Click a latent point to load a mesh.
                         </div>
                     </div>
-                    <div id="glbControls"
-                        style="display:none; gap:8px; grid-template-columns:repeat(3,minmax(0,1fr)); padding:6px 8px;
-                               border:1px solid color-mix(in srgb, var(--theme-text-box,#333) 65%, var(--theme-white,#fff) 35%);
-                               border-radius:6px; background:color-mix(in srgb, var(--theme-text-box,#333) 24%, var(--theme-white,#fff) 76%);"></div>
                 </div>
             </div>
 
@@ -251,6 +248,7 @@
     let secCpViewer = null;
     let secSolarViewer = null;
     let _secActiveTab = "cp";
+    let _lastSolarMeshUrl = null;
 
     function secShowTab(tab) {
         _secActiveTab = tab;
@@ -268,6 +266,12 @@
             if (cpPane) cpPane.style.display = "none";
             if (solarBtn) { solarBtn.style.borderBottomColor = "var(--theme-accent)"; solarBtn.style.color = "var(--theme-text)"; solarBtn.style.fontWeight = "600"; }
             if (cpBtn) { cpBtn.style.borderBottomColor = "transparent"; cpBtn.style.color = "var(--theme-muted)"; cpBtn.style.fontWeight = "400"; }
+            // Init solar viewer now that pane is visible (it was display:none during first load).
+            if (!secSolarViewer && _lastSolarMeshUrl) {
+                _loadSecViewer("solar", _lastSolarMeshUrl);
+            } else if (secSolarViewer) {
+                window.dispatchEvent(new Event("resize"));
+            }
         }
     }
 
@@ -460,9 +464,13 @@
 
     function canvasToLatent(offsetX, offsetY) {
         const w = canvas.width, h = canvas.height;
+        // Map CSS-pixel offset to canvas logical pixels (canvas may be CSS-scaled)
+        const cssSX = canvas.clientWidth > 0 ? w / canvas.clientWidth : 1;
+        const cssSY = canvas.clientHeight > 0 ? h / canvas.clientHeight : 1;
+        const lx = offsetX * cssSX, ly = offsetY * cssSY;
         const cx = w / 2, cy = h / 2;
         const scale = (Math.min(w, h) * 0.40) / Math.max(zRadius * 1.5, 1e-6);
-        return [(offsetX - cx) / scale, -(offsetY - cy) / scale];
+        return [(lx - cx) / scale, -(ly - cy) / scale];
     }
 
     canvas.addEventListener("mousemove", (e) => {
@@ -576,8 +584,6 @@
             if (!viewer) {
                 const { initMeshViewer } = await import(MESH_VIEWER_MODULE);
                 viewer = initMeshViewer(container, { controlMode: "turntable" });
-                const glbControls = document.getElementById("glbControls");
-                viewer.setGlbControlsHost(glbControls);
             }
 
             // Preserve camera position across latent-point switches.
@@ -596,8 +602,6 @@
                     drawTacho(latentMetricSpeedTacho, speedMs != null ? speedMs * 3.6 : null);
                     if (latentMetricDragEl) latentMetricDragEl.textContent = data.drag_value != null ? Number(data.drag_value).toFixed(2) + "\u00a0N" : "\u2014";
                     if (latentMetricSolarEl) latentMetricSolarEl.textContent = data.solar_power_w != null ? Number(data.solar_power_w).toFixed(1) + "\u00a0W" : "\u2014";
-                    const glbControls = document.getElementById("glbControls");
-                    glbControls.style.display = "grid";
 
                     // Load secondary visualization meshes
                     _loadSecViewer("cp", data.cp_mesh_url);
@@ -614,6 +618,7 @@
 
     async function _loadSecViewer(tab, url) {
         if (!url) return;
+        if (tab === "solar") _lastSolarMeshUrl = url;
         const boxId = tab === "cp" ? "secCpMeshBox" : "secSolarMeshBox";
         const placeholderId = tab === "cp" ? "secCpPlaceholder" : "secSolarPlaceholder";
         const container = document.getElementById(boxId);
