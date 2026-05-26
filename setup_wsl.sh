@@ -8,8 +8,47 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
 VENV_DIR="$PROJECT_ROOT/$ENV_NAME"
 VENV_PIP="$VENV_DIR/bin/pip"
-VENV_PYTHON="$VENV_DIR/bin/python3"
+VENV_PYTHON=""
 PYTHON_BIN="${PYTHON_BIN:-python3}"
+GPU_PROFILE="${GPU_PROFILE:-auto}"
+
+resolve_venv_python() {
+    if [ -x "$VENV_DIR/bin/python3" ]; then
+        printf '%s' "$VENV_DIR/bin/python3"
+    elif [ -x "$VENV_DIR/bin/python" ]; then
+        printf '%s' "$VENV_DIR/bin/python"
+    else
+        return 1
+    fi
+}
+
+detect_gpu_profile() {
+    if [[ "$GPU_PROFILE" != "auto" ]]; then
+        printf '%s' "$GPU_PROFILE"
+        return 0
+    fi
+
+    if ! command -v nvidia-smi >/dev/null 2>&1; then
+        echo "Warning: nvidia-smi not found, defaulting GPU profile to ada4090." >&2
+        printf '%s' "ada4090"
+        return 0
+    fi
+
+    local gpu_name
+    gpu_name="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -n1 | tr '[:upper:]' '[:lower:]')"
+
+    if [[ -z "$gpu_name" ]]; then
+        echo "Warning: unable to detect GPU name, defaulting GPU profile to ada4090." >&2
+        printf '%s' "ada4090"
+    elif [[ "$gpu_name" == *"blackwell"* || "$gpu_name" == *"5090"* || "$gpu_name" == *"5080"* || "$gpu_name" == *"5070"* ]]; then
+        printf '%s' "blackwell"
+    elif [[ "$gpu_name" == *"ada"* || "$gpu_name" == *"4090"* || "$gpu_name" == *"4080"* || "$gpu_name" == *"4070"* ]]; then
+        printf '%s' "ada4090"
+    else
+        echo "Warning: unrecognized GPU '$gpu_name', defaulting GPU profile to ada4090." >&2
+        printf '%s' "ada4090"
+    fi
+}
 
 ask_yn() {
     local prompt="$1"
@@ -39,6 +78,31 @@ if ! "$PYTHON_BIN" -m venv --help >/dev/null 2>&1; then
     fi
 fi
 
+GPU_PROFILE_RESOLVED="$(detect_gpu_profile)"
+case "${GPU_PROFILE_RESOLVED,,}" in
+    blackwell)
+        TORCH_VERSION="2.8.0"
+        TORCHVISION_VERSION="0.23.0"
+        TORCH_CUDA_TAG="cu128"
+        TORCH_CUDA_ARCH_LIST_VALUE="12.0"
+        ;;
+    ada4090|ada)
+        TORCH_VERSION="2.4.1"
+        TORCHVISION_VERSION="0.19.1"
+        TORCH_CUDA_TAG="cu121"
+        TORCH_CUDA_ARCH_LIST_VALUE="8.9"
+        ;;
+    *)
+        echo "Error: unsupported GPU_PROFILE '$GPU_PROFILE_RESOLVED'. Use 'auto', 'ada4090', or 'blackwell'."
+        exit 1
+        ;;
+esac
+
+export TORCH_CUDA_ARCH_LIST="$TORCH_CUDA_ARCH_LIST_VALUE"
+echo "Using GPU profile: $GPU_PROFILE_RESOLVED"
+echo "Torch stack: torch==$TORCH_VERSION torchvision==$TORCHVISION_VERSION ($TORCH_CUDA_TAG)"
+echo "TORCH_CUDA_ARCH_LIST=$TORCH_CUDA_ARCH_LIST"
+
 SKIP_BASE="${SKIP_BASE:-$(ask_yn "Do you want to skip standard env creation/install? [y/n]: " "y")}"
 INSTALL_KAOLIN="${INSTALL_KAOLIN:-$(ask_yn "Do you want to install Kaolin? [y/n]: " "n")}"
 INSTALL_DISO="${INSTALL_DISO:-$(ask_yn "Do you want to install DISO? [y/n]: " "n")}"
@@ -52,14 +116,23 @@ if [[ "$SKIP_BASE" != "y" ]]; then
     echo "Creating venv environment '$ENV_NAME'"
     "$PYTHON_BIN" -m venv "$VENV_DIR"
 
+    if ! VENV_PYTHON="$(resolve_venv_python)"; then
+        echo "Error: failed to find Python executable in $VENV_DIR/bin"
+        exit 1
+    fi
+
     echo "Upgrading pip and installing dependencies"
     "$VENV_PYTHON" -m pip install --upgrade pip setuptools wheel build
+    "$VENV_PYTHON" -m pip install \
+        "torch==$TORCH_VERSION" \
+        "torchvision==$TORCHVISION_VERSION" \
+        --index-url "https://download.pytorch.org/whl/$TORCH_CUDA_TAG"
     "$VENV_PYTHON" -m pip install -e .
     "$VENV_PYTHON" -m pip install '.[all]'
 else
     echo "Skipping base install"
-    if [ ! -x "$VENV_PYTHON" ]; then
-        echo "Error: $VENV_PYTHON not found. Run once with SKIP_BASE=n."
+    if ! VENV_PYTHON="$(resolve_venv_python)"; then
+        echo "Error: no python executable found in $VENV_DIR/bin. Run once with SKIP_BASE=n."
         exit 1
     fi
 fi

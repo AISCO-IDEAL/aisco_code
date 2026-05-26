@@ -1,0 +1,157 @@
+# latent_rollout_config.yaml
+# All settings for latent_rollout_gif_pyvista2.py
+# CLI flags (--key value) override any value set here.
+# Usage: python subprojects/postprocessing_visuals/latent_rollout_gif_pyvista2.py --config subprojects/postprocessing_visuals/latent_rollout_config.yaml
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+checkpoint: null
+out: null
+output_dir: /cluster/work/fuge/AISCO/wp9/pyvista_gif
+cse_samples_out: null
+final_png_out: null
+# ---------------------------------------------------------------------------
+# Animation / traversal
+# ---------------------------------------------------------------------------
+n_frames: 360
+resolution: 96
+radius: null
+fps: 5
+device: auto
+width: 3840
+height: 2160
+panel_width: 1280
+azim: -60.0
+elev: 25.0
+mesh_zoom: 1.4
+mode: spiral
+
+mesh_x_shift: 300  # mm
+
+show_anchors: false
+epoch_coords: [0.0, 0.0]
+
+epoch_gif: false
+
+final_hold_seconds: 0.0
+export_final_png: true
+final_png_include_composite: true
+final_frame_use_best_cse: true
+
+# ---------------------------------------------------------------------------
+# Colors / rendering
+# ---------------------------------------------------------------------------
+render_bg: "#23283E"
+transparent_background: true
+show_latent_panel: true
+show_epoch_label: true
+show_cse_overlay: true
+cse_box_alpha: 0.72
+latent_box_alpha: 0.72
+
+mesh_color: "#5DADE2" #"#F2F4F7" # Aeroshell base color
+mesh_alpha: 1.0
+
+show_assembly: true
+assembly_color: "#F39C12"
+assembly_scale: 1.0
+
+full_wheels: true
+cutoff_wheel: false
+
+show_windshield: true
+windshield_assembly_id: 1
+windshield_color: "#86A9BD"
+windshield_alpha: 0.32
+
+show_solar_selection: false
+show_solar_quality_mask: false
+solar_quality_cmap: "magma"
+solar_quality_cmap_min: 0.35
+solar_quality_cmap_max: 1.0
+solar_sun_dir: [-1.0, 0.0, 1.0]
+solar_area_budget_mm2: 4200000.0
+solar_selection_color: "#F0D33E"
+
+solar_binary_postprocess_iters: 2
+solar_contour_postprocess_iters: 4
+solar_contour_hole_fill_iters: 2
+solar_overlay_smooth_iters: 10
+
+save_cse_samples: true
+show_cse_kmh: true
+show_cse_tacho: true
+cse_tacho_max_kmh: 160
+
+cse_text_color: "#EAF2F8"
+cse_box_color: "#27314A"
+cse_metrics_device: cpu
+
+show_pressure_field: false
+gaot_version: 3
+gaot_model_id: 65531686
+gaot_v_inf: 25.0
+gaot_rho: 1.225
+gaot_mesh_resolution: 50000
+gaot_gradient_max: 0.001
+
+solar_effective_irradiance_w_m2: 250.0
+cse_mass_kg: 210.0
+cse_constant_losses_w: 20.0
+cse_rolling_friction_coefficient: 0.006
+
+
+# Clean-edge preset (no post-smoothing)
+mask_refine_subdivisions: 2
+solar_mask_refine_subdivisions: 0
+
+
+# ---------------------------------------------------------------------------
+# Spiral mode  (only active when mode: spiral)
+# ---------------------------------------------------------------------------
+spiral_turns: 3.0
+spiral_equal_distance: true
+spiral_radius_start: 0.0
+spiral_radius_end: null
+spiral_start_angle_deg: 0.0
+spiral_center: [0.0, 0.0]
+spiral_fast_forward_to: null
+
+# ---------------------------------------------------------------------------
+# Line mode  (only active when mode: line)
+# ---------------------------------------------------------------------------
+line_start: [0.0, -2.0]
+line_end: [0.0, 2.0]
+line_bounces: 1
+
+# ---------------------------------------------------------------------------
+# Cross mode  (only active when mode: cross)
+# ---------------------------------------------------------------------------
+cross_radius: null
+cross_center: [0.0, 0.0]
+cross_start_corner: "pp"
+cross_fast_forward_to: null
+
+# ---------------------------------------------------------------------------
+# Mesh extraction
+# ---------------------------------------------------------------------------
+bbox_padding: 1.25
+outer_prism_scale: 1.6
+
+# ---------------------------------------------------------------------------
+# Latent-space side panel colors
+# ---------------------------------------------------------------------------
+panel_bg: "#23283E"
+panel_axis: "#4B5573"
+panel_circle: "#6E7DA5"
+panel_anchor: "#DC5A5A"
+panel_anchor_label: "#F0A0A0"
+panel_progress: "#50C8FF"
+panel_cursor: "#50C8FF"
+panel_cursor_outline: "#FFFFFF"
+panel_axis_label: "#B4BEDC"
+panel_coord_text: "#82C3FF"
+panel_frame_text: "#8C91AA"
+panel_title: "#C8CDE6"
+panel_grid: "#36435F"

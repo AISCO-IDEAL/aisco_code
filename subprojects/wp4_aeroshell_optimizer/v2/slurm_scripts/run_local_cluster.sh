@@ -8,21 +8,20 @@ export LD_LIBRARY_PATH=/usr/lib/wsl/lib:$LD_LIBRARY_PATH
 # Instead of 'module load', we ensure our local environment is ready.
 # Make sure you have installed: python3, python3-venv, and CUDA.
 ###########################################################################
-# bash subprojects/wp4_aeroshell_optimizer/v2/slurm_scripts/run_local.sh
+# bash subprojects/wp4_aeroshell_optimizer/v2/slurm_scripts/run_local_cluster.sh
 ###########################################################################
 
 umask 0002 # ensure group write permissions for logs and models
 
 
-PROJECT_ROOT="$HOME/Documents/AISCO_code"
+PROJECT_ROOT="$HOME/AISCO_code"
 VENV_DIR="$PROJECT_ROOT/aisco_env"
 
 #------------------------------------------------------------------------------
 # 2. Print System Info (Simulating Slurm output)
 #------------------------------------------------------------------------------
 echo "=========================================="
-echo "Starting local execution on WSL: $(date)"
-echo "User: $USERNAME"
+echo "Starting local execution: $(date)"
 echo "Working directory: $PWD"
 echo "=========================================="
 

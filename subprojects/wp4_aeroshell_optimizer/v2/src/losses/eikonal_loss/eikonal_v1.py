@@ -84,6 +84,9 @@ class EikonalV1(ParentLoss):
                 grad_sdf = torch.autograd.grad(
                     outputs=sdf,
                     inputs=points,
+                    grad_outputs=torch.ones_like(sdf),
+                    create_graph=True,
+                    retain_graph=True,
                 )[0]
 
             diff = torch.norm(grad_sdf, p=2, dim=-1) - 1.0
