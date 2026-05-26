@@ -1358,7 +1358,7 @@ def export_printables(  # noqa: PLR0912, PLR0915
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir", type=Path, default=INPUT_DIR, help="Run/export folder to post-process. Default: INPUT_DIR.")
-    parser.add_argument("--out-dir", type=Path, default=OUTPUT_DIR, help="Output folder. Default: OUTPUT_DIR.")
+    parser.add_argument("--out-dir", type=Path, default=None, help="Output folder. Default: run-dir/printables_3d.")
     parser.add_argument("--assembly-mesh-dir", type=Path, default=None, help="Folder containing mesh_assembly_v4 exports.")
     parser.add_argument(
         "--assembly-slot", type=int, default=None, help="Assembly slot number to use, e.g. 0 for slot_00_mesh.ply."
