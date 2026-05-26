@@ -6571,7 +6571,6 @@ mutig-photon
 mutig-pilot
 mutig-pionier
 mutig-platte
-mutig-polaris
 mutig-puls
 mutig-quell
 mutig-radar
