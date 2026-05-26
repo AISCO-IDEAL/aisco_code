@@ -5,6 +5,25 @@
 <script type="importmap">
   {"imports": {"three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"}}
 </script>
+<style>
+    .metric-card {
+        border: 1px solid var(--theme-border, #45475a);
+        border-radius: 8px;
+        padding: 12px 10px 10px;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 4px;
+        background: color-mix(in srgb, var(--theme-panel-2, #1a1a2e) 80%, transparent);
+    }
+    .metric-card__name  { font-size: 0.68rem; font-weight: 700; color: var(--theme-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .metric-card__value { font-size: 2rem; font-weight: 700; color: var(--theme-fg, #cdd6f4); }
+    .metric-card__tacho { width: 100%; height: 140px; border-radius: 6px; display: block; }
+    .metric-card__hint  { font-size: 0.64rem; color: var(--theme-muted); line-height: 1.3; }
+    .metric-card[data-metric="speed"] { border-color: var(--theme-metric-speed-border, #66CC99); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-metric-speed-border, #66CC99) 20%, transparent 80%); }
+    .metric-card[data-metric="drag"]  { border-color: var(--theme-metric-drag-border, #66A3FF);  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-metric-drag-border, #66A3FF) 20%, transparent 80%); }
+    .metric-card[data-metric="solar"] { border-color: var(--theme-metric-solar-border, #FFD966); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-metric-solar-border, #FFD966) 20%, transparent 80%); }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -17,11 +36,11 @@
         <a href="/" class="btn">Done &#8212; Home</a>
     </div>
 
-    <!-- Two-column layout -->
-    <div style="display:grid; grid-template-columns:320px 1fr; gap:14px; flex:1; min-height:0;">
+    <!-- Output-style layout: controls | GLB viewer | metric cards | secondary vis -->
+    <div style="display:flex; gap:14px; flex:1; min-height:0;">
 
     <!-- ====== LEFT PANEL: controls + canvas ====== -->
-    <div style="display:flex; flex-direction:column; gap:10px; min-height:0; overflow:auto;">
+    <div style="width:320px; flex-shrink:0; display:flex; flex-direction:column; gap:10px; min-height:0; overflow:auto;">
 
         <!-- Pretrained selector -->
         <div class="dark-card" style="display:flex; flex-direction:column; gap:10px;">
@@ -120,19 +139,77 @@
 
     </div>
 
-    <!-- ====== RIGHT PANEL: Three.js mesh viewer ====== -->
-    <div style="display:flex; flex-direction:column; gap:8px; min-height:0;">
-        <div class="dark-card" style="flex:1; min-height:0; position:relative; overflow:hidden;" id="meshContainer">
-            <div id="meshPlaceholder" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-                  color:var(--theme-muted); font-size:0.85rem; pointer-events:none;">
-                Click a latent point to load a mesh.
+    <!-- ====== RIGHT AREA: output-style 3-column content ====== -->
+    <div style="flex:1; display:grid; grid-template-columns:2fr 1fr 2fr; gap:12px; align-items:start; min-height:0;">
+
+        <!-- GLB mesh viewer -->
+        <div style="display:flex; flex-direction:column; gap:8px;">
+            <div class="dark-card" style="min-height:380px; position:relative; overflow:hidden;" id="meshContainer">
+                <div id="meshPlaceholder" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+                      color:var(--theme-muted); font-size:0.85rem; pointer-events:none;">
+                    Click a latent point to load a mesh.
+                </div>
+            </div>
+            <div class="dark-card" id="glbControls"
+                style="display:none; gap:8px; grid-template-columns:repeat(3,minmax(0,1fr));"></div>
+        </div>
+
+        <!-- Metric cards -->
+        <div style="display:flex; flex-direction:column; gap:10px;">
+            <div class="metric-card" data-metric="speed">
+                <div class="metric-card__name">Speed (km/h)</div>
+                <canvas class="metric-card__tacho" id="latentMetricSpeedTacho" width="300" height="140"></canvas>
+                <div class="metric-card__hint">Cruising speed estimate</div>
+            </div>
+            <div class="metric-card" data-metric="drag">
+                <div class="metric-card__name">Drag (N)</div>
+                <div class="metric-card__value" id="latentMetricDrag">&#x2014;</div>
+                <div class="metric-card__hint">Force in Newtons</div>
+            </div>
+            <div class="metric-card" data-metric="solar">
+                <div class="metric-card__name">Solar (W)</div>
+                <div class="metric-card__value" id="latentMetricSolar">&#x2014;</div>
+                <div class="metric-card__hint">Output power in Watts</div>
             </div>
         </div>
-        <div class="dark-card" id="glbControls"
-            style="display:none; gap:8px; grid-template-columns:repeat(3,minmax(0,1fr));"></div>
-    </div>
 
-    </div><!-- end inner grid -->
+        <!-- Secondary visualization: CP field + Solar quality tabs -->
+        <div style="display:flex; flex-direction:column; gap:0; height:100%;">
+            <!-- Tab bar -->
+            <div id="secTabBar" style="display:flex; gap:0; border-bottom:1px solid var(--theme-border); padding:0 4px; background:var(--theme-card-bg);">
+                <button id="secTabCpBtn"
+                    onclick="secShowTab('cp')"
+                    style="padding:6px 14px; font-size:0.76rem; border:none; border-bottom:2px solid var(--theme-accent); background:transparent; color:var(--theme-text); cursor:pointer; font-weight:600;">
+                    CP Field
+                </button>
+                <button id="secTabSolarBtn"
+                    onclick="secShowTab('solar')"
+                    style="padding:6px 14px; font-size:0.76rem; border:none; border-bottom:2px solid transparent; background:transparent; color:var(--theme-muted); cursor:pointer; font-weight:400;">
+                    Solar Quality
+                </button>
+            </div>
+
+            <!-- CP Field pane -->
+            <div id="secCpPane" class="dark-card" style="flex:1; position:relative; overflow:hidden; min-height:350px; border-radius:0 0 var(--card-radius,6px) var(--card-radius,6px);">
+                <div id="secCpMeshBox" style="width:100%; height:100%;"></div>
+                <div id="secCpPlaceholder" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:8px; color:var(--theme-muted); pointer-events:none;">
+                    <span style="font-size:0.85rem;">CP Pressure Field</span>
+                    <span style="font-size:0.72rem; text-align:center; padding:0 16px; line-height:1.5;">Blue = suction &nbsp;·&nbsp; Red = stagnation<br>Loads after mesh query</span>
+                </div>
+            </div>
+
+            <!-- Solar Quality pane (hidden initially) -->
+            <div id="secSolarPane" class="dark-card" style="flex:1; position:relative; overflow:hidden; min-height:350px; display:none; border-radius:0 0 var(--card-radius,6px) var(--card-radius,6px);">
+                <div id="secSolarMeshBox" style="width:100%; height:100%;"></div>
+                <div id="secSolarPlaceholder" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:8px; color:var(--theme-muted); pointer-events:none;">
+                    <span style="font-size:0.85rem;">Solar Illumination Quality</span>
+                    <span style="font-size:0.72rem; text-align:center; padding:0 16px; line-height:1.5;">Dark = shadowed &nbsp;·&nbsp; Gold = sun-facing<br>Loads after mesh query</span>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- end right 3-column area -->
+    </div><!-- end outer flex -->
 </div><!-- end flex wrapper -->
 
 <script>
@@ -148,13 +225,126 @@
     let clickedZ = null;    // [z0, z1] of last click
     let viewer = null;
 
+    // Secondary visualization viewers (CP field + solar quality)
+    let secCpViewer = null;
+    let secSolarViewer = null;
+    let _secActiveTab = "cp";
+
+    function secShowTab(tab) {
+        _secActiveTab = tab;
+        const cpPane = document.getElementById("secCpPane");
+        const solarPane = document.getElementById("secSolarPane");
+        const cpBtn = document.getElementById("secTabCpBtn");
+        const solarBtn = document.getElementById("secTabSolarBtn");
+        if (tab === "cp") {
+            if (cpPane) cpPane.style.display = "";
+            if (solarPane) solarPane.style.display = "none";
+            if (cpBtn) { cpBtn.style.borderBottomColor = "var(--theme-accent)"; cpBtn.style.color = "var(--theme-text)"; cpBtn.style.fontWeight = "600"; }
+            if (solarBtn) { solarBtn.style.borderBottomColor = "transparent"; solarBtn.style.color = "var(--theme-muted)"; solarBtn.style.fontWeight = "400"; }
+        } else {
+            if (solarPane) solarPane.style.display = "";
+            if (cpPane) cpPane.style.display = "none";
+            if (solarBtn) { solarBtn.style.borderBottomColor = "var(--theme-accent)"; solarBtn.style.color = "var(--theme-text)"; solarBtn.style.fontWeight = "600"; }
+            if (cpBtn) { cpBtn.style.borderBottomColor = "transparent"; cpBtn.style.color = "var(--theme-muted)"; cpBtn.style.fontWeight = "400"; }
+        }
+    }
+
     // Pretrained selector state
     let selectedWheels = 3;
     let selectedSolar = true;
     let selectedDrag = true;
 
     // ---------------------------------------------------------------------------
-    // Pretrained toggle groups
+    // Latent metric DOM refs
+    // ---------------------------------------------------------------------------
+    const latentMetricSpeedTacho = document.getElementById("latentMetricSpeedTacho");
+    const latentMetricDragEl = document.getElementById("latentMetricDrag");
+    const latentMetricSolarEl = document.getElementById("latentMetricSolar");
+
+    function _metricColorLatent(cssVar, fallback) {
+        var v = getComputedStyle(document.documentElement).getPropertyValue(cssVar).trim();
+        return v || fallback;
+    }
+
+    function drawTacho(canvas, speedKmh) {
+        if (!canvas) return;
+        var maxKmh = 160;
+        var w = canvas.width, h = canvas.height;
+        var ctx2 = canvas.getContext("2d");
+        ctx2.clearRect(0, 0, w, h);
+        var cx = w / 2, cy = h * 0.50;
+        var r = Math.min(cx * 0.78, cy * 0.80);
+        var trackW = Math.max(5, r * 0.12);
+        var startA = Math.PI * 5 / 6;
+        var totalA = Math.PI * 4 / 3;
+        var endA   = Math.PI / 6;
+        ctx2.save();
+        ctx2.lineWidth = trackW;
+        ctx2.strokeStyle = "rgba(60,72,90,0.70)";
+        ctx2.lineCap = "round";
+        ctx2.beginPath();
+        ctx2.arc(cx, cy, r - trackW / 2, startA, endA, false);
+        ctx2.stroke();
+        ctx2.restore();
+        if (speedKmh != null && isFinite(speedKmh) && speedKmh > 0) {
+            var frac0 = Math.max(0, Math.min(1, speedKmh / maxKmh));
+            ctx2.save();
+            ctx2.lineWidth = trackW;
+            ctx2.globalAlpha = 0.78;
+            ctx2.strokeStyle = _metricColorLatent("--theme-metric-speed-border", "#66CC99");
+            ctx2.lineCap = "round";
+            ctx2.beginPath();
+            ctx2.arc(cx, cy, r - trackW / 2, startA, startA + totalA * frac0, false);
+            ctx2.stroke();
+            ctx2.restore();
+        }
+        var labelFont = Math.max(9, Math.round(r * 0.19));
+        var labelR = r + Math.max(12, r * 0.26);
+        ctx2.save();
+        ctx2.font = labelFont + "px monospace";
+        ctx2.textAlign = "center";
+        ctx2.textBaseline = "middle";
+        [0, 0.25, 0.5, 0.75, 1.0].forEach(function (tf) {
+            var ang = startA + totalA * tf;
+            var cosA = Math.cos(ang), sinA = Math.sin(ang);
+            ctx2.lineWidth = 1.5;
+            ctx2.strokeStyle = "rgba(130,150,185,0.65)";
+            ctx2.beginPath();
+            ctx2.moveTo(cx + (r - trackW * 1.8) * cosA, cy + (r - trackW * 1.8) * sinA);
+            ctx2.lineTo(cx + (r + 2) * cosA, cy + (r + 2) * sinA);
+            ctx2.stroke();
+            ctx2.fillStyle = "rgba(150,170,210,0.80)";
+            ctx2.fillText(String(Math.round(maxKmh * tf)), cx + labelR * cosA, cy + labelR * sinA);
+        });
+        ctx2.restore();
+        var needleA = (speedKmh != null && isFinite(speedKmh))
+            ? startA + totalA * Math.max(0, Math.min(1, speedKmh / maxKmh))
+            : startA;
+        ctx2.save();
+        ctx2.strokeStyle = "rgba(235,76,66,0.95)";
+        ctx2.lineWidth = Math.max(2, r * 0.048);
+        ctx2.lineCap = "round";
+        ctx2.beginPath();
+        ctx2.moveTo(cx, cy);
+        ctx2.lineTo(cx + r * 0.82 * Math.cos(needleA), cy + r * 0.82 * Math.sin(needleA));
+        ctx2.stroke();
+        ctx2.fillStyle = "rgba(235,76,66,0.95)";
+        ctx2.beginPath();
+        ctx2.arc(cx, cy, Math.max(3, r * 0.07), 0, Math.PI * 2);
+        ctx2.fill();
+        ctx2.restore();
+        ctx2.save();
+        ctx2.fillStyle = "rgba(195,215,245,0.92)";
+        ctx2.font = "bold " + Math.max(11, Math.round(r * 0.22)) + "px monospace";
+        ctx2.textAlign = "center";
+        ctx2.textBaseline = "top";
+        var tachoTxt = (speedKmh != null && isFinite(speedKmh)) ? Number(speedKmh).toFixed(1) + " km/h" : "n/a";
+        ctx2.fillText(tachoTxt, cx, cy + r * 0.15);
+        ctx2.restore();
+    }
+
+    // Draw empty tacho on page load
+    drawTacho(latentMetricSpeedTacho, null);
     // ---------------------------------------------------------------------------
     function bindToggleGroup(groupId, onChange) {
         const group = document.getElementById(groupId);
@@ -379,8 +569,17 @@
                     }
                     statusMsg.textContent =
                         `Mesh loaded · z=(${z0.toFixed(3)}, ${z1.toFixed(3)})`;
+                    // Update metric displays
+                    const speedMs = data.cruising_speed_ms != null ? Number(data.cruising_speed_ms) : null;
+                    drawTacho(latentMetricSpeedTacho, speedMs != null ? speedMs * 3.6 : null);
+                    if (latentMetricDragEl) latentMetricDragEl.textContent = data.drag_value != null ? Number(data.drag_value).toFixed(2) + "\u00a0N" : "\u2014";
+                    if (latentMetricSolarEl) latentMetricSolarEl.textContent = data.solar_power_w != null ? Number(data.solar_power_w).toFixed(1) + "\u00a0W" : "\u2014";
                     const glbControls = document.getElementById("glbControls");
                     glbControls.style.display = "grid";
+
+                    // Load secondary visualization meshes
+                    _loadSecViewer("cp", data.cp_mesh_url);
+                    _loadSecViewer("solar", data.solar_mesh_url);
                 },
                 (err) => {
                     statusMsg.textContent = "Mesh render error: " + (err?.message || err);
@@ -388,6 +587,26 @@
             );
         } catch (err) {
             statusMsg.textContent = "Network error: " + err.message;
+        }
+    }
+
+    async function _loadSecViewer(tab, url) {
+        if (!url) return;
+        const boxId = tab === "cp" ? "secCpMeshBox" : "secSolarMeshBox";
+        const placeholderId = tab === "cp" ? "secCpPlaceholder" : "secSolarPlaceholder";
+        const container = document.getElementById(boxId);
+        if (!container) return;
+
+        const ph = document.getElementById(placeholderId);
+        if (ph) ph.style.display = "none";
+
+        const { initMeshViewer } = await import(MESH_VIEWER_MODULE);
+        if (tab === "cp") {
+            if (!secCpViewer) secCpViewer = initMeshViewer(container, { controlMode: "turntable" });
+            secCpViewer.loadMesh(url, null, null);
+        } else {
+            if (!secSolarViewer) secSolarViewer = initMeshViewer(container, { controlMode: "turntable" });
+            secSolarViewer.loadMesh(url, null, null);
         }
     }
 

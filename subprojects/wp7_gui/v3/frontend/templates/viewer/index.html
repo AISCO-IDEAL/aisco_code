@@ -61,6 +61,13 @@
         background: color-mix(in srgb, var(--theme-panel-2) 30%, transparent 70%);
     }
 
+    .metric-card__tacho {
+        width: 100%;
+        height: 140px;
+        border-radius: 6px;
+        display: block;
+    }
+
     .metric-card__hint {
         font-size: 0.64rem;
         color: var(--theme-muted);
@@ -252,7 +259,7 @@
             <div class="output-col">
                 <div class="metric-card" data-metric="speed">
                     <div class="metric-card__name">Speed (km/h)</div>
-                    <div class="metric-card__value" id="metricCS">&#x2014;</div>
+                    <canvas class="metric-card__tacho" id="metricSpeedTacho" width="300" height="140"></canvas>
                     <canvas class="metric-card__graph" id="metricSpeedGraph" width="420" height="96"></canvas>
                     <div class="metric-card__hint">Final epoch metrics from run</div>
                 </div>
@@ -357,9 +364,10 @@
     const rightPanelSlider = document.getElementById("rightPanelSlider");
     const rightPanelPlayBtn = document.getElementById("rightPanelPlay");
 
-    const metricSpeedValue = document.getElementById("metricCS");
+    const metricSpeedValue = document.getElementById("metricCS");  // null after tacho migration; kept for compat
     const metricDragValue = document.getElementById("metricDrag");
     const metricSolarValue = document.getElementById("metricSolar");
+    const metricSpeedTacho = document.getElementById("metricSpeedTacho");
     const metricSpeedGraph = document.getElementById("metricSpeedGraph");
     const metricDragGraph = document.getElementById("metricDragGraph");
     const metricSolarGraph = document.getElementById("metricSolarGraph");
@@ -503,6 +511,84 @@
         }
     }
 
+    function drawTacho(canvas, speedKmh) {
+        if (!canvas) return;
+        var maxKmh = 160;
+        var w = canvas.width, h = canvas.height;
+        var ctx2 = canvas.getContext("2d");
+        ctx2.clearRect(0, 0, w, h);
+        var cx = w / 2;
+        var cy = h * 0.50;
+        var r = Math.min(cx * 0.78, cy * 0.80);
+        var trackW = Math.max(5, r * 0.12);
+        var startA = Math.PI * 5 / 6;  // 150° – 0 km/h
+        var totalA = Math.PI * 4 / 3;  // 240° sweep clockwise through top
+        var endA   = Math.PI / 6;       // 30°  – max km/h
+        ctx2.save();
+        ctx2.lineWidth = trackW;
+        ctx2.strokeStyle = "rgba(60,72,90,0.70)";
+        ctx2.lineCap = "round";
+        ctx2.beginPath();
+        ctx2.arc(cx, cy, r - trackW / 2, startA, endA, false);
+        ctx2.stroke();
+        ctx2.restore();
+        if (speedKmh != null && isFinite(speedKmh) && speedKmh > 0) {
+            var frac0 = Math.max(0, Math.min(1, speedKmh / maxKmh));
+            ctx2.save();
+            ctx2.lineWidth = trackW;
+            ctx2.globalAlpha = 0.78;
+            ctx2.strokeStyle = _metricColor("--theme-metric-speed-border", "#66CC99");
+            ctx2.lineCap = "round";
+            ctx2.beginPath();
+            ctx2.arc(cx, cy, r - trackW / 2, startA, startA + totalA * frac0, false);
+            ctx2.stroke();
+            ctx2.restore();
+        }
+        var labelFont = Math.max(9, Math.round(r * 0.19));
+        var labelR = r + Math.max(12, r * 0.26);
+        ctx2.save();
+        ctx2.font = labelFont + "px monospace";
+        ctx2.textAlign = "center";
+        ctx2.textBaseline = "middle";
+        [0, 0.25, 0.5, 0.75, 1.0].forEach(function (tf) {
+            var ang = startA + totalA * tf;
+            var cosA = Math.cos(ang), sinA = Math.sin(ang);
+            ctx2.lineWidth = 1.5;
+            ctx2.strokeStyle = "rgba(130,150,185,0.65)";
+            ctx2.beginPath();
+            ctx2.moveTo(cx + (r - trackW * 1.8) * cosA, cy + (r - trackW * 1.8) * sinA);
+            ctx2.lineTo(cx + (r + 2) * cosA, cy + (r + 2) * sinA);
+            ctx2.stroke();
+            ctx2.fillStyle = "rgba(150,170,210,0.80)";
+            ctx2.fillText(String(Math.round(maxKmh * tf)), cx + labelR * cosA, cy + labelR * sinA);
+        });
+        ctx2.restore();
+        var needleA = (speedKmh != null && isFinite(speedKmh))
+            ? startA + totalA * Math.max(0, Math.min(1, speedKmh / maxKmh))
+            : startA;
+        ctx2.save();
+        ctx2.strokeStyle = "rgba(235,76,66,0.95)";
+        ctx2.lineWidth = Math.max(2, r * 0.048);
+        ctx2.lineCap = "round";
+        ctx2.beginPath();
+        ctx2.moveTo(cx, cy);
+        ctx2.lineTo(cx + r * 0.82 * Math.cos(needleA), cy + r * 0.82 * Math.sin(needleA));
+        ctx2.stroke();
+        ctx2.fillStyle = "rgba(235,76,66,0.95)";
+        ctx2.beginPath();
+        ctx2.arc(cx, cy, Math.max(3, r * 0.07), 0, Math.PI * 2);
+        ctx2.fill();
+        ctx2.restore();
+        ctx2.save();
+        ctx2.fillStyle = "rgba(195,215,245,0.92)";
+        ctx2.font = "bold " + Math.max(11, Math.round(r * 0.22)) + "px monospace";
+        ctx2.textAlign = "center";
+        ctx2.textBaseline = "top";
+        var tachoTxt = (speedKmh != null && isFinite(speedKmh)) ? Number(speedKmh).toFixed(1) + " km/h" : "n/a";
+        ctx2.fillText(tachoTxt, cx, cy + r * 0.15);
+        ctx2.restore();
+    }
+
     function applyMetricDisplaysForEpoch(epochNum) {
         if (!_metricsHistory || !_metricsHistory.epoch || !_metricsHistory.epoch.length) return;
         var epochs = _metricsHistory.epoch;
@@ -516,6 +602,7 @@
         var speedMs = _metricsHistory.cruising_speed_ms ? _metricsHistory.cruising_speed_ms[bestIdx] : null;
         var speedKmh = speedMs == null ? null : Number(speedMs) * 3.6;
         if (metricSpeedValue) metricSpeedValue.textContent = _formatMetric(speedKmh, 2, "km/h");
+        drawTacho(metricSpeedTacho, speedKmh);
         if (metricDragValue) metricDragValue.textContent = _formatMetric(_metricsHistory.drag_value ? _metricsHistory.drag_value[bestIdx] : null, 2, "N");
         if (metricSolarValue) metricSolarValue.textContent = _formatMetric(_metricsHistory.solar_power_w ? _metricsHistory.solar_power_w[bestIdx] : null, 1, "W");
         var speedSeriesKmh = (_metricsHistory.cruising_speed_ms || []).map(function (v) { return v == null ? null : Number(v) * 3.6; });
@@ -533,6 +620,7 @@
         var speedMs = _metricsHistory.cruising_speed_ms ? _metricsHistory.cruising_speed_ms[idx] : null;
         var speedKmh = speedMs == null ? null : Number(speedMs) * 3.6;
         if (metricSpeedValue) metricSpeedValue.textContent = _formatMetric(speedKmh, 2, "km/h");
+        drawTacho(metricSpeedTacho, speedKmh);
         if (metricDragValue) metricDragValue.textContent = _formatMetric(_metricsHistory.drag_value ? _metricsHistory.drag_value[idx] : null, 2, "N");
         if (metricSolarValue) metricSolarValue.textContent = _formatMetric(_metricsHistory.solar_power_w ? _metricsHistory.solar_power_w[idx] : null, 1, "W");
         var speedSeriesKmh = (_metricsHistory.cruising_speed_ms || []).map(function (v) { return v == null ? null : Number(v) * 3.6; });
@@ -566,6 +654,7 @@
         var speedMs = latest ? latest.cruising_speed_ms : null;
         var speedKmh = speedMs == null ? null : Number(speedMs) * 3.6;
         if (metricSpeedValue) metricSpeedValue.textContent = _formatMetric(speedKmh, 2, "km/h");
+        drawTacho(metricSpeedTacho, speedKmh);
         if (metricDragValue) metricDragValue.textContent = _formatMetric(latest ? latest.drag_value : null, 2, "N");
         if (metricSolarValue) metricSolarValue.textContent = _formatMetric(latest ? latest.solar_power_w : null, 1, "W");
 
