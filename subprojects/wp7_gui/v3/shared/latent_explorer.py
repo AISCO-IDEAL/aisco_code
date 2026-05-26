@@ -95,6 +95,24 @@ def get_beast_storage_dir() -> Path | None:
         return None
 
 
+def get_leaderboard_csv_path(fallback: Path) -> Path:
+    """Return the canonical path for ``gui_runs_summary.csv``.
+
+    Stored under ``{beast_storage_dir}/Leaderboard/gui_runs_summary.csv`` when
+    ``beast_storage_dir`` is configured; falls back to ``fallback`` otherwise.
+
+    Args:
+        fallback: Path to use when ``beast_storage_dir`` is not configured.
+
+    Returns:
+        Resolved Path for the CSV file.
+    """
+    beast = get_beast_storage_dir()
+    if beast is None:
+        return fallback
+    return beast / "Leaderboard" / "gui_runs_summary.csv"
+
+
 def resolve_named_run_path(config: str, run: str) -> Path:
     """Return the run-root directory for the named (config, run) pair.
 

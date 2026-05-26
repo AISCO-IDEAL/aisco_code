@@ -20,6 +20,7 @@ from subprojects.wp7_gui.v3.shared.csv_metrics import CSVMetricsWriter
 from subprojects.wp7_gui.v3.shared.latent_explorer import (
     extract_mesh_glb,
     find_last_epoch_checkpoint,
+    get_leaderboard_csv_path,
     is_checkpoint_path_allowed,
     load_checkpoint_info,
     resolve_named_run_path,
@@ -30,7 +31,7 @@ from subprojects.wp7_gui.v3.shared.theme import build_template_theme_context, ge
 
 router = APIRouter(prefix="/viewer", tags=["viewer"])
 _templates = Jinja2Templates(directory=str(SETTINGS.templates_dir))
-_csv_metrics = CSVMetricsWriter(SETTINGS.logs_dir / "gui_runs_summary.csv")
+_csv_metrics = CSVMetricsWriter(get_leaderboard_csv_path(SETTINGS.logs_dir / "gui_runs_summary.csv"))
 
 _OVERRIDE_PREFIX = "gui_override_"
 
