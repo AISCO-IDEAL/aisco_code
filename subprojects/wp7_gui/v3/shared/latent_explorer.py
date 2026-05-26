@@ -32,6 +32,9 @@ import trimesh
 import yaml
 from torch import Tensor
 
+from subprojects.wp7_gui.v3.core.settings import SETTINGS
+from subprojects.wp7_gui.v3.shared.run_paths import get_storage_root
+
 # ---------------------------------------------------------------------------
 # Path constants
 # ---------------------------------------------------------------------------
@@ -98,19 +101,26 @@ def get_beast_storage_dir() -> Path | None:
 def get_leaderboard_csv_path(fallback: Path) -> Path:
     """Return the canonical path for ``gui_runs_summary.csv``.
 
-    Stored under ``{beast_storage_dir}/Leaderboard/gui_runs_summary.csv`` when
-    ``beast_storage_dir`` is configured; falls back to ``fallback`` otherwise.
+    Stored under ``{storage_root}/Leaderboard/gui_runs_summary.csv``, where
+    ``storage_root`` is resolved with the same environment-aware logic used by
+    GUI run discovery (local runtime fallbacks included).
 
     Args:
-        fallback: Path to use when ``beast_storage_dir`` is not configured.
+        fallback: Path to use when storage-root resolution fails.
 
     Returns:
         Resolved Path for the CSV file.
     """
-    beast = get_beast_storage_dir()
-    if beast is None:
+    try:
+        storage_root = get_storage_root(
+            general_config_path=_GENERAL_CONFIG_PATH,
+            default_local=SETTINGS.default_local_storage_dir,
+            default_bulk=SETTINGS.default_bulk_storage_dir,
+            repo_parent=_REPO_ROOT.parent,
+        )
+        return storage_root / "Leaderboard" / "gui_runs_summary.csv"
+    except Exception:
         return fallback
-    return beast / "Leaderboard" / "gui_runs_summary.csv"
 
 
 def resolve_named_run_path(config: str, run: str) -> Path:
