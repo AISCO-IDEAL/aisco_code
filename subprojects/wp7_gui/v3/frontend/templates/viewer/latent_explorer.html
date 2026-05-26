@@ -130,24 +130,31 @@
         <div class="ctrl-divider"></div>
 
         <!-- Path Animation -->
-        <div style="display:flex; flex-direction:column; gap:8px; min-width:160px;">
+        <div style="display:flex; flex-direction:column; gap:8px; min-width:180px;">
             <span style="font-size:0.78rem; color:var(--muted); font-weight:600;">Path Animation</span>
             <div style="font-size:0.72rem; color:var(--theme-muted); line-height:1.4;">
-                Traces a circular path through latent space and morphs shapes continuously.
+                Traces a spiral from (0,0) outward through latent space.
             </div>
             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                 <button class="btn" id="btnAnimate">&#9654; Animate</button>
                 <label style="font-size:0.78rem; color:var(--theme-muted); white-space:nowrap;">
                     Steps
-                    <input id="animSteps" type="number" value="16" min="4" max="64"
+                    <input id="animSteps" type="number" value="24" min="4" max="128"
                         style="width:46px; margin-left:4px; padding:3px 5px; font-size:0.78rem;" />
                 </label>
             </div>
-            <label style="font-size:0.78rem; color:var(--theme-muted); white-space:nowrap;">
-                Radius &#xd7;
-                <input id="animRadius" type="number" value="0.8" min="0.1" max="2.0" step="0.1"
-                    style="width:46px; margin-left:4px; padding:3px 5px; font-size:0.78rem;" />
-            </label>
+            <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                <label style="font-size:0.78rem; color:var(--theme-muted); white-space:nowrap;">
+                    Radius &#xd7;
+                    <input id="animRadius" type="number" value="0.9" min="0.1" max="2.0" step="0.1"
+                        style="width:46px; margin-left:4px; padding:3px 5px; font-size:0.78rem;" />
+                </label>
+                <label style="font-size:0.78rem; color:var(--theme-muted); white-space:nowrap;">
+                    Turns
+                    <input id="animTurns" type="number" value="2.5" min="0.5" max="8" step="0.5"
+                        style="width:46px; margin-left:4px; padding:3px 5px; font-size:0.78rem;" />
+                </label>
+            </div>
             <div id="animStatus" style="font-size:0.74rem; color:var(--theme-muted); min-height:1em;">&#8212;</div>
         </div>
 
@@ -227,6 +234,13 @@
             </div>
 
         </div>
+
+        <!-- Spiral scrubber bar — revealed after an animation run -->
+        <div id="spiralSliderRow" class="dark-card" style="display:none; gap:10px; align-items:center; margin:8px 0 4px;">
+            <span style="white-space:nowrap; font-size:0.82rem; color:var(--theme-muted);">Spiral Step</span>
+            <input type="range" id="spiralSlider" min="0" max="23" value="0" style="flex:1;">
+            <button id="spiralPlayBtn" class="btn secondary" style="font-size:0.78rem; padding:5px 14px;">&#9654;&nbsp;Play</button>
+        </div>
     </div>
 
 </div><!-- end flex wrapper -->
@@ -249,6 +263,12 @@
     let secSolarViewer = null;
     let _secActiveTab = "cp";
     let _lastSolarMeshUrl = null;
+
+    // Spiral animation state
+    let _spiralPath = [];      // [{z0, z1}, …] — precomputed points for current run
+    let _spiralStep = 0;       // current position used by the scrubber
+    let _spiralPlaying = false;
+    let _spiralPlayInterval = null;
 
     // Sync camera across all three latent viewers when the user rotates any one.
     function _syncLatentViews(vs, skip) {
@@ -447,6 +467,27 @@
         ctx.arc(cx, cy, zRadius * scale, 0, Math.PI * 2);
         ctx.stroke();
         ctx.setLineDash([]);
+
+        // Spiral path trace (shown after an animation run)
+        if (_spiralPath.length > 1) {
+            ctx.strokeStyle = "rgba(100,160,255,0.28)";
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            for (let i = 0; i < _spiralPath.length; i++) {
+                const px = cx + _spiralPath[i].z0 * scale;
+                const py = cy - _spiralPath[i].z1 * scale;
+                if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+            // Scrubber position marker
+            if (_spiralStep >= 0 && _spiralStep < _spiralPath.length) {
+                const sp = _spiralPath[_spiralStep];
+                ctx.fillStyle = "rgba(100,160,255,0.55)";
+                ctx.beginPath();
+                ctx.arc(cx + sp.z0 * scale, cy - sp.z1 * scale, 3.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
 
         // Pretrained anchor dots
         ctx.fillStyle = "#e05252";
@@ -680,49 +721,130 @@
     // Traces a closed circular path (same start & end point) and loops until stopped.
     // ---------------------------------------------------------------------------
     let _animating = false;
-    let _animAngle = 0;
     const _ANIM_RESOLUTION = 20; // lower res for smooth playback
+
+    function _paintSpiralSlider() {
+        const slider = document.getElementById("spiralSlider");
+        if (!slider) return;
+        const accent = getComputedStyle(document.documentElement).getPropertyValue("--theme-slider-accent").trim();
+        if (accent) slider.style.accentColor = accent;
+    }
+
+    function _stopSpiralPlay() {
+        if (_spiralPlayInterval) { clearInterval(_spiralPlayInterval); _spiralPlayInterval = null; }
+        _spiralPlaying = false;
+        const btn = document.getElementById("spiralPlayBtn");
+        if (btn) { btn.textContent = "\u25b6\u00a0Play"; }
+    }
+
+    function _startSpiralPlay() {
+        _stopSpiralPlay();
+        if (!_spiralPath.length) return;
+        _spiralPlaying = true;
+        const btn = document.getElementById("spiralPlayBtn");
+        if (btn) btn.textContent = "\u23f8\u00a0Pause";
+        const startIdx = _spiralStep;
+        _spiralPlayInterval = setInterval(async () => {
+            _spiralStep = (_spiralStep + 1) % _spiralPath.length;
+            const slider = document.getElementById("spiralSlider");
+            if (slider) slider.value = String(_spiralStep);
+            _paintSpiralSlider();
+            const { z0, z1 } = _spiralPath[_spiralStep];
+            clickedZ = [z0, z1];
+            drawCanvas(null);
+            document.getElementById("animStatus").textContent =
+                `Play ${_spiralStep + 1}\u202f/\u202f${_spiralPath.length} \u00b7 z=(${z0.toFixed(2)},\u202f${z1.toFixed(2)})`;
+            if (resolvedPath) await queryMesh(z0, z1, _ANIM_RESOLUTION);
+            // Stop when we wrap back to where we started
+            if (_spiralStep === startIdx) _stopSpiralPlay();
+        }, 600);
+    }
+
+    // Build an Archimedean spiral from (0,0) out to zRadius*rFactor over `steps` samples.
+    function _buildSpiralPath(steps, rFactor, turns) {
+        const rMax = zRadius * rFactor;
+        const path = [];
+        for (let i = 0; i < steps; i++) {
+            const t = steps > 1 ? i / (steps - 1) : 0;
+            const r = rMax * t;
+            const angle = t * turns * 2 * Math.PI;
+            path.push({ z0: Math.cos(angle) * r, z1: Math.sin(angle) * r });
+        }
+        return path;
+    }
 
     async function runAnimationLoop() {
         const btn = document.getElementById("btnAnimate");
         const animStatusEl = document.getElementById("animStatus");
-        while (_animating) {
-            const steps = Math.max(4, parseInt(document.getElementById("animSteps").value, 10) || 16);
-            const rFactor = Math.max(0.05, parseFloat(document.getElementById("animRadius").value) || 0.8);
-            const r = zRadius * rFactor;
-            const z0 = Math.cos(_animAngle) * r;
-            const z1 = Math.sin(_animAngle) * r;
-            const stepNum = Math.round(_animAngle / (2 * Math.PI / steps)) % steps + 1;
+        const sliderRow = document.getElementById("spiralSliderRow");
+        const slider = document.getElementById("spiralSlider");
 
+        const steps   = Math.max(4, parseInt(document.getElementById("animSteps").value, 10) || 24);
+        const rFactor = Math.max(0.05, parseFloat(document.getElementById("animRadius").value) || 0.9);
+        const turns   = Math.max(0.5, parseFloat(document.getElementById("animTurns").value) || 2.5);
+
+        _spiralPath = _buildSpiralPath(steps, rFactor, turns);
+        _spiralStep = 0;
+        if (sliderRow) sliderRow.style.display = "none";
+
+        for (let i = 0; i < _spiralPath.length && _animating; i++) {
+            _spiralStep = i;
+            const { z0, z1 } = _spiralPath[i];
             clickedZ = [z0, z1];
             drawCanvas(null);
-            animStatusEl.textContent = `Step ${stepNum} / ${steps} \u00b7 z\u2080=(${z0.toFixed(2)},\u202f${z1.toFixed(2)})`;
-
+            animStatusEl.textContent = `Step ${i + 1}\u202f/\u202f${steps} \u00b7 z=(${z0.toFixed(2)},\u202f${z1.toFixed(2)})`;
             try { await queryMesh(z0, z1, _ANIM_RESOLUTION); } catch (_) { /* continue on error */ }
             if (!_animating) break;
-
-            _animAngle = (_animAngle + (2 * Math.PI / steps)) % (2 * Math.PI);
-            // Brief pause so the rendered mesh is visible before requesting the next one.
             await new Promise(resolve => setTimeout(resolve, 250));
         }
-        if (btn) { btn.textContent = "\u25b6 Animate"; btn.className = "btn"; }
-        animStatusEl.textContent = "Stopped.";
+
+        const completed = _animating; // still true → loop ran to end without Stop
         _animating = false;
+        if (btn) { btn.textContent = "\u25b6 Animate"; btn.className = "btn"; }
+        animStatusEl.textContent = completed ? "Done \u2014 scrub below." : "Stopped.";
+
+        // Show scrubber after any run that produced points
+        if (_spiralPath.length > 1 && sliderRow && slider) {
+            slider.min = "0";
+            slider.max = String(_spiralPath.length - 1);
+            slider.value = String(_spiralStep);
+            sliderRow.style.display = "flex";
+            _paintSpiralSlider();
+            drawCanvas(null);
+        }
     }
 
     document.getElementById("btnAnimate").addEventListener("click", () => {
         if (_animating) {
-            _animating = false; // loop checks this and exits
+            _animating = false;
         } else {
             if (!resolvedPath) { statusMsg.textContent = "Load a checkpoint first."; return; }
+            _stopSpiralPlay();
             _animating = true;
-            _animAngle = 0; // always start from angle 0 so path is closed
             const btn = document.getElementById("btnAnimate");
             btn.textContent = "\u23f9 Stop";
             btn.className = "btn danger";
             document.getElementById("animStatus").textContent = "Starting\u2026";
             runAnimationLoop();
         }
+    });
+
+    document.getElementById("spiralSlider").addEventListener("input", async function () {
+        _stopSpiralPlay();
+        const idx = parseInt(this.value, 10);
+        if (!_spiralPath.length || idx < 0 || idx >= _spiralPath.length) return;
+        _spiralStep = idx;
+        _paintSpiralSlider();
+        const { z0, z1 } = _spiralPath[idx];
+        clickedZ = [z0, z1];
+        drawCanvas(null);
+        document.getElementById("animStatus").textContent =
+            `Scrub ${idx + 1}\u202f/\u202f${_spiralPath.length} \u00b7 z=(${z0.toFixed(2)},\u202f${z1.toFixed(2)})`;
+        if (resolvedPath) await queryMesh(z0, z1, _ANIM_RESOLUTION);
+    });
+
+    document.getElementById("spiralPlayBtn").addEventListener("click", () => {
+        if (_spiralPlaying) { _stopSpiralPlay(); } else { _startSpiralPlay(); }
     });
 
   // M5: Back-to-run passthrough
