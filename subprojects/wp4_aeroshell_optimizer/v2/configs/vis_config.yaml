@@ -380,7 +380,7 @@ latent_optimisation:
   # epochs. Each call writes to circle_survey/epoch_XXXXX/ so finalize() generates
   # one GIF per survey snapshot.
   vis_latent_circle_survey:
-    enabled: true
+    enabled: false
     cadence: 100                    # run survey every N optimisation epochs (0 = only after pretraining)
     n_circle_samples: 90          # number of evenly-spaced angles on the z-circle
     z_radius: 2.0                 # must match z_radius used in pretraining

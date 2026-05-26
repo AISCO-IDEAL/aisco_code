@@ -96,6 +96,14 @@
       "uses_diversity": true,
       "has_optimise": false
     },
+    "FiLMWIREV5": {
+      "model_class": "FiLMWIREV5",
+      "parent_class": "ConcatBaseModel",
+      "file_path": "subprojects/wp4_aeroshell_optimizer/v2/src/models/FiLM_WIRE_v5.py",
+      "config_file": "models/FiLM_WIRE_v5.yaml",
+      "uses_diversity": true,
+      "has_optimise": false
+    },
     "BasicMLP": {
       "model_class": "BasicMLP",
       "parent_class": "BaseModel",

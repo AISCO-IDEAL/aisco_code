@@ -556,17 +556,34 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
         if uses_diversity:  # double checks for diversity again, but serves as potential control split once we develop further
             if latent_space and Z_pretrained is not None:
-                # Use actual checkpoint N — correct even when use_specific_pretraining overrides latent_population length.
-                population_size = Z_pretrained.shape[0]
+                # `pretrain_population_size: true` (default, back-compat) → use checkpoint N as-is.
+                # `pretrain_population_size: false` → take the first `population_size` codes from the
+                # checkpoint (simple slice; sampling/layout knobs `z_init_mode`/`r_init_scale` are NOT
+                # wired — see training_config.yaml comment).
+                if ginn_config.get("pretrain_population_size", True):
+                    population_size = Z_pretrained.shape[0]
+                    initial_Z = Z_pretrained
+                else:
+                    requested = int(ginn_config["population_size"])
+                    if requested > Z_pretrained.shape[0]:
+                        raise ValueError(
+                            f"population_size={requested} exceeds Z_pretrained.shape[0]={Z_pretrained.shape[0]}; "
+                            "cannot upsample a pretrained latent population."
+                        )
+                    population_size = requested
+                    initial_Z = Z_pretrained[:population_size]
             elif latent_space:
                 population_size = len(latent_config["latent_population"])
+                initial_Z = None
             else:
                 population_size = ginn_config.get("population_size", 4)
+                initial_Z = None
             z_dim = model.get_model_info_dict()["z_dim"]
         else:
             population_size = 1
             latent_vec = model.get_latent_vector()
             z_dim = int(latent_vec.numel()) if latent_vec is not None else 0
+            initial_Z = None
 
         trainer = DiversityTrainer(
             model=model,
@@ -583,10 +600,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             diversity_num_points=ginn_config.get("diversity_num_points", 2048),
             diversity_norm_order=ginn_config.get("diversity_norm_order", 2),
             diversity_neighbor_agg_fn=ginn_config.get("diversity_neighbor_agg_fn", "min"),
+            diversity_leinster_temp=ginn_config.get("diversity_leinster_temp", 1.0),
+            diversity_leinster_q=ginn_config.get("diversity_leinster_q", 2.0),
             force_z0_to_origin=ginn_config.get("force_z0_to_origin", True),
             z_resample_cadence=ginn_config.get("z_resample_cadence", 0),
             z_resample_mode=ginn_config.get("z_resample_mode", "on_circle"),
-            initial_Z=Z_pretrained,
+            initial_Z=initial_Z if initial_Z is not None else Z_pretrained,
             Z_pretrained=Z_pretrained,
             z_resample_start_epoch=ginn_config.get("z_resample_start_epoch", 0),
             z_resample_stop_epoch=ginn_config.get("z_resample_stop_epoch", -1),

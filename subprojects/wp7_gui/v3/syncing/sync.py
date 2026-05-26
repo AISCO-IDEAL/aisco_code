@@ -102,7 +102,7 @@ class DriveSync:
         ).execute()
         return f"Uploaded: {path}"
 
-    def collect_transfers(self, local_folder, parent_id, uploads, downloads): #noqa: PLR0912
+    def collect_transfers(self, local_folder, parent_id, uploads, downloads):  # noqa: PLR0912
         files, folders, skipped = {}, {}, set()
         for path in local_folder.iterdir():
             if path.is_symlink() and path.is_dir():
