@@ -476,14 +476,9 @@
     progressHost.style.display = visible ? "block" : "none";
   }
 
-  // ── M7: beforeunload guard ─────────────────────────────────────────────────
-  function _runUnloadGuard(e) {
-    if (_suppressBeforeUnloadOnce) {
-      _suppressBeforeUnloadOnce = false;
-      return;
-    }
-    e.preventDefault();
-    return (e.returnValue = "A WP4 run is in progress. Are you sure you want to leave?");
+  // ── M7: beforeunload guard (disabled) ─────────────────────────────────────
+  function _runUnloadGuard(_e) {
+    _suppressBeforeUnloadOnce = false;
   }
 
   function _nextOutputHref() {
