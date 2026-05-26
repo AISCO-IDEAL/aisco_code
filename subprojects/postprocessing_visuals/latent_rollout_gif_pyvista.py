@@ -2414,9 +2414,7 @@ def _build_trajectory(  # noqa: PLR0912, PLR0915  # supports 4 traversal modes; 
             "np": [corner_np, center_pt, corner_pn, center_pt, corner_nn, center_pt, corner_pp, center_pt, corner_np],
         }
         if cross_start_corner not in corner_paths:
-            raise ValueError(
-                f"Unknown cross_start_corner '{cross_start_corner}'. Expected one of: pp | nn | pn | np"
-            )
+            raise ValueError(f"Unknown cross_start_corner '{cross_start_corner}'. Expected one of: pp | nn | pn | np")
         # Visit all 4 diagonal corners (±r, ±r) through the origin, forming an X.
         # All 8 segments have equal length r√2, so frames are distributed evenly.
         waypoints = corner_paths[cross_start_corner]
@@ -3336,7 +3334,11 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
                 cone_face_mask=None,
             )
 
-        if (not show_pressure_field_now) and (not show_solar_quality_mask_now) and (args.show_windshield or args.show_solar_selection):
+        if (
+            (not show_pressure_field_now)
+            and (not show_solar_quality_mask_now)
+            and (args.show_windshield or args.show_solar_selection)
+        ):
             refine_subdiv = args.mask_refine_subdivisions
             if args.show_solar_selection:
                 refine_subdiv = max(refine_subdiv, args.solar_mask_refine_subdivisions)
@@ -3344,7 +3346,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915  # CLI entrypoint; high statement 
             cone_face_mask = _compute_windshield_face_mask(
                 mask_mesh, args.windshield_assembly_id, device, precomputed_cone=_cached_cone_mesh
             )
-        if (not show_pressure_field_now) and (not show_solar_quality_mask_now) and args.show_windshield and cone_face_mask is not None:
+        if (
+            (not show_pressure_field_now)
+            and (not show_solar_quality_mask_now)
+            and args.show_windshield
+            and cone_face_mask is not None
+        ):
             cone_np = cone_face_mask.detach().cpu().numpy()
             cutout_mesh = _cutout_faces_from_mesh(mask_mesh, cone_np)
             if cutout_mesh is not None:
