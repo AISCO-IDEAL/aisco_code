@@ -6,6 +6,10 @@ import asyncio
 import csv
 import json
 import logging
+import os
+import shutil
+import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -32,6 +36,15 @@ from subprojects.wp7_gui.v3.shared.run_paths import (
     read_cfg_session,
 )
 from subprojects.wp7_gui.v3.shared.theme import build_template_theme_context
+
+_wandb: Any | None
+try:
+    import wandb as _wandb  # type: ignore[import-not-found]
+except Exception as exc:
+    _wandb = None
+    _WANDB_IMPORT_ERROR: Exception | None = exc
+else:
+    _WANDB_IMPORT_ERROR = None
 
 router = APIRouter(prefix="/launcher", tags=["launcher"])
 _templates = Jinja2Templates(directory=str(SETTINGS.templates_dir))
@@ -470,6 +483,511 @@ def run_artifacts() -> dict[str, Any]:
             "message": "No run directory found yet.",
         }
     return {**list_artifacts(run_dir, storage_root), "message": "Artifacts loaded"}
+
+
+def _run_has_printable_source_mesh(run_dir: Path) -> bool:
+    """Return True when export_printables can find a latest source mesh."""
+    roots = (run_dir / "mesh_shape", run_dir / "meshes", run_dir)
+    for root in roots:
+        if not root.exists():
+            continue
+        iterator = root.glob("*") if root == run_dir else root.rglob("*")
+        for p in iterator:
+            if not p.is_file() or "printables_3d" in str(p):
+                continue
+            if p.suffix.lower() not in {".ply", ".glb", ".stl", ".obj"}:
+                continue
+            name = p.name.lower()
+            if "adaptive_mesh" in name or root.name == "mesh_shape":
+                return True
+    return False
+
+
+def _run_has_printable_assembly_mesh(run_dir: Path) -> bool:
+    """Return True when export_printables can find an assembly mesh."""
+    assembly_dir = run_dir / "mesh_assembly_v4"
+    if not assembly_dir.exists():
+        return False
+    for pattern in ("epoch_*.ply", "epoch_*.glb", "slot_*_mesh.ply", "slot_*_mesh.glb"):
+        for p in assembly_dir.rglob(pattern):
+            if p.is_file() and "printables_3d" not in str(p) and "with_vision_cone" not in p.name.lower():
+                return True
+    return False
+
+
+def _find_latest_printable_run_dir(storage_root: Path, preferred_cfg_session: str | None) -> Path | None:
+    """Pick the newest run with enough mesh artifacts for print export."""
+    run_dirs = collect_run_dirs(storage_root)
+    if not run_dirs:
+        return None
+
+    preferred: list[Path] = []
+    if preferred_cfg_session:
+        preferred = [p for p in run_dirs if read_cfg_session(p) == preferred_cfg_session]
+    preferred_set = set(preferred)
+    search_dirs = sorted(preferred, key=lambda p: p.stat().st_mtime, reverse=True) + sorted(
+        (p for p in run_dirs if p not in preferred_set), key=lambda p: p.stat().st_mtime, reverse=True
+    )
+
+    for run_dir in search_dirs:
+        if _run_has_printable_source_mesh(run_dir) and _run_has_printable_assembly_mesh(run_dir):
+            return run_dir
+    return None
+
+
+def _load_wandb_target(session_dir: Path | None, run_dir: Path) -> dict[str, str] | None:
+    """Resolve W&B entity/project from the GUI session or default config."""
+    config_paths: list[Path] = []
+    if session_dir is not None:
+        config_paths.append(session_dir / "general_config.yaml")
+    tag = read_cfg_session(run_dir)
+    if tag:
+        tagged_session = SETTINGS.config_overrides_root / tag
+        config_paths.append(tagged_session / "general_config.yaml")
+    config_paths.append(SETTINGS.general_config_path)
+
+    for config_path in config_paths:
+        if not config_path.exists():
+            continue
+        try:
+            with config_path.open(encoding="utf-8") as fh:
+                cfg = yaml.safe_load(fh) or {}
+        except (OSError, yaml.YAMLError):
+            continue
+        wandb_cfg = cfg.get("wandb_general", {}) or {}
+        project = str(wandb_cfg.get("project_name") or "").strip()
+        entity = str(wandb_cfg.get("entity_name") or "").strip()
+        if project:
+            result = {"project": project}
+            if entity:
+                result["entity"] = entity
+            return result
+    return None
+
+
+def _is_wsl() -> bool:
+    """Return True when the GUI is running in WSL on a Windows host."""
+    if os.name == "nt":
+        return False
+    if os.environ.get("WSL_DISTRO_NAME") or os.environ.get("WSL_INTEROP"):
+        return True
+    try:
+        return "microsoft" in Path("/proc/version").read_text(encoding="utf-8").lower()
+    except OSError:
+        return False
+
+
+def _windows_drive_root(letter: str) -> Path:
+    """Map a Windows drive letter to the usable root path for this process."""
+    letter = letter.strip().rstrip(":")
+    if os.name == "nt":
+        return Path(f"{letter.upper()}:/")
+    return Path("/mnt") / letter.lower()
+
+
+def _windows_volume_drive_letters_by_label(label: str) -> list[str]:
+    """Resolve Windows drive letters that match a filesystem label."""
+    if os.name != "nt" and not _is_wsl():
+        return []
+
+    drive_letters: list[str] = []
+    commands = [
+        [
+            "powershell.exe" if os.name != "nt" else "powershell",
+            "-NoProfile",
+            "-Command",
+            f"(Get-Volume -FileSystemLabel '{label}' -ErrorAction SilentlyContinue).DriveLetter",
+        ],
+        ["wmic", "logicaldisk", "where", f"VolumeName='{label}'", "get", "DeviceID", "/value"],
+    ]
+    for cmd in commands:
+        try:
+            completed = subprocess.run(cmd, capture_output=True, text=True, timeout=3, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if completed.returncode != 0:
+            continue
+        for raw_line in completed.stdout.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line.startswith("DeviceID="):
+                line = line.split("=", 1)[1].strip()
+            line = line.rstrip(":")
+            if len(line) == 1 and line.isalpha():
+                drive_letters.append(line.upper())
+    return drive_letters
+
+
+def _windows_volume_roots_by_label(label: str) -> list[Path]:
+    """Resolve Windows drive roots that match a filesystem label."""
+    roots: list[Path] = []
+    for letter in _windows_volume_drive_letters_by_label(label):
+        roots.append(_windows_drive_root(letter))
+    return roots
+
+
+def _mount_roots_with_label(label: str) -> list[Path]:
+    """Return Linux/macOS removable-media mount paths matching label."""
+    roots: list[Path] = [
+        Path("/media") / label,
+        Path("/mnt") / label,
+        Path("/Volumes") / label,
+    ]
+
+    for parent in (Path("/media"), Path("/run/media")):
+        try:
+            roots.extend(parent.glob(f"*/{label}"))
+        except OSError:
+            continue
+
+    return roots
+
+
+def _candidate_sd_roots() -> list[Path]:
+    """Return likely mount points for the AISCO backup microSD card."""
+    label = "AISCO_BCKUP"
+    roots: list[Path] = []
+
+    for env_name in ("AISCO_BCKUP_DIR", "AISCO_SD_DIR"):
+        explicit = os.environ.get(env_name)
+        if explicit:
+            roots.append(Path(explicit).expanduser())
+
+    explicit = os.environ.get("AISCO_BCKUP_DRIVE")
+    explicit_drive = explicit.strip().rstrip(":") if explicit else ""
+    if len(explicit_drive) == 1 and explicit_drive.isalpha():
+        roots.append(_windows_drive_root(explicit_drive))
+
+    roots.extend(_windows_volume_roots_by_label(label))
+    roots.extend(_mount_roots_with_label(label))
+
+    # Fallback for Windows setups that mount the card under a folder with this name.
+    if os.name == "nt":
+        roots.extend(Path(f"{letter}:/") / label for letter in "DEFGHIJKLMNOPQRSTUVWXYZ")
+
+    seen: set[str] = set()
+    unique_roots: list[Path] = []
+    for root in roots:
+        key = str(root)
+        if key not in seen:
+            seen.add(key)
+            unique_roots.append(root)
+    return unique_roots
+
+
+def _find_sd_backup_root() -> Path | None:
+    """Find the mounted AISCO_BCKUP microSD card without assuming a host path."""
+    for root in _candidate_sd_roots():
+        try:
+            if root.exists() and root.is_dir():
+                return root
+        except OSError:
+            continue
+    return None
+
+
+def _windows_sd_drive_root() -> str | None:
+    """Return the Windows drive root for the backup card, e.g. D:\\."""
+    for letter in _windows_volume_drive_letters_by_label("AISCO_BCKUP"):
+        return f"{letter}:\\"
+    return None
+
+
+def _powershell_quote(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _wsl_windows_path_candidates(path: Path) -> list[str]:
+    """Return Windows-visible paths for a WSL file."""
+    try:
+        completed = subprocess.run(
+            ["wslpath", "-w", str(path)],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if completed.returncode != 0:
+        return []
+
+    converted = completed.stdout.strip()
+    if not converted:
+        return []
+
+    candidates = [converted]
+    prefix = "\\\\wsl.localhost\\"
+    if converted.lower().startswith(prefix):
+        candidates.insert(0, "\\\\wsl$\\" + converted[len(prefix) :])
+
+    seen: set[str] = set()
+    unique: list[str] = []
+    for candidate in candidates:
+        key = candidate.lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(candidate)
+    return unique
+
+
+def _copy_printables_to_windows_sd(
+    run_dir: Path,
+    files: list[Path],
+) -> dict[str, Any]:
+    """Copy printable files from WSL to a Windows-mounted AISCO_BCKUP card."""
+    drive_root = _windows_sd_drive_root()
+    if not drive_root:
+        return {"enabled": True, "ok": False, "message": "sd card not found"}
+
+    dest_dir = f"{drive_root}AISCO_print_exports\\{run_dir.name}"
+    copied: list[str] = []
+    for file_path in files:
+        last_error = ""
+        for source_path in _wsl_windows_path_candidates(file_path):
+            dest_file = f"{dest_dir}\\{file_path.name}"
+            script = (
+                f"$dest = {_powershell_quote(dest_dir)}; "
+                "New-Item -ItemType Directory -Force -Path $dest | Out-Null; "
+                f"Copy-Item -LiteralPath {_powershell_quote(source_path)} "
+                f"-Destination {_powershell_quote(dest_file)} -Force"
+            )
+            try:
+                completed = subprocess.run(
+                    ["powershell.exe", "-NoProfile", "-Command", script],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                last_error = str(exc)
+                continue
+            if completed.returncode == 0:
+                copied.append(dest_file)
+                last_error = ""
+                break
+            last_error = (completed.stderr or completed.stdout or "").strip()
+        if last_error:
+            return {"enabled": True, "ok": False, "path": dest_dir, "message": last_error}
+    return {"enabled": True, "ok": True, "path": dest_dir, "files": copied, "method": "powershell"}
+
+
+def _copy_printables_to_sd(
+    run_dir: Path,
+    stl_path: str | None,
+    three_mf_path: str | None,
+    report_path: Path,
+) -> dict[str, Any]:
+    """Best-effort copy of printable files to the AISCO_BCKUP microSD card."""
+    files = _printable_export_files(stl_path, three_mf_path, report_path)
+    if not files:
+        return {"enabled": False, "ok": False, "message": "no printable files to copy"}
+
+    sd_root = _find_sd_backup_root()
+    if sd_root is None:
+        if _is_wsl():
+            return _copy_printables_to_windows_sd(run_dir, files)
+        return {"enabled": True, "ok": False, "message": "sd card not found"}
+
+    dest_dir = sd_root / "AISCO_print_exports" / run_dir.name
+    try:
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        copied: list[str] = []
+        for file_path in files:
+            dest_path = dest_dir / file_path.name
+            shutil.copy2(file_path, dest_path)
+            copied.append(str(dest_path))
+        return {"enabled": True, "ok": True, "path": str(dest_dir), "files": copied}
+    except OSError as exc:
+        return {"enabled": True, "ok": False, "path": str(dest_dir), "message": str(exc)}
+
+
+def _printable_export_files(stl_path: str | None, three_mf_path: str | None, report_path: Path) -> list[Path]:
+    files = [Path(p) for p in (stl_path, three_mf_path) if p]
+    if report_path.exists():
+        files.append(report_path)
+    return [p for p in files if p.is_file()]
+
+
+def _load_printable_output_paths(run_dir: Path) -> tuple[str | None, str | None, Path]:
+    """Load printable STL/3MF paths from print_report.json, with a filesystem fallback."""
+    out_dir = run_dir / "printables_3d"
+    report_path = out_dir / "print_report.json"
+    outputs: dict[str, Any] = {}
+    if report_path.exists():
+        try:
+            with report_path.open(encoding="utf-8") as fh:
+                outputs = (json.load(fh) or {}).get("outputs", {})
+        except (OSError, json.JSONDecodeError):
+            outputs = {}
+
+    stl_path = outputs.get("rollout_unmodified_mesh_flat_bottom")
+    three_mf_path = outputs.get("rollout_unmodified_flat_bottom_3mf")
+
+    if not stl_path:
+        stl_matches = sorted(out_dir.glob("*flat_bottom*.stl"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if stl_matches:
+            stl_path = str(stl_matches[0])
+    if not three_mf_path:
+        three_mf_matches = sorted(out_dir.glob("*flat_bottom*.3mf"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if three_mf_matches:
+            three_mf_path = str(three_mf_matches[0])
+
+    return stl_path, three_mf_path, report_path
+
+
+def _upload_printables_to_wandb(
+    run_dir: Path,
+    out_dir: Path,
+    stl_path: str | None,
+    three_mf_path: str | None,
+    report_path: Path,
+    session_dir: Path | None,
+) -> dict[str, Any]:
+    """Best-effort W&B artifact upload for exported printable files."""
+    files = _printable_export_files(stl_path, three_mf_path, report_path)
+    if not files:
+        return {"enabled": False, "ok": False, "message": "no printable files to upload"}
+
+    target = _load_wandb_target(session_dir, run_dir)
+    if target is None:
+        return {"enabled": False, "ok": False, "message": "wandb project not configured"}
+
+    if _wandb is None:
+        return {"enabled": True, "ok": False, "message": f"wandb unavailable: {_WANDB_IMPORT_ERROR}"}
+
+    wandb_dir = Path(os.environ.get("WANDB_DIR", str(SETTINGS.cache_dir / "wandb")))
+    try:
+        wandb_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return {"enabled": True, "ok": False, "message": f"wandb dir unavailable: {exc}"}
+
+    os.environ.setdefault("WANDB_INIT_TIMEOUT", "20")
+    os.environ.setdefault("WANDB__SERVICE_WAIT", "20")
+
+    artifact_name = f"print_mesh_{run_dir.name}".replace("/", "_").replace(" ", "_")
+    wandb_run = None
+    try:
+        wandb_run = _wandb.init(
+            project=target["project"],
+            entity=target.get("entity"),
+            name=f"{run_dir.name}-print-export",
+            job_type="print-export",
+            dir=str(wandb_dir),
+            reinit=True,
+            settings=_wandb.Settings(init_timeout=20),
+        )
+        artifact = _wandb.Artifact(
+            name=artifact_name,
+            type="printable_mesh",
+            metadata={"run_dir": str(run_dir), "out_dir": str(out_dir)},
+        )
+        for file_path in files:
+            artifact.add_file(str(file_path), name=file_path.name)
+        wandb_run.log_artifact(artifact, aliases=["latest", run_dir.name])
+        return {
+            "enabled": True,
+            "ok": True,
+            "project": target["project"],
+            "entity": target.get("entity"),
+            "artifact": artifact_name,
+            "files": [str(p) for p in files],
+        }
+    except Exception as exc:
+        return {"enabled": True, "ok": False, "message": str(exc)}
+    finally:
+        try:
+            if wandb_run is not None:
+                wandb_run.finish()
+        except Exception:
+            pass
+
+
+@router.post("/api/run/print-mesh")
+def run_print_mesh() -> JSONResponse:
+    """Export rollout-live printables for the latest run mesh currently available."""
+    active_cfg_folder = _runtime_state["active_cfg_folder"].strip() if _runtime_state["active_cfg_folder"] else ""
+    session_dir = Path(active_cfg_folder) if active_cfg_folder else None
+    storage_root = get_storage_root_for_session(session_dir)
+    active_cfg_session = Path(active_cfg_folder).name if active_cfg_folder else None
+    run_dir = _find_latest_printable_run_dir(storage_root, active_cfg_session)
+    if run_dir is None:
+        return JSONResponse({"status": "no_meshes", "message": "No meshes found."})
+
+    export_script = SETTINGS.repo_root / "wp2_assembler" / "version4" / "3D_printing_helpers" / "export_printables.py"
+    if not export_script.exists():
+        raise HTTPException(status_code=500, detail={"message": f"Export script not found: {export_script}"})
+
+    cmd = [sys.executable, str(export_script), "--run-dir", str(run_dir), "--rollout-only"]
+    try:
+        completed = subprocess.run(
+            cmd,
+            cwd=str(SETTINGS.repo_root.parent),
+            capture_output=True,
+            text=True,
+            timeout=900,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(status_code=504, detail={"message": "Print mesh export timed out.", "run_dir": str(run_dir)}) from exc
+
+    combined_output = f"{completed.stdout}\n{completed.stderr}"
+    if completed.returncode != 0 and (
+        "No latest mesh file found" in combined_output or "No assembly mesh found" in combined_output
+    ):
+        return JSONResponse(
+            {
+                "status": "no_meshes",
+                "message": "No meshes found.",
+                "run_dir": str(run_dir),
+                "stdout": completed.stdout[-4000:],
+                "stderr": completed.stderr[-4000:],
+            }
+        )
+
+    if completed.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "Print mesh export failed.",
+                "run_dir": str(run_dir),
+                "stdout": completed.stdout[-4000:],
+                "stderr": completed.stderr[-4000:],
+            },
+        )
+
+    stl_path, three_mf_path, report_path = _load_printable_output_paths(run_dir)
+    out_dir = run_dir / "printables_3d"
+    sd_export = _copy_printables_to_sd(
+        run_dir=run_dir,
+        stl_path=stl_path,
+        three_mf_path=three_mf_path,
+        report_path=report_path,
+    )
+    wandb_upload = _upload_printables_to_wandb(
+        run_dir=run_dir,
+        out_dir=out_dir,
+        stl_path=stl_path,
+        three_mf_path=three_mf_path,
+        report_path=report_path,
+        session_dir=session_dir,
+    )
+
+    return JSONResponse(
+        {
+            "status": "ok",
+            "run_dir": str(run_dir),
+            "out_dir": str(out_dir),
+            "stl_path": stl_path,
+            "three_mf_path": three_mf_path,
+            "report_path": str(report_path),
+            "sd_export": sd_export,
+            "wandb_upload": wandb_upload,
+            "stdout": completed.stdout[-4000:],
+        }
+    )
 
 
 # ---------------------------------------------------------------------------

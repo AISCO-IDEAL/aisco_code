@@ -213,7 +213,14 @@
         <span id="runNameDisplay">&#x2014;</span>
         {% endif %}
 
-        <a href="/launcher/leaderboard?pipeline={{ pipeline }}" id="leaderboardBtn" class="btn" style="margin-left:auto;">Next &rarr;</a>
+        {% if pipeline == 'live' %}
+        <button id="printMeshBtn" class="btn secondary">Print Mesh</button>
+        <span id="printMeshStatus" style="max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.72rem; color:var(--theme-muted);"></span>
+        {% endif %}
+
+        <a href="/launcher/leaderboard?pipeline={{ pipeline }}" id="leaderboardBtn" class="btn">Next &rarr;</a>
+
+
     </div>
 
     <!-- ── MAIN 3-COLUMN CONTENT ──────────────────────────────────────────── -->
@@ -361,6 +368,8 @@
     const rightPanelPlayBtn = document.getElementById("rightPanelPlay");
     const includeGradientsToggle = document.getElementById("includeGradientsToggle");
     const leaderboardBtn = document.getElementById("leaderboardBtn");
+    const printMeshBtn = document.getElementById("printMeshBtn");
+    const printMeshStatus = document.getElementById("printMeshStatus");
     const statusLabel = document.getElementById("statusLabel");
     const metricSpeedValue = document.getElementById("metricCS");  // null after tacho migration; kept for compat
     const metricDragValue = document.getElementById("metricDrag");
@@ -401,6 +410,7 @@
         localStorage.getItem(INCLUDE_GRADIENTS_KEY) === "1" || localStorage.getItem(LEGACY_EXPERT_MODE_KEY) === "1";
     let artifactPollTimer = null;
     let metricsPollTimer = null;
+    let liveRunIsRunning = isLive;
     let _metricsHistory = null; // retained across slider moves
     let _epochLocked = false;   // true when user has scrubbed away from latest
 
@@ -1109,6 +1119,44 @@
         }
     });
 
+    // ── Print mesh helper ─────────────────────────────────────────────────────
+    function setPrintMeshReady(ready) {
+        if (!printMeshBtn) return;
+        printMeshBtn.disabled = false;
+    }
+
+    async function runPrintMeshExport() {
+        if (!printMeshBtn) return;
+        printMeshBtn.disabled = true;
+        if (printMeshStatus) printMeshStatus.textContent = "Exporting...";
+        try {
+            var resp = await fetch(LAUNCHER_API + "/run/print-mesh", { method: "POST" });
+            var data = await resp.json();
+            if (!resp.ok) {
+                var detail = data && data.detail ? data.detail : {};
+                throw new Error(detail.message || data.message || ("Export failed (" + resp.status + ")"));
+            }
+            if (data.status === "no_meshes") {
+                if (printMeshStatus) printMeshStatus.textContent = "No meshes found";
+            } else {
+                var cloud = data.wandb_upload || {};
+                var sd = data.sd_export || {};
+                var sdText = sd.ok ? "SD done!" : (sd.message || "SD failed");
+                var cloudText = cloud.ok ? "W&B done!" : "W&B not uploaded";
+                if (printMeshStatus) printMeshStatus.textContent = "Local done! " + sdText + " " + cloudText;
+                await fetchLiveArtifacts();
+            }
+            printMeshBtn.disabled = false;
+        } catch (err) {
+            if (printMeshStatus) printMeshStatus.textContent = err.message;
+            printMeshBtn.disabled = false;
+        }
+    }
+
+    if (printMeshBtn) {
+        printMeshBtn.addEventListener("click", runPrintMeshExport);
+    }
+
     // ── Leaderboard link helper ────────────────────────────────────────────────
     function updateLeaderboardLink(runName) {
         if (!leaderboardBtn || !runName) return;
@@ -1127,6 +1175,10 @@
                 runNameDisplay.textContent = name;
                 updateLeaderboardLink(name);
             }
+        }
+
+        if (isLive && data.run_dir && !liveRunIsRunning) {
+            setPrintMeshReady(true);
         }
 
         updatePrimaryGlb(data.meshes_glb_cone || []);
@@ -1232,6 +1284,8 @@
                         if (_progressFill) _progressFill.style.width = "100%";
                         if (_progressLabel) _progressLabel.textContent = s.return_code === 0 ? "Completed." : "Finished (code " + s.return_code + ")";
                         _progressCompleted = true;
+                        liveRunIsRunning = false;
+                        if (latestArtifactData && latestArtifactData.run_dir) setPrintMeshReady(s.return_code === 0);
                     } else if (s.running) {
                         _startProgressSSE();
                     }
@@ -1248,22 +1302,23 @@
             _setProgressVisible(true);
         }
         // Seed progress bar from last known run state
-        if (localStorage.getItem(RUN_KEY)) {
-            fetch(LAUNCHER_API + "/run/progress").then(function (r) { return r.json(); }).then(function (prog) {
-                if (prog.completed) {
-                    if (_progressFill) _progressFill.style.width = "100%";
-                    if (_progressLabel) _progressLabel.textContent = "Completed.";
-                    _progressCompleted = true;
-                } else if (prog.current_epoch >= 0) {
-                    if (_progressFill) _progressFill.style.width = prog.progress_percent + "%";
-                    if (_progressLabel) _progressLabel.textContent = "Epoch " + (prog.current_epoch + 1) + " / " + prog.num_epochs + " (" + prog.progress_percent.toFixed(1) + "%)";
-                }
-            }).catch(function () {});
-        }
+        fetch(LAUNCHER_API + "/run/progress").then(function (r) { return r.json(); }).then(function (prog) {
+            if (prog.completed) {
+                if (_progressFill) _progressFill.style.width = "100%";
+                if (_progressLabel) _progressLabel.textContent = "Completed.";
+                _progressCompleted = true;
+                liveRunIsRunning = false;
+                if (latestArtifactData && latestArtifactData.run_dir) setPrintMeshReady(true);
+            } else if (prog.current_epoch >= 0) {
+                if (_progressFill) _progressFill.style.width = prog.progress_percent + "%";
+                if (_progressLabel) _progressLabel.textContent = "Epoch " + (prog.current_epoch + 1) + " / " + prog.num_epochs + " (" + prog.progress_percent.toFixed(1) + "%)";
+            }
+        }).catch(function () {});
 
         fetch(LAUNCHER_API + "/run/state")
             .then(function (r) { return r.json(); })
             .then(function (state) {
+                liveRunIsRunning = !!state.running;
                 fetchLiveArtifacts();
                 refreshLiveMetrics();
                 if (state.running && localStorage.getItem(RUN_KEY)) {
@@ -1282,6 +1337,7 @@
                         if (_progressLabel) _progressLabel.textContent = "Completed.";
                         _progressCompleted = true;
                     }
+                    if (latestArtifactData && latestArtifactData.run_dir) setPrintMeshReady(state.return_code === 0 || state.return_code === null);
                 }
             })
             .catch(function () {

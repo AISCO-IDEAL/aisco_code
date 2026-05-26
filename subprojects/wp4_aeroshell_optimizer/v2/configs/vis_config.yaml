@@ -154,7 +154,7 @@ gif:
 #   solid_color_rgb:    [r,g,b] floats in [0,1] — fallback color when colormap/scalars are unavailable
 visual_types:
   mesh_shape:
-    enabled: false
+    enabled: true
     colormap: null          # uniform dark-blue — shape is the information
     interval: 1
     alpha_enabled: true
