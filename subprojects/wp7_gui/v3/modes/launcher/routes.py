@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -56,6 +57,7 @@ LOGGER = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 _process_manager = ProcessManager(SETTINGS.logs_dir)
 _csv_metrics = CSVMetricsWriter(get_leaderboard_csv_path(SETTINGS.logs_dir / "gui_runs_summary.csv"))
+_DEVICE_ID: str = socket.gethostname()
 _runtime_state: dict[str, Any] = {
     "active_cfg_folder": "",
     "run_started_at": None,
@@ -388,6 +390,7 @@ def _write_epoch_csv(
         drag_value=drag_value,
         solar_power_w=solar_power_w,
         cruising_speed_ms=cruising_speed_ms,
+        device_id=_DEVICE_ID,
     )
     return True
 
@@ -1039,10 +1042,12 @@ def api_leaderboard(current_run_id: str | None = None) -> JSONResponse:
             LOGGER.warning("Could not read summary CSV %s: %s", summary_path, exc)
 
     # Resolve which run to highlight: explicit param takes priority, otherwise
-    # fall back to the most recently updated run by timestamp.
+    # fall back to the most recently updated run on THIS device by timestamp.
     effective_run_id = current_run_id
     if not effective_run_id and rows:
-        latest = max(rows, key=lambda r: r.get("timestamp", ""))
+        device_rows = [r for r in rows if r.get("device_id", "") == _DEVICE_ID]
+        pool = device_rows if device_rows else rows
+        latest = max(pool, key=lambda r: r.get("timestamp", ""))
         effective_run_id = latest.get("run_id") or None
 
     def _speed(row: dict[str, str]) -> float:
