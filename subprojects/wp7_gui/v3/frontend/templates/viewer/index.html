@@ -191,34 +191,20 @@
 {% endblock %}
 
 {% block content %}
-<div class="section-grid" style="grid-template-rows: auto auto 1fr;">
+<div class="section-grid" style="grid-template-rows: auto 1fr;">
 
     <!-- ── TOOLBAR ─────────────────────────────────────────────────────────── -->
     <div class="dark-card toolbar" style="position:relative;">
         <a id="archiveBackBtn" href="/" class="btn secondary">← Back to Home</a>
 
         <span id="runNameDisplay">—</span>
+        <span id="selectedMeta" style="font-size:0.78rem; color:var(--theme-muted);"></span>
 
         <button class="btn" id="btnRefresh">Refresh</button>
     </div>
 
-    <!-- ── RUN SELECTOR ───────────────────────────────────────────────────── -->
-    <div class="dark-card" style="display:grid; gap:8px; min-height:0; padding:10px 12px;">
-        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <div style="font-size:0.82rem; color:var(--theme-warning-text); font-weight:700;">Finished Runs</div>
-            <span id="runCount" style="font-size:0.78rem; color:var(--muted);">Loading...</span>
-            <span id="selectedMeta"
-                style="font-size:0.78rem; color:var(--muted); margin-left:auto; text-align:right;"></span>
-        </div>
-        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-            <label for="runSelect" style="font-size:0.78rem; color:var(--muted);">Select run:</label>
-            <select id="runSelect"
-                style="min-width:340px; max-width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--theme-surface-large); background:color-mix(in srgb, var(--theme-panel) 88%, var(--theme-black) 12%); color:var(--theme-text);">
-                <option value="">Loading...</option>
-            </select>
-            <input type="checkbox" id="cameraSyncToggle" checked style="display:none;">
-        </div>
-    </div>
+    <!-- cameraSyncToggle used by JS camera-sync logic -->
+    <input type="checkbox" id="cameraSyncToggle" checked style="display:none;">
 
     <!-- ── MAIN 3-COLUMN CONTENT ──────────────────────────────────────────── -->
     <div style="overflow:auto; min-height:0; padding:2px 0;">
@@ -338,8 +324,6 @@
     var MESH_PRIORITY_MAX_SHOWN = window._MESH_PRIORITY_MAX_SHOWN;
 
     // ── DOM references ─────────────────────────────────────────────────────────
-    const runSelectEl = document.getElementById("runSelect");
-    const runCountEl = document.getElementById("runCount");
     const selectedMetaEl = document.getElementById("selectedMeta");
     const statusLabel = document.getElementById("statusLabel");
     const runNameDisplay = document.getElementById("runNameDisplay");
@@ -1104,12 +1088,16 @@
         }
     }
 
-    // ── Load runs list ─────────────────────────────────────────────────────────
+    // ── Load run from URL run_id ────────────────────────────────────────────────
     async function loadRuns() {
         resetViewers();
         runNameDisplay.textContent = "\u2014";
-        runSelectEl.innerHTML = "<option value=\"\">Loading\u2026</option>";
         selectedMetaEl.textContent = "";
+
+        if (!preSelectRunId) {
+            statusLabel.textContent = "No run selected \u2014 open from the Leaderboard.";
+            return;
+        }
 
         try {
             const runsUrl = cfgSession
@@ -1119,51 +1107,19 @@
             const runs = d.runs || [];
 
             runsByPath = new Map();
-            runCountEl.textContent = runs.length + " run(s)";
+            runs.forEach(function (r) { runsByPath.set(r.path, r); });
 
-            if (!runs.length) {
-                runSelectEl.innerHTML = "<option value=\"\">No runs found</option>";
-                return;
-            }
-
-            runSelectEl.innerHTML = "<option value=\"\">-- Select a finished run --</option>";
-            runs.forEach(function (r) {
-                runsByPath.set(r.path, r);
-                const option = document.createElement("option");
-                option.value = r.path;
-                option.textContent = r.name + " (" + fmtTime(r.mtime) + ")";
-                runSelectEl.appendChild(option);
-            });
-
-            if (selectedRunPath && runsByPath.has(selectedRunPath)) {
-                runSelectEl.value = selectedRunPath;
-                selectRun(selectedRunPath);
-                return;
-            }
-
-            if (preSelectRunId) {
-                const match = runs.find(function (r) { return r.name === preSelectRunId; });
-                if (match) {
-                    selectedRunPath = match.path;
-                    runSelectEl.value = match.path;
-                    selectRun(match.path);
-                    return;
-                }
-            }
-
-            if (cfgSession && runs.length === 1) {
-                runSelectEl.value = runs[0].path;
-                selectRun(runs[0].path);
+            const match = runs.find(function (r) { return r.name === preSelectRunId; });
+            if (match) {
+                selectedRunPath = match.path;
+                selectRun(match.path);
+            } else {
+                statusLabel.textContent = "Run not found: " + preSelectRunId;
             }
         } catch (err) {
-            runSelectEl.innerHTML = "<option value=\"\">Failed to load runs</option>";
-            statusLabel.textContent = "Failed to load runs: " + err.message;
+            statusLabel.textContent = "Failed to load run: " + err.message;
         }
     }
-
-    runSelectEl.addEventListener("change", function (e) {
-        selectRun(e.target.value);
-    });
 
     document.getElementById("btnRefresh").addEventListener("click", loadRuns);
 
