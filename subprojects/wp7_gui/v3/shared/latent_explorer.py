@@ -46,56 +46,87 @@ _PRISM_Y = (-2000.0, 2000.0)
 _PRISM_Z = (-100.0, 2500.0)
 
 # ---------------------------------------------------------------------------
-# Pretrained checkpoint registry
+# Pretrained checkpoint registry (legacy — kept for API compatibility)
 # ---------------------------------------------------------------------------
 
-# Set this path once the 8 pretrained subfolders are ready.
-# Each subfolder must contain a .pth checkpoint file (anywhere in its tree) and
-# optionally .glb assembly files and a model_info_dict.json.
-# Set to None to leave the GUI selector active but not yet backed by real files.
 PRETRAINED_ROOT: Path | None = None
 
-# Maps (wheels, solar, drag) → subfolder name within PRETRAINED_ROOT.
-# wheels: 3 or 4 · solar: True = on · drag: True = on
-_PRETRAINED_SUBFOLDER_MAP: dict[tuple[int, bool, bool], str] = {
-    (3, True, True): "wheels3_solar_drag",
-    (3, True, False): "wheels3_solar_nodrag",
-    (3, False, True): "wheels3_nosolar_drag",
-    (3, False, False): "wheels3_nosolar_nodrag",
-    (4, True, True): "wheels4_solar_drag",
-    (4, True, False): "wheels4_solar_nodrag",
-    (4, False, True): "wheels4_nosolar_drag",
-    (4, False, False): "wheels4_nosolar_nodrag",
+# ---------------------------------------------------------------------------
+# Named run registry
+# ---------------------------------------------------------------------------
+
+# Path to wp4 general_config — used to read beast_storage_dir at call time.
+_GENERAL_CONFIG_PATH = (
+    _REPO_ROOT / "subprojects" / "wp4_aeroshell_optimizer" / "v2" / "configs" / "general_config.yaml"
+)
+
+# Maps (config_label, run_letter) → folder name under {beast_storage_dir}/Completed/.
+# config_label encodes wheel count and front/back split:
+#   "3w-2f1b" = 3 wheels, 2 front 1 back
+#   "3w-1f2b" = 3 wheels, 1 front 2 back
+#   "4w-2f2b" = 4 wheels, 2 front 2 back
+_NAMED_RUNS: dict[tuple[str, str], str] = {
+    ("3w-2f1b", "A"): "111_401543_valiant-jazz",
+    ("3w-2f1b", "B"): "22_626988_avid-hill",
+    ("3w-1f2b", "A"): "15_626751_pretty-fire",
+    ("3w-1f2b", "B"): "20_626909_fiery-shadow",
+    ("4w-2f2b", "A"): "16_626768_rose-fog",
+    ("4w-2f2b", "B"): "21_626964_earthy-morning",
 }
 
 
-def resolve_pretrained_path(wheels: int, solar: bool, drag: bool) -> Path:
-    """Return the subfolder path for a pretrained (wheels, solar, drag) combination.
+def get_beast_storage_dir() -> Path | None:
+    """Read beast_storage_dir from wp4's general_config.yaml.
 
-    Args:
-        wheels: Number of wheels (3 or 4).
-        solar: Whether the solar objective is active.
-        drag: Whether the drag objective is active.
+    Args: none
 
     Returns:
-        Path to the pretrained subfolder inside PRETRAINED_ROOT.
+        Resolved absolute Path, or None if not configured or unreadable.
+    """
+    try:
+        with _GENERAL_CONFIG_PATH.open(encoding="utf-8") as fh:
+            cfg = yaml.safe_load(fh) or {}
+        raw = cfg.get("storage_paths", {}).get("beast_storage_dir")
+        if not raw:
+            return None
+        p = Path(raw)
+        return p if p.is_absolute() else (_REPO_ROOT / p).resolve()
+    except Exception:
+        return None
+
+
+def resolve_named_run_path(config: str, run: str) -> Path:
+    """Return the run-root directory for the named (config, run) pair.
+
+    Args:
+        config: One of "3w-2f1b", "3w-1f2b", "4w-2f2b".
+        run: Run letter, "A" or "B".
+
+    Returns:
+        Path to the run root directory (parent of the ``models/`` subfolder).
 
     Raises:
-        ValueError: When PRETRAINED_ROOT is not configured or the key is unknown.
-        FileNotFoundError: When the resolved subfolder does not exist on disk.
+        ValueError: When the key is unknown or beast_storage_dir is not configured.
+        FileNotFoundError: When the resolved directory does not exist on disk.
     """
-    if PRETRAINED_ROOT is None:
-        raise ValueError("PRETRAINED_ROOT is not configured. Set it in subprojects/wp7_gui/v3/shared/latent_explorer.py.")
-    key = (wheels, solar, drag)
-    if key not in _PRETRAINED_SUBFOLDER_MAP:
+    key = (config, run)
+    if key not in _NAMED_RUNS:
+        valid_configs = sorted({k[0] for k in _NAMED_RUNS})
         raise ValueError(
-            f"Unknown pretrained key: wheels={wheels}, solar={solar}, drag={drag}. "
-            "Expected wheels ∈ {3, 4}, solar/drag ∈ {True, False}."
+            f"Unknown named run: config={config!r}, run={run!r}. "
+            f"Valid configs: {valid_configs}. Valid runs: A, B."
         )
-    folder = PRETRAINED_ROOT / _PRETRAINED_SUBFOLDER_MAP[key]
+    beast_dir = get_beast_storage_dir()
+    if beast_dir is None:
+        raise ValueError(
+            "beast_storage_dir is not configured in general_config.yaml "
+            "(storage_paths.beast_storage_dir)."
+        )
+    folder = beast_dir / "Completed" / _NAMED_RUNS[key]
     if not folder.exists():
         raise FileNotFoundError(
-            f"Pretrained subfolder not found: {folder}. Ensure the folder exists and contains a .pth checkpoint."
+            f"Named run directory not found: {folder}. "
+            "Ensure the Completed/ subfolder exists on this machine."
         )
     return folder
 
@@ -114,7 +145,8 @@ _ALLOWED_ROOTS: list[Path] = [
 def is_checkpoint_path_allowed(ckpt_path: Path) -> bool:
     """Return True iff *ckpt_path* resolves to a location inside an allowed root.
 
-    Also accepts paths under PRETRAINED_ROOT when it is configured.
+    Also accepts paths under PRETRAINED_ROOT (when configured) and under
+    beast_storage_dir/Completed/ as read from general_config.yaml.
 
     Args:
         ckpt_path: Candidate checkpoint path (may be relative or unresolved).
@@ -127,6 +159,9 @@ def is_checkpoint_path_allowed(ckpt_path: Path) -> bool:
         roots = _ALLOWED_ROOTS[:]
         if PRETRAINED_ROOT is not None:
             roots.append(PRETRAINED_ROOT)
+        beast_dir = get_beast_storage_dir()
+        if beast_dir is not None:
+            roots.append(beast_dir)
         return any(resolved.is_relative_to(root) for root in roots)
     except (OSError, ValueError):
         return False

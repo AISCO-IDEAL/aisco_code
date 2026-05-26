@@ -76,7 +76,7 @@
 /* ---------- form inputs ---------- */
 .param-row {
   display: grid;
-  grid-template-columns: 1fr 200px;
+  grid-template-columns: 1fr 260px;
   gap: 12px;
   padding: 14px 12px;
   align-items: center;
@@ -103,9 +103,9 @@
 .param-input {
   border: 1px solid var(--theme-surface-large);
   border-radius: 6px;
-  padding: 6px 8px;
+  padding: 9px 12px;
   font-family: var(--theme-font-mono);
-  font-size: 0.86rem;
+  font-size: 1.0rem;
   background: color-mix(in srgb, var(--theme-panel) 88%, var(--theme-black) 12%);
   color: var(--theme-text);
 }

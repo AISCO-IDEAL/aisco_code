@@ -18,12 +18,11 @@ from subprojects.wp7_gui.v3.core.settings import SETTINGS
 from subprojects.wp7_gui.v3.shared.artifact_index import list_artifacts
 from subprojects.wp7_gui.v3.shared.csv_metrics import CSVMetricsWriter
 from subprojects.wp7_gui.v3.shared.latent_explorer import (
-    PRETRAINED_ROOT,
     extract_mesh_glb,
     find_last_epoch_checkpoint,
     is_checkpoint_path_allowed,
     load_checkpoint_info,
-    resolve_pretrained_path,
+    resolve_named_run_path,
 )
 from subprojects.wp7_gui.v3.shared.panel_visibility import load_panel_visibility_defaults
 from subprojects.wp7_gui.v3.shared.run_paths import default_storage_root, get_storage_root_for_session, list_all_runs
@@ -160,10 +159,9 @@ class _LoadCheckpointBody(BaseModel):
     checkpoint_path: str
 
 
-class _LoadPretrainedBody(BaseModel):
-    wheels: int
-    solar: bool
-    drag: bool
+class _LoadNamedRunBody(BaseModel):
+    config: str
+    run: str
 
 
 class _QueryMeshBody(BaseModel):
@@ -184,7 +182,6 @@ def viewer_latent_explorer(request: Request) -> Any:
             "pipeline": "completed",
             "active_page": "latent-explorer",
             "page_title": "Latent Explorer",
-            "pretrained_configured": PRETRAINED_ROOT is not None,
             **theme_ctx,
         },
     )
@@ -218,21 +215,25 @@ def api_latent_load_checkpoint(body: _LoadCheckpointBody) -> JSONResponse:
     )
 
 
-@router.post("/api/latent/load-pretrained")
-def api_latent_load_pretrained(body: _LoadPretrainedBody) -> JSONResponse:
-    """Resolve and load a pretrained checkpoint by (wheels, solar, drag) key.
+@router.post("/api/latent/load-named-run")
+def api_latent_load_named_run(body: _LoadNamedRunBody) -> JSONResponse:
+    """Load a checkpoint for one of the 6 named runs (config + run letter A/B).
 
-    Maps the three binary keys to a subfolder inside PRETRAINED_ROOT, then finds
-    and loads the highest-epoch checkpoint within that subfolder.
+    Resolves the run directory from beast_storage_dir/Completed/, finds the
+    highest-epoch checkpoint, and returns latent-space metadata.
+
+    Args:
+        body: JSON body with ``config`` (e.g. "3w-2f1b") and ``run`` ("A" or "B").
+
+    Returns:
+        JSON with resolved_path, z_dim, z_radius, z_pretrained.
     """
-    if body.wheels not in (3, 4):
-        raise HTTPException(status_code=400, detail={"message": "wheels must be 3 or 4"})
     try:
-        subfolder = resolve_pretrained_path(body.wheels, body.solar, body.drag)
+        run_dir = resolve_named_run_path(body.config, body.run)
     except (ValueError, FileNotFoundError) as exc:
         raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
     try:
-        ckpt_path = find_last_epoch_checkpoint(subfolder)
+        ckpt_path = find_last_epoch_checkpoint(run_dir)
         device = torch.device(_DEFAULT_DEVICE)
         info = load_checkpoint_info(ckpt_path, device)
     except (FileNotFoundError, ValueError) as exc:

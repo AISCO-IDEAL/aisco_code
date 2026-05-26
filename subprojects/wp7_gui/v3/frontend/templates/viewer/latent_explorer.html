@@ -54,106 +54,71 @@
     <div class="dark-card toolbar">
         <a id="latExpBkRunBtn" href="#" class="btn secondary" style="display:none;">&#8592; Back to run</a>
         <div style="flex:1;"></div>
-        <a href="/" class="btn">Done &#8212; Home</a>
+        <a href="/" class="btn">Home</a>
     </div>
 
     <!-- ── Controls top bar ──────────────────────────────────────────────────── -->
-    <div class="dark-card" style="display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; padding:12px 16px;">
+    <div class="output-cols">
 
-        <!-- Pretrained Checkpoints -->
-        <div style="display:flex; flex-direction:column; gap:8px; min-width:180px;">
-            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                <span style="font-size:0.82rem; color:var(--theme-warning-text); font-weight:700;">Pretrained Checkpoints</span>
-                {% if not pretrained_configured %}
-                <span style="font-size:0.72rem; color:var(--muted); padding:2px 8px; border-radius:10px;
-                             background:color-mix(in srgb, var(--theme-warning-text) 10%, transparent);">
-                    root not configured
-                </span>
-                {% endif %}
+        <!-- LEFT: Run Selection -->
+        <div class="dark-card" style="padding:14px 16px; display:flex; flex-direction:column; gap:10px;">
+            <span style="font-size:0.82rem; color:var(--theme-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Run Selection</span>
+            <!-- Wheels + Load Run on the same row -->
+            <div style="display:flex; align-items:center; gap:16px;">
+                <!-- Wheels grid -->
+                <div style="display:grid; grid-template-columns:auto auto; gap:8px 12px; align-items:center; justify-content:start;">
+                    <span style="font-size:0.78rem; color:var(--theme-muted); white-space:nowrap; text-align:right;">Front Wheels</span>
+                    <div style="display:flex; gap:4px;" id="runFrontToggle">
+                        <button class="btn secondary" data-value="1">1</button>
+                        <button class="btn" data-value="2">2</button>
+                    </div>
+                    <span style="font-size:0.78rem; color:var(--theme-muted); white-space:nowrap; text-align:right;">Rear Wheels</span>
+                    <div style="display:flex; gap:4px;" id="runRearToggle">
+                        <button class="btn" data-value="1">1</button>
+                        <button class="btn secondary" data-value="2">2</button>
+                    </div>
+                </div>
+                <!-- comment between toggles and load button -->
+                <span style="font-size:0.85rem; color:var(--theme-muted); font-style:italic; align-self:center;">Min. 3 wheels</span>
+                <!-- Load Run aligned to the right of the wheels -->
+                <button class="btn" id="btnLoadNamedRun" style="align-self:stretch; white-space:nowrap; margin-left:auto;">Load Run</button>
             </div>
-            <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-size:0.78rem; color:var(--muted); width:54px; flex-shrink:0;">Wheels</span>
-                <div style="display:flex; gap:4px;" id="wheelsToggle">
-                    <button class="btn" data-value="3">3</button>
-                    <button class="btn secondary" data-value="4">4</button>
+            <!-- Run A/B row -->
+            <div style="display:grid; grid-template-columns:auto auto; gap:8px 12px; align-items:center; justify-content:start;">
+                <span style="font-size:0.78rem; color:var(--theme-muted); white-space:nowrap; text-align:right;">Run</span>
+                <div style="display:flex; gap:4px;" id="runAbToggle">
+                    <button class="btn" data-value="A">Run A</button>
+                    <button class="btn secondary" data-value="B">Run B</button>
                 </div>
             </div>
-            <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-size:0.78rem; color:var(--muted); width:54px; flex-shrink:0;">Solar</span>
-                <div style="display:flex; gap:4px;" id="solarToggle">
-                    <button class="btn" data-value="true">On</button>
-                    <button class="btn secondary" data-value="false">Off</button>
-                </div>
-            </div>
-            <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-size:0.78rem; color:var(--muted); width:54px; flex-shrink:0;">Drag</span>
-                <div style="display:flex; gap:4px;" id="dragToggle">
-                    <button class="btn" data-value="true">On</button>
-                    <button class="btn secondary" data-value="false">Off</button>
-                </div>
-            </div>
-            <button class="btn" id="btnAutoLoad" style="align-self:flex-start;">Load Pretrained</button>
         </div>
 
-        <div class="ctrl-divider"></div>
-
-        <!-- Custom Checkpoint -->
-        <div style="display:flex; flex-direction:column; gap:8px; min-width:220px; flex:1; max-width:340px;">
-            <span style="font-size:0.78rem; color:var(--muted); font-weight:600;">Custom Checkpoint</span>
-            <label style="font-size:0.78rem; color:var(--theme-muted);">Path or run directory</label>
-            <input id="ckptInput" type="text" placeholder="/cluster/work/fuge/AISCO/…"
-                style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:0.80rem;" />
-            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                <button class="btn" id="btnLoad">Load checkpoint</button>
-                <label style="font-size:0.78rem; color:var(--theme-muted); white-space:nowrap;">
-                    Resolution
-                    <input id="resInput" type="number" value="35" min="10" max="80"
-                        style="width:52px; margin-left:4px; padding:3px 5px; font-size:0.78rem;" />
-                </label>
+        <!-- CENTER: Latent Canvas -->
+        <div style="display:flex; flex-direction:column; align-items:center; gap:6px; justify-content:center;">
+            <div style="width:100%; aspect-ratio:1/1; position:relative;">
+                <canvas id="latentCanvas" width="300" height="300"
+                    style="position:absolute; inset:0; width:100%; height:100%; background:#0d1117;
+                           border:1px solid var(--theme-border, #45475a); border-radius:4px;
+                           cursor:crosshair; display:block;"></canvas>
             </div>
-            <div id="statusMsg" style="font-size:0.75rem; color:var(--theme-muted); min-height:1em;">—</div>
-        </div>
-
-        <div class="ctrl-divider"></div>
-
-        <!-- Latent Canvas -->
-        <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
-            <div style="font-size:0.68rem; font-weight:700; color:var(--theme-muted); text-transform:uppercase; letter-spacing:0.06em;">Latent Space</div>
-            <div style="font-size:0.70rem; color:var(--theme-muted); text-align:center; line-height:1.4;">
-                Click a point to extract its mesh.<br>Red dots&nbsp;= pretrained anchors.
-            </div>
-            <canvas id="latentCanvas" width="300" height="300"
-                style="width:200px; height:200px; background:#0d1117; border:1px solid var(--theme-border, #45475a); border-radius:4px; cursor:crosshair; display:block;"></canvas>
             <div id="coordLabel" style="font-size:0.74rem; color:var(--theme-muted); min-height:1em;">&#x2014;</div>
         </div>
 
-        <div class="ctrl-divider"></div>
-
-        <!-- Path Animation -->
-        <div style="display:flex; flex-direction:column; gap:8px; min-width:180px;">
-            <span style="font-size:0.78rem; color:var(--muted); font-weight:600;">Path Animation</span>
+        <!-- RIGHT: Path Animation -->
+        <div class="dark-card" style="padding:14px 16px; display:flex; flex-direction:column; gap:10px;">
+            <span style="font-size:0.82rem; color:var(--theme-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Path Animation</span>
             <div style="font-size:0.72rem; color:var(--theme-muted); line-height:1.4;">
-                Traces a spiral from (0,0) outward through latent space.
+                Traces a spiral from (0,0) outward through the latent space.
             </div>
             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                 <button class="btn" id="btnAnimate">&#9654; Animate</button>
-                <label style="font-size:0.78rem; color:var(--theme-muted); white-space:nowrap;">
-                    Steps
-                    <input id="animSteps" type="number" value="24" min="4" max="128"
-                        style="width:46px; margin-left:4px; padding:3px 5px; font-size:0.78rem;" />
-                </label>
-            </div>
-            <div style="display:flex; gap:12px; flex-wrap:wrap;">
-                <label style="font-size:0.78rem; color:var(--theme-muted); white-space:nowrap;">
-                    Radius &#xd7;
-                    <input id="animRadius" type="number" value="0.9" min="0.1" max="2.0" step="0.1"
-                        style="width:46px; margin-left:4px; padding:3px 5px; font-size:0.78rem;" />
-                </label>
-                <label style="font-size:0.78rem; color:var(--theme-muted); white-space:nowrap;">
-                    Turns
-                    <input id="animTurns" type="number" value="2.5" min="0.5" max="8" step="0.5"
-                        style="width:46px; margin-left:4px; padding:3px 5px; font-size:0.78rem;" />
-                </label>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <span style="font-size:0.82rem; color:var(--theme-fg, #cdd6f4); font-weight:600;">Steps</span>
+                    <input id="animSteps" type="number" value="50" min="4" max="128"
+                        style="width:56px; padding:5px 8px; font-size:0.88rem; font-weight:600;
+                               color:var(--theme-fg, #cdd6f4); background:var(--theme-input, #1a1a2e);
+                               border:1px solid #f38ba8; border-radius:4px;" />
+                </div>
             </div>
             <div id="animStatus" style="font-size:0.74rem; color:var(--theme-muted); min-height:1em;">&#8212;</div>
         </div>
@@ -170,7 +135,8 @@
                     <div class="visual-title">Aeroshell Mesh</div>
                     <div id="meshContainer" style="position:relative; overflow:hidden; min-height:380px;">
                         <div id="meshPlaceholder" style="position:absolute; inset:0; display:flex; align-items:center;
-                              justify-content:center; color:var(--theme-muted); font-size:0.85rem; pointer-events:none;">
+                              justify-content:center; color:var(--theme-muted); font-size:0.85rem; pointer-events:none;
+                              background:var(--theme-panel, #1e2030);">
                             Click a latent point to load a mesh.
                         </div>
                     </div>
@@ -216,7 +182,8 @@
                     <div id="secCpPane" style="position:relative; overflow:hidden; min-height:380px;">
                         <div id="secCpMeshBox" style="width:100%; height:100%;"></div>
                         <div id="secCpPlaceholder" style="position:absolute; inset:0; display:flex; align-items:center;
-                              justify-content:center; flex-direction:column; gap:8px; color:var(--theme-muted); pointer-events:none;">
+                              justify-content:center; flex-direction:column; gap:8px; color:var(--theme-muted); pointer-events:none;
+                              background:var(--theme-panel, #1e2030);">
                             <span style="font-size:0.85rem;">CP Pressure Field</span>
                             <span style="font-size:0.72rem; text-align:center; padding:0 16px; line-height:1.5;">Blue&nbsp;= suction&nbsp;&nbsp;·&nbsp;&nbsp;Red&nbsp;= stagnation<br>Loads after mesh query</span>
                         </div>
@@ -225,7 +192,8 @@
                     <div id="secSolarPane" style="position:relative; overflow:hidden; min-height:380px; display:none;">
                         <div id="secSolarMeshBox" style="width:100%; height:100%;"></div>
                         <div id="secSolarPlaceholder" style="position:absolute; inset:0; display:flex; align-items:center;
-                              justify-content:center; flex-direction:column; gap:8px; color:var(--theme-muted); pointer-events:none;">
+                              justify-content:center; flex-direction:column; gap:8px; color:var(--theme-muted); pointer-events:none;
+                              background:var(--theme-panel, #1e2030);">
                             <span style="font-size:0.85rem;">Solar Illumination Quality</span>
                             <span style="font-size:0.72rem; text-align:center; padding:0 16px; line-height:1.5;">Dark&nbsp;= shadowed&nbsp;&nbsp;·&nbsp;&nbsp;Gold&nbsp;= sun-facing<br>Loads after mesh query</span>
                         </div>
@@ -246,8 +214,7 @@
 </div><!-- end flex wrapper -->
 
 <script>
-    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260521_2";
-    const PRETRAINED_CONFIGURED = {{ 'true' if pretrained_configured else 'false' }};
+    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260526";
 
     // ---------------------------------------------------------------------------
     // State
@@ -312,10 +279,17 @@
         }
     }
 
-    // Pretrained selector state
-    let selectedWheels = 3;
-    let selectedSolar = true;
-    let selectedDrag = true;
+    // Run selector state
+    let selectedFront = 2;
+    let selectedRear = 1;
+    let selectedRun = "A";
+
+    function getConfigFromWheels(front, rear) {
+        if (front === 2 && rear === 1) return "3w-2f1b";
+        if (front === 1 && rear === 2) return "3w-1f2b";
+        if (front === 2 && rear === 2) return "4w-2f2b";
+        return null; // e.g. 1F+1R — no trained run
+    }
 
     // ---------------------------------------------------------------------------
     // Latent metric DOM refs
@@ -420,18 +394,68 @@
         });
     }
 
-    bindToggleGroup("wheelsToggle", (v) => { selectedWheels = parseInt(v, 10); });
-    bindToggleGroup("solarToggle", (v) => { selectedSolar = v === "true"; });
-    bindToggleGroup("dragToggle", (v) => { selectedDrag = v === "true"; });
+    bindToggleGroup("runFrontToggle", (v) => {
+        selectedFront = parseInt(v, 10);
+        // Guard: 1+1 is invalid — force rear to 2
+        if (selectedFront === 1 && selectedRear === 1) {
+            selectedRear = 2;
+            const rearGroup = document.getElementById("runRearToggle");
+            rearGroup.querySelectorAll("button").forEach((b) => {
+                b.className = b.dataset.value === "2" ? "btn" : "btn secondary";
+            });
+        }
+    });
+    bindToggleGroup("runRearToggle",  (v) => {
+        selectedRear = parseInt(v, 10);
+        // Guard: 1+1 is invalid — force front to 2
+        if (selectedRear === 1 && selectedFront === 1) {
+            selectedFront = 2;
+            const frontGroup = document.getElementById("runFrontToggle");
+            frontGroup.querySelectorAll("button").forEach((b) => {
+                b.className = b.dataset.value === "2" ? "btn" : "btn secondary";
+            });
+        }
+    });
+    bindToggleGroup("runAbToggle",    (v) => { selectedRun   = v; });
 
     // ---------------------------------------------------------------------------
     // Shared helper: apply a load-checkpoint API response
     // ---------------------------------------------------------------------------
+    function _resetMeshViews() {
+        // Clear all three mesh viewers
+        if (viewer) { viewer.clearMesh(); }
+        if (secCpViewer) { secCpViewer.clearMesh(); }
+        if (secSolarViewer) { secSolarViewer.clearMesh(); }
+        _lastSolarMeshUrl = null;
+
+        // Show placeholders
+        const meshPlaceholder = document.getElementById("meshPlaceholder");
+        if (meshPlaceholder) meshPlaceholder.style.display = "";
+        const cpPlaceholder = document.getElementById("secCpPlaceholder");
+        if (cpPlaceholder) cpPlaceholder.style.display = "";
+        const solarPlaceholder = document.getElementById("secSolarPlaceholder");
+        if (solarPlaceholder) solarPlaceholder.style.display = "";
+
+        // Reset metric displays
+        drawTacho(latentMetricSpeedTacho, null);
+        if (latentMetricDragEl) latentMetricDragEl.textContent = "\u2014";
+        if (latentMetricSolarEl) latentMetricSolarEl.textContent = "\u2014";
+
+        // Reset spiral state
+        _spiralPath = [];
+        _spiralStep = 0;
+        _spiralPlaying = false;
+        if (_spiralPlayInterval) { clearInterval(_spiralPlayInterval); _spiralPlayInterval = null; }
+        const spiralSliderRow = document.getElementById("spiralSliderRow");
+        if (spiralSliderRow) spiralSliderRow.style.display = "none";
+    }
+
     function applyCheckpointResponse(data) {
         resolvedPath = data.resolved_path;
         zRadius = data.z_radius || 2.0;
         zPretrained = data.z_pretrained || [];
         clickedZ = null;
+        _resetMeshViews();
         statusMsg.textContent =
             `Loaded · z_dim=${data.z_dim} · z_radius=${zRadius.toFixed(3)} ` +
             `· ${zPretrained.length} anchors · ${data.resolved_path.split("/").pop()}`;
@@ -444,7 +468,7 @@
     const canvas = document.getElementById("latentCanvas");
     const ctx = canvas.getContext("2d");
     const coordLabel = document.getElementById("coordLabel");
-    const statusMsg = document.getElementById("statusMsg");
+    const statusMsg = { set textContent(_) {} };  // status line removed — sink discards updates
 
     function drawCanvas(hoverZ) {
         const w = canvas.width, h = canvas.height;
@@ -550,6 +574,13 @@
             statusMsg.textContent = "Load a checkpoint first.";
             return;
         }
+        // Clear spiral trace and scrubber when the user picks a single point
+        _stopSpiralPlay();
+        _spiralPath = [];
+        _spiralStep = 0;
+        const sliderRow = document.getElementById("spiralSliderRow");
+        if (sliderRow) sliderRow.style.display = "none";
+
         const z = canvasToLatent(e.offsetX, e.offsetY);
         clickedZ = z;
         drawCanvas(null);
@@ -560,43 +591,20 @@
     drawCanvas(null);
 
     // ---------------------------------------------------------------------------
-    // Pretrained auto-load
+    // Named-run load
     // ---------------------------------------------------------------------------
-    document.getElementById("btnAutoLoad").addEventListener("click", async () => {
-        statusMsg.textContent = "Loading pretrained checkpoint…";
-        try {
-            const resp = await fetch("/viewer/api/latent/load-pretrained", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    wheels: selectedWheels,
-                    solar: selectedSolar,
-                    drag: selectedDrag,
-                }),
-            });
-            const data = await resp.json();
-            if (!resp.ok) {
-                statusMsg.textContent = "Error: " + (data.detail?.message || resp.statusText);
-                return;
-            }
-            applyCheckpointResponse(data);
-        } catch (err) {
-            statusMsg.textContent = "Network error: " + err.message;
+    document.getElementById("btnLoadNamedRun").addEventListener("click", async () => {
+        const config = getConfigFromWheels(selectedFront, selectedRear);
+        if (!config) {
+            statusMsg.textContent = "Combination not available (no trained run for 1F + 1R).";
+            return;
         }
-    });
-
-    // ---------------------------------------------------------------------------
-    // Checkpoint loading
-    // ---------------------------------------------------------------------------
-    document.getElementById("btnLoad").addEventListener("click", async () => {
-        const rawPath = document.getElementById("ckptInput").value.trim();
-        if (!rawPath) { statusMsg.textContent = "Enter a path first."; return; }
-        statusMsg.textContent = "Loading…";
+        statusMsg.textContent = "Loading run…";
         try {
-            const resp = await fetch("/viewer/api/latent/load-checkpoint", {
+            const resp = await fetch("/viewer/api/latent/load-named-run", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ checkpoint_path: rawPath }),
+                body: JSON.stringify({ config, run: selectedRun }),
             });
             const data = await resp.json();
             if (!resp.ok) {
@@ -613,7 +621,7 @@
     // Mesh extraction
     // ---------------------------------------------------------------------------
     async function queryMesh(z0, z1, overrideResolution) {
-        const resolution = overrideResolution ?? (parseInt(document.getElementById("resInput").value, 10) || 35);
+        const resolution = overrideResolution ?? 35;
         statusMsg.textContent = `Extracting mesh at z=(${z0.toFixed(3)}, ${z1.toFixed(3)})…`;
         try {
             const resp = await fetch("/viewer/api/latent/query-mesh", {
@@ -654,8 +662,7 @@
                     if (savedView) {
                         viewer.setViewState(savedView);
                     }
-                    statusMsg.textContent =
-                        `Mesh loaded · z=(${z0.toFixed(3)}, ${z1.toFixed(3)})`;
+                    statusMsg.textContent = "\u2014";
                     // Update metric displays
                     const speedMs = data.cruising_speed_ms != null ? Number(data.cruising_speed_ms) : null;
                     drawTacho(latentMetricSpeedTacho, speedMs != null ? speedMs * 3.6 : null);
@@ -779,9 +786,9 @@
         const sliderRow = document.getElementById("spiralSliderRow");
         const slider = document.getElementById("spiralSlider");
 
-        const steps   = Math.max(4, parseInt(document.getElementById("animSteps").value, 10) || 24);
-        const rFactor = Math.max(0.05, parseFloat(document.getElementById("animRadius").value) || 0.9);
-        const turns   = Math.max(0.5, parseFloat(document.getElementById("animTurns").value) || 2.5);
+        const steps   = Math.max(4, parseInt(document.getElementById("animSteps").value, 10) || 50);
+        const rFactor = 1.0;
+        const turns   = 4.0;
 
         _spiralPath = _buildSpiralPath(steps, rFactor, turns);
         _spiralStep = 0;
