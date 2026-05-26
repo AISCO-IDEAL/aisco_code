@@ -855,8 +855,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                     )
                 )
             ) / model_hash
-            if wandb_name is not None:
-                local_folder = local_folder / reformat_wandb_name(wandb_name)
 
         assume_existing_folders_equal = drive_sync_cfg.get("assume_existing_folders_equal", True)
         if isinstance(assume_existing_folders_equal, str):
