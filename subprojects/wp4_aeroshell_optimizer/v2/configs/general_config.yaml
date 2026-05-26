@@ -45,6 +45,14 @@ storage_paths: # Note that paths have to start with "/cluster/...", if you use "
   local_storage_dir: "./local_storage_dir" # only used for testing on local machine, not on cluster  #  main_v1_1_one_model.py, storage_utils.py (when run_locally=True)
   beast_storage_dir: "/home/aisco/AISCO_rollout/ROLLOUT_data" # only used for testing on local machine, not on cluster, used when run_locally=True  # main_v1_1_one_model.py, storage_utils.py (when run_locally=True)
 
+drive_sync:
+  enabled: False # Set True to sync the final run output folder to Google Drive after saving.
+  folder_id: "1TczhM1x_W-hG1ezMUPwvoDgPTmrTOVrY"
+  credentials_file: "/home/aisco/credentials.json"
+  token_file: "/home/aisco/token.json"
+  assume_existing_folders_equal: True
+  local_folder: "" # Leave empty to sync the folder where the final model was saved.
+
 early_stopping:
   # Final path is auto-built as:
   #   /home/aisco/<sentinel_relative_path>          on local Beast/WSL
