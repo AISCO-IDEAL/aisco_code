@@ -40,7 +40,7 @@ SPONSOR_LOGO_MAX_WIDTH_PERCENT: int = 78
 _V3_ROOT: Path = _DISPLAY_ROOT.parent / "v3"
 
 # Leaderboard data — read from v3's live summary log by default.
-LEADERBOARD_CSV: Path = _V3_ROOT / "logs" / "gui_runs_summary.csv"
+LEADERBOARD_CSV: Path = Path("/home/robert/Focus_Rollout/Leaderboard/gui_runs_summary.csv").resolve()
 
 # Reuse v3's compiled static assets (CSS, JS, images) directly.
 STATIC_DIR: Path = _V3_ROOT / "frontend" / "static"
