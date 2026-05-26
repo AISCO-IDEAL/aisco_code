@@ -310,7 +310,7 @@
     const isLive = pipeline === "live";
     const LAUNCHER_API = "/launcher/api";
     const VIEWER_API = "/viewer/api";
-    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260525_4";
+    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260526_2";
     const PANEL_VISIBILITY_DEFAULTS = {{ panel_visibility_defaults_json | safe }};
     const PANEL_DEFAULTS = PANEL_VISIBILITY_DEFAULTS.launcher;
     const modeKey = isLive ? "live" : "completed";
@@ -435,46 +435,7 @@
 
     function applySyncedViewState(targetViewer, sourceViewState) {
         if (!targetViewer || !sourceViewState || !sourceViewState.camera || !sourceViewState.target) return;
-        var srcCam = sourceViewState.camera;
-        var srcTarget = sourceViewState.target;
-        var dx = srcCam.x - srcTarget.x;
-        var dy = srcCam.y - srcTarget.y;
-        var dz = srcCam.z - srcTarget.z;
-        var dirLen = Math.hypot(dx, dy, dz);
-        if (!(dirLen > 1e-6)) {
-            targetViewer.setViewState(sourceViewState);
-            return;
-        }
-
-        var current = typeof targetViewer.getViewState === "function" ? targetViewer.getViewState() : null;
-        var desiredDist = 0;
-        if (current && current.camera && current.target) {
-            desiredDist = Math.hypot(
-                current.camera.x - current.target.x,
-                current.camera.y - current.target.y,
-                current.camera.z - current.target.z,
-            );
-        }
-        var sourceDist = Math.hypot(dx, dy, dz);
-        var dist = desiredDist > 1e-6 ? desiredDist : (sourceDist > 1e-6 ? sourceDist : 2.0);
-        var ux = dx / dirLen;
-        var uy = dy / dirLen;
-        var uz = dz / dirLen;
-
-        targetViewer.setViewState({
-            camera: {
-                x: srcTarget.x + ux * dist,
-                y: srcTarget.y + uy * dist,
-                z: srcTarget.z + uz * dist,
-            },
-            target: {
-                x: srcTarget.x,
-                y: srcTarget.y,
-                z: srcTarget.z,
-            },
-            up: sourceViewState.up,
-            quaternion: sourceViewState.quaternion,
-        });
+        targetViewer.setViewState(sourceViewState);
     }
 
     function _metricColor(cssVarName, fallback) {

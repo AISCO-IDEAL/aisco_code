@@ -310,7 +310,7 @@
 
 <script>
     const VIEWER_API = "/viewer/api";
-    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260525_4";
+    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260526_2";
     const PANEL_VISIBILITY_DEFAULTS = {{ panel_visibility_defaults_json | safe }};
     const PANEL_DEFAULTS = PANEL_VISIBILITY_DEFAULTS.viewer;
 
@@ -440,46 +440,7 @@
 
     function applySyncedViewState(targetViewer, sourceViewState) {
         if (!targetViewer || !sourceViewState || !sourceViewState.camera || !sourceViewState.target) return;
-        var srcCam = sourceViewState.camera;
-        var srcTarget = sourceViewState.target;
-        var dx = srcCam.x - srcTarget.x;
-        var dy = srcCam.y - srcTarget.y;
-        var dz = srcCam.z - srcTarget.z;
-        var dirLen = Math.hypot(dx, dy, dz);
-        if (!(dirLen > 1e-6)) {
-            targetViewer.setViewState(sourceViewState);
-            return;
-        }
-
-        var current = typeof targetViewer.getViewState === "function" ? targetViewer.getViewState() : null;
-        var desiredDist = 0;
-        if (current && current.camera && current.target) {
-            desiredDist = Math.hypot(
-                current.camera.x - current.target.x,
-                current.camera.y - current.target.y,
-                current.camera.z - current.target.z,
-            );
-        }
-        var sourceDist = Math.hypot(dx, dy, dz);
-        var dist = desiredDist > 1e-6 ? desiredDist : (sourceDist > 1e-6 ? sourceDist : 2.0);
-        var ux = dx / dirLen;
-        var uy = dy / dirLen;
-        var uz = dz / dirLen;
-
-        targetViewer.setViewState({
-            camera: {
-                x: srcTarget.x + ux * dist,
-                y: srcTarget.y + uy * dist,
-                z: srcTarget.z + uz * dist,
-            },
-            target: {
-                x: srcTarget.x,
-                y: srcTarget.y,
-                z: srcTarget.z,
-            },
-            up: sourceViewState.up,
-            quaternion: sourceViewState.quaternion,
-        });
+        targetViewer.setViewState(sourceViewState);
     }
 
     function fmtTime(ts) {
@@ -561,6 +522,44 @@
         drawMetricTrend(metricSpeedGraph, speedSeriesKmh, _metricColor("--theme-metric-speed-border", "#66CC99"), frac);
         drawMetricTrend(metricDragGraph, _metricsHistory.drag_value || [], _metricColor("--theme-metric-drag-border", "#66A3FF"), frac);
         drawMetricTrend(metricSolarGraph, _metricsHistory.solar_power_w || [], _metricColor("--theme-metric-solar-border", "#FFD966"), frac);
+    }
+
+    function applyMetricDisplaysForFraction(frac) {
+        if (!_metricsHistory || !_metricsHistory.epoch || !_metricsHistory.epoch.length) return false;
+        var clamped = Math.max(0, Math.min(1, Number(frac) || 0));
+        var idx = _metricsHistory.epoch.length > 1
+            ? Math.round(clamped * (_metricsHistory.epoch.length - 1))
+            : 0;
+        var speedMs = _metricsHistory.cruising_speed_ms ? _metricsHistory.cruising_speed_ms[idx] : null;
+        var speedKmh = speedMs == null ? null : Number(speedMs) * 3.6;
+        if (metricSpeedValue) metricSpeedValue.textContent = _formatMetric(speedKmh, 2, "km/h");
+        if (metricDragValue) metricDragValue.textContent = _formatMetric(_metricsHistory.drag_value ? _metricsHistory.drag_value[idx] : null, 2, "N");
+        if (metricSolarValue) metricSolarValue.textContent = _formatMetric(_metricsHistory.solar_power_w ? _metricsHistory.solar_power_w[idx] : null, 1, "W");
+        var speedSeriesKmh = (_metricsHistory.cruising_speed_ms || []).map(function (v) { return v == null ? null : Number(v) * 3.6; });
+        drawMetricTrend(metricSpeedGraph, speedSeriesKmh, _metricColor("--theme-metric-speed-border", "#66CC99"), clamped);
+        drawMetricTrend(metricDragGraph, _metricsHistory.drag_value || [], _metricColor("--theme-metric-drag-border", "#66A3FF"), clamped);
+        drawMetricTrend(metricSolarGraph, _metricsHistory.solar_power_w || [], _metricColor("--theme-metric-solar-border", "#FFD966"), clamped);
+        return true;
+    }
+
+    function applyMetricDisplaysForCurrentView() {
+        var _lf = primaryGlbFiles[primaryGlbIdx];
+        if (_lf && _lf.epoch != null) {
+            applyMetricDisplaysForEpoch(_lf.epoch);
+            return true;
+        }
+        var _rf = rightPanelFiles[rightPanelIdx];
+        if (_rf && _rf.epoch != null) {
+            applyMetricDisplaysForEpoch(_rf.epoch);
+            return true;
+        }
+        if (primaryGlbFiles.length > 1) {
+            return applyMetricDisplaysForFraction(primaryGlbIdx / (primaryGlbFiles.length - 1));
+        }
+        if (rightPanelFiles.length > 1) {
+            return applyMetricDisplaysForFraction(rightPanelIdx / (rightPanelFiles.length - 1));
+        }
+        return applyMetricDisplaysForFraction(0);
     }
 
     function applyMetricDisplays(latest, history) {
@@ -692,8 +691,7 @@
                 paintSlider(rightPanelSlider);
                 loadRightPanel();
             }
-            var _f = primaryGlbFiles[primaryGlbIdx];
-            if (_f && _f.epoch != null) applyMetricDisplaysForEpoch(_f.epoch);
+            applyMetricDisplaysForCurrentView();
             if (syncPlayStartIdx !== null && primaryGlbIdx === syncPlayStartIdx) { stopSyncedPlay(); }
         }, 500);
     }
@@ -704,8 +702,7 @@
         paintSlider(primaryGlbSlider);
         loadPrimaryGlb();
         syncRightEpochToPrimary();
-        var _f = primaryGlbFiles[primaryGlbIdx];
-        if (_f && _f.epoch != null) applyMetricDisplaysForEpoch(_f.epoch);
+        applyMetricDisplaysForCurrentView();
     });
 
     primaryGlbPlayBtn.addEventListener("click", function () {
@@ -917,6 +914,7 @@
         paintSlider(rightPanelSlider);
         loadRightPanel();
         syncPrimaryEpochToRight();
+        applyMetricDisplaysForCurrentView();
     });
 
     rightPanelPlayBtn.addEventListener("click", function () {
@@ -1003,12 +1001,14 @@
                 fetch(VIEWER_API + "/runs/" + runId + "/metrics").then(function (r) { return r.json(); }),
             ]);
 
-            updatePrimaryGlb(artData.meshes_glb || []);
+            updatePrimaryGlb(artData.meshes_glb_cone || artData.meshes_glb || []);
             updatePriorityPanels(artData);
 
             if (metricsData && metricsData.found) {
                 _metricsHistory = metricsData.history || null;
-                applyMetricDisplays(metricsData.latest, metricsData.history);
+                if (!applyMetricDisplaysForCurrentView()) {
+                    applyMetricDisplays(metricsData.latest, metricsData.history);
+                }
             }
         } catch (err) {
             statusLabel.textContent = "Failed to load artifacts: " + err.message;

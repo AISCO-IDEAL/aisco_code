@@ -371,7 +371,7 @@ export function initMeshViewer(containerEl, options = {}) {
     }
 
     function frameScaledObject(sizeVec) {
-        const vFovHalf = 25 * Math.PI / 180; // half of the 50° FOV
+        const vFovHalf = 25 * Math.PI / 180; // half of the 50deg FOV
         const aspect = containerEl.clientWidth / Math.max(containerEl.clientHeight, 1);
         const hFovHalf = Math.atan(Math.tan(vFovHalf) * aspect);
         const dFitW = (sizeVec.x / 2) / Math.tan(hFovHalf);
@@ -392,18 +392,57 @@ export function initMeshViewer(containerEl, options = {}) {
         if (!usesTurntableControls) {
             camera.quaternion.identity();
         }
-        // Suppress the callback so framing a newly-loaded mesh never broadcasts
-        // the reset view to a synced viewer (would clobber the user's camera).
         suppressControlsCallback = true;
         controls.update();
         suppressControlsCallback = false;
-        // Force controls to sync their internal state with the camera.
         const currentState = getViewState();
         setViewState(currentState);
     }
 
+    function _fitBoxFromPreferredGlbMeshes(root) {
+        const outerBboxPreferred = [];
+        const sdfPreferred = [];
+        const preferred = [];
+        const fallback = [];
+        root.traverse((node) => {
+            if (!node.isMesh || !node.geometry) {
+                return;
+            }
+            const name = String(node.name || "").toLowerCase();
+            if (name === "outer_bbox") {
+                outerBboxPreferred.push(node);
+            }
+            // Helper geometry (bbox / cone) should not drive framing because it
+            // makes the actual body appear too small versus scalar fields.
+            const isHelper =
+                name === "outer_bbox" ||
+                name === "vision_cone" ||
+                name.includes("bbox") ||
+                name.includes("cone");
+
+            fallback.push(node);
+            if (name === "sdf_mesh") {
+                sdfPreferred.push(node);
+            }
+            if (!isHelper) {
+                preferred.push(node);
+            }
+        });
+
+        // For GLB aeroshell views, outer_bbox is the intended global frame and
+        // avoids over-zooming into just the sdf shell.
+        const meshes = outerBboxPreferred.length
+            ? outerBboxPreferred
+            : (sdfPreferred.length ? sdfPreferred : (preferred.length ? preferred : fallback));
+        const box = new Box3();
+        meshes.forEach((mesh) => {
+            box.expandByObject(mesh);
+        });
+        return box;
+    }
+
     function fitGlbCamera(root) {
-        const box = new Box3().setFromObject(root);
+        const box = _fitBoxFromPreferredGlbMeshes(root);
         const center = box.getCenter(new Vector3());
         const size = box.getSize(new Vector3());
         const maxDim = Math.max(size.x, size.y, size.z);
