@@ -13,18 +13,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
+_DISPLAY_ROOT: Path = Path(__file__).resolve().parents[1]
+
 # ---------------------------------------------------------------------------
 # ── ADJUST THESE BEFORE THE PRESENTATION ───────────────────────────────────
 # ---------------------------------------------------------------------------
 
 # Path to the .mp4 video file to display in the player widget.
-VIDEO_PATH: Path = Path("/cluster/home/roarnold/AISCO_code/subprojects/wp7_gui/v3_display/video/gui_video.mp4")
+VIDEO_PATH: Path = (_DISPLAY_ROOT / "display_data" / "leaderboard_video.mp4").resolve()
 
 # ---------------------------------------------------------------------------
 # ── Derived paths (no need to change) ──────────────────────────────────────
 # ---------------------------------------------------------------------------
 
-_DISPLAY_ROOT: Path = Path(__file__).resolve().parents[1]
 _V3_ROOT: Path = _DISPLAY_ROOT.parent / "v3"
 
 # Leaderboard data — read from v3's live summary log by default.
