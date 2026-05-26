@@ -22,6 +22,17 @@ _DISPLAY_ROOT: Path = Path(__file__).resolve().parents[1]
 # Path to the .mp4 video file to display in the player widget.
 VIDEO_PATH: Path = (_DISPLAY_ROOT / "display_data" / "leaderboard_video.mp4").resolve()
 
+# Sponsor logos shown in the lower-right panel.
+# URLs must be reachable from the mounted /static directory.
+SPONSOR_LOGO_URLS: tuple[str, ...] = (
+    "/static/img/ideal.png",
+    "/static/img/sustainability.png",
+    "/static/img/hasler.png",
+)
+
+# Logo max width inside each sponsor tile (percentage of tile width, 1..100).
+SPONSOR_LOGO_MAX_WIDTH_PERCENT: int = 78
+
 # ---------------------------------------------------------------------------
 # ── Derived paths (no need to change) ──────────────────────────────────────
 # ---------------------------------------------------------------------------
@@ -41,3 +52,8 @@ PORT: int = 8005
 
 # Leaderboard auto-refresh interval in milliseconds.
 LEADERBOARD_REFRESH_MS: int = 5_000
+
+# Leaderboard display behavior for v3_display.
+PINNED_TOP_COUNT: int = 5
+ROTATING_WINDOW_SIZE: int = 5
+WINDOW_ADVANCE_MS: int = 1_000
