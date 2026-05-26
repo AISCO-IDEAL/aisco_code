@@ -182,7 +182,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
 
   wheel_alignment:
     _role: constraint
-    _disabled_epochs: []  
+    _disabled_epochs: []
     wheel_alignment_v0: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/wheel_loss/wheel_alignment_v0.py"] # GINN-style L2-norm wheel ground-tangency constraint, independent ALM slot
 
   surface_area:
