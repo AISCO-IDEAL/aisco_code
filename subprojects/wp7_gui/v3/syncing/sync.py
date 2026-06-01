@@ -25,12 +25,14 @@ class DriveSync:
         folder_id="1TczhM1x_W-hG1ezMUPwvoDgPTmrTOVrY",
         credentials_file="/home/aisco/credentials.json",
         token_file="/home/aisco/token.json",
+        assume_existing_folders_equal=True,
     ):
         base = Path(__file__).resolve().parent
         self.local_folder = Path(local_folder or base / "ROLLOUT_data")
         self.folder_id = folder_id
         self.credentials_file = Path(credentials_file or base / "credentials.json")
         self.token_file = Path(token_file or base / "token.json")
+        self.assume_existing_folders_equal = assume_existing_folders_equal
         self.local_folder.mkdir(parents=True, exist_ok=True)
         self.creds = self.auth()
         self.service = build("drive", "v3", credentials=self.creds)
@@ -142,6 +144,8 @@ class DriveSync:
                     print(f"Skipped path conflict between a file and a folder: {local_file}")
                 else:
                     local_folder_child = local_folder_child or local_folder / name
+                    if local_folder_child.exists() and self.assume_existing_folders_equal:
+                        continue
                     local_folder_child.mkdir(parents=True, exist_ok=True)
                     self.collect_transfers(local_folder_child, item["id"], uploads, downloads)
                 continue

@@ -68,6 +68,8 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import (
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.wandb_utils import patch_wandb_log_for_monotonic_steps
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
 
+from subprojects.wp7_gui.v3.syncing.sync import DriveSync
+
 configure_headless_pyvista()
 
 
@@ -808,6 +810,46 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         print("=" * 80 + "\n")
 
     print("Completed job successfully.")
+    drive_sync_cfg = general_config.get("drive_sync", {})
+    drive_sync_enabled = drive_sync_cfg.get("enabled", False)
+    if isinstance(drive_sync_enabled, str):
+        drive_sync_enabled = drive_sync_enabled.strip().lower() in {"true", "1", "yes", "on"}
+    if drive_sync_enabled:
+        folder_id = str(drive_sync_cfg.get("folder_id") or "").strip()
+        if not folder_id:
+            raise ValueError("drive_sync.enabled is true, but drive_sync.folder_id is empty.")
+
+        configured_local_folder = str(drive_sync_cfg.get("local_folder") or "").strip()
+        if configured_local_folder:
+            local_folder = Path(configured_local_folder).expanduser()
+        else:
+            local_folder = (
+                Path(
+                    general_config["storage_paths"].get("beast_storage_dir")
+                    or general_config["storage_paths"].get("local_storage_dir", "./local_storage_dir")
+                )
+                if run_locally
+                else Path(
+                    general_config["storage_paths"].get(
+                        "storage_dir", "/cluster/work/fuge/AISCO/wp4_aeroshell_optimiser/bulk_storage"
+                    )
+                )
+            ) / model_hash
+
+        assume_existing_folders_equal = drive_sync_cfg.get("assume_existing_folders_equal", True)
+        if isinstance(assume_existing_folders_equal, str):
+            assume_existing_folders_equal = assume_existing_folders_equal.strip().lower() in {"true", "1", "yes", "on"}
+
+        print(f"Starting Google Drive sync from {local_folder}")
+
+        DriveSync(
+            local_folder=str(local_folder),
+            folder_id=folder_id,
+            credentials_file=drive_sync_cfg.get("credentials_file") or None,
+            token_file=drive_sync_cfg.get("token_file") or None,
+            assume_existing_folders_equal=bool(assume_existing_folders_equal),
+        ).sync()
+        print("Finished Google Drive sync.")
 
 
 if __name__ == "__main__":
