@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 import csv
 import logging
+import socket
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,7 +19,7 @@ from pathlib import Path
 LOGGER = logging.getLogger(__name__)
 
 _PER_RUN_FIELDS = ("epoch", "timestamp", "drag_value", "solar_power_w", "cruising_speed_ms")
-_SUMMARY_FIELDS = ("run_id", "cfg_session", "timestamp", "epoch", "drag_value", "solar_power_w", "cruising_speed_ms")
+_SUMMARY_FIELDS = ("run_id", "cfg_session", "timestamp", "epoch", "drag_value", "solar_power_w", "cruising_speed_ms", "device_id")
 
 
 def _fmt(value: float | None) -> str:
@@ -103,6 +104,7 @@ class CSVMetricsWriter:
         drag_value: float | None,
         solar_power_w: float | None,
         cruising_speed_ms: float | None,
+        device_id: str = "",
     ) -> None:
         """Upsert one row in the global summary CSV.
 
@@ -113,6 +115,7 @@ class CSVMetricsWriter:
             run_id: Unique identifier for this run (e.g. W&B run name).
             cfg_session: GUI override session basename (e.g. ``gui_override_20260521_123456``).
             epoch: Current epoch (typically the latest/final epoch).
+            device_id: Hostname of the machine that produced this run.
             drag_value: Drag force in Newtons, or None.
             solar_power_w: Solar output in Watts, or None.
             cruising_speed_ms: Cruising speed in m/s, or None.
@@ -125,6 +128,7 @@ class CSVMetricsWriter:
             "drag_value": _fmt(drag_value),
             "solar_power_w": _fmt(solar_power_w),
             "cruising_speed_ms": _fmt(cruising_speed_ms),
+            "device_id": device_id or socket.gethostname(),
         }
         with self._lock:
             self._summary_path.parent.mkdir(parents=True, exist_ok=True)

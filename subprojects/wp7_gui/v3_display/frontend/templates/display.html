@@ -1,30 +1,60 @@
 {% extends "base.html" %}
-{% block hint %}Live leaderboard &mdash; run names sorted by best performance.{% endblock %}
+{% block hint %}Live leaderboard &mdash; run names sorted by decreasing speed.{% endblock %}
 
 {% block head %}
 <style>
-  /* ── Overall layout: leaderboard narrow, video fills the rest ───────────── */
+  /* 2x2 layout: video occupies top-right quarter, leaderboard occupies the rest. */
   .display-layout {
     display: grid;
-    grid-template-columns: 280px 1fr;
-    gap: 16px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 18px;
     height: 100%;
     min-height: 0;
   }
 
-  /* Narrow screens: stack vertically */
-  @media (max-width: 860px) {
+  @media (max-width: 980px) {
     .display-layout {
       grid-template-columns: 1fr;
-      grid-template-rows: auto 1fr;
+      grid-template-rows: auto auto minmax(320px, 1fr) minmax(260px, 1fr);
     }
   }
 
-  /* ── Shared card ──────────────────────────────────────────────────────────── */
+  #top5Card {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  #videoCard {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  #windowCard {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  #teamCard {
+    grid-column: 2;
+    grid-row: 2;
+    --sponsor-logo-max-width: {{ sponsor_logo_max_width_percent | default(78, true) | int }}%;
+  }
+
+  @media (max-width: 980px) {
+    #top5Card,
+    #videoCard,
+    #windowCard,
+    #teamCard {
+      grid-column: 1;
+      grid-row: auto;
+    }
+  }
+
   .display-card {
     background: color-mix(in srgb, var(--theme-panel) 80%, var(--theme-panel-2) 20%);
     border: 1px solid var(--theme-border);
-    border-radius: 10px;
+    border-radius: 14px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -32,10 +62,10 @@
   }
 
   .display-card-title {
-    padding: 10px 16px;
-    font-size: 0.7rem;
+    padding: 14px 18px;
+    font-size: 1rem;
     font-weight: 700;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--theme-warning-text);
     border-bottom: 1px solid var(--theme-border);
@@ -43,8 +73,7 @@
     flex-shrink: 0;
   }
 
-  /* ── Leaderboard ──────────────────────────────────────────────────────────── */
-  .lb-scroll {
+  .lb-table-wrap {
     overflow-y: auto;
     flex: 1 1 0;
     min-height: 0;
@@ -53,12 +82,12 @@
   .lb-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.85rem;
+    font-size: clamp(1.06rem, 1.85vw, 1.56rem);
   }
 
   .lb-table tbody tr {
     border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent 50%);
-    transition: background 0.12s;
+    transition: background 0.12s ease;
   }
 
   .lb-table tbody tr:last-child {
@@ -70,66 +99,65 @@
   }
 
   .lb-table td {
-    padding: 11px 16px;
+    padding: 16px 20px;
     color: var(--theme-text);
     vertical-align: middle;
   }
 
-  /* Rank column */
   .lb-rank {
     font-weight: 700;
-    font-size: 0.9rem;
+    font-size: clamp(1.1rem, 1.65vw, 1.56rem);
     font-family: var(--theme-font-mono, monospace);
     color: var(--theme-muted);
-    width: 52px;
+    width: 120px;
     white-space: nowrap;
   }
 
-  .lb-rank.gold   { color: #f5c842; }
+  .lb-rank.gold { color: #f5c842; }
   .lb-rank.silver { color: #b0b8c8; }
   .lb-rank.bronze { color: #cd7f32; }
 
-  /* Run name column */
   .lb-run-id {
     font-family: var(--theme-font-mono, monospace);
-    font-size: 0.82rem;
+    font-size: clamp(1rem, 1.55vw, 1.42rem);
+    font-weight: 600;
     color: var(--theme-text);
     word-break: break-all;
   }
 
-  /* Status placeholder */
-  #lbStatus {
-    padding: 28px 16px;
+  #top5Status,
+  #windowStatus {
+    padding: 30px 18px;
     text-align: center;
     color: var(--theme-muted);
-    font-size: 0.82rem;
+    font-size: 1.05rem;
   }
 
-  /* Footer */
   .lb-footer {
     flex-shrink: 0;
-    padding: 6px 14px;
-    font-size: 0.68rem;
+    padding: 10px 16px;
+    font-size: 0.95rem;
     color: var(--theme-muted);
     text-align: right;
     border-top: 1px solid var(--theme-border);
   }
 
-  /* ── Video ────────────────────────────────────────────────────────────────── */
   .video-wrap {
     flex: 1 1 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 12px;
+    padding: 14px;
     min-height: 0;
-    background: #000;
+    background: #23283E;
   }
 
   .video-wrap video {
-    max-width: 100%;
-    max-height: 100%;
-    border-radius: 6px;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #23283E;
+    border-radius: 8px;
     outline: none;
   }
 
@@ -138,11 +166,63 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 28px;
+    padding: 28px 20px;
     color: var(--theme-muted);
-    font-size: 0.82rem;
+    font-size: 1rem;
     text-align: center;
-    line-height: 1.7;
+    line-height: 1.6;
+  }
+
+  .sponsor-wrap {
+    flex: 1 1 0;
+    min-height: 0;
+    background: #23283E;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    padding: 12px;
+    align-content: center;
+  }
+
+  .sponsor-tile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--theme-border) 65%, transparent 35%);
+    background: color-mix(in srgb, #23283E 70%, var(--theme-panel) 30%);
+    padding: 10px;
+    min-height: 84px;
+  }
+
+  .sponsor-tile.wide {
+    grid-column: 1 / 3;
+  }
+
+  .sponsor-logo {
+    width: auto;
+    max-width: var(--sponsor-logo-max-width, 100%);
+    height: auto;
+    max-height: 100%;
+    object-fit: contain;
+    object-position: center;
+  }
+
+  .sponsor-missing {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    line-height: 1.4;
+    color: var(--theme-muted);
+    font-size: 0.84rem;
+    padding: 4px;
+    word-break: break-word;
+  }
+
+  .window-marker {
+    color: var(--theme-warning-text);
+    font-weight: 700;
   }
 </style>
 {% endblock %}
@@ -150,24 +230,22 @@
 {% block content %}
 <div class="display-layout">
 
-  <!-- ── LEADERBOARD ───────────────────────────────────────────────────────── -->
-  <div class="display-card">
-    <div class="display-card-title">Leaderboard — Run Names</div>
-    <div class="lb-scroll" id="lbScroll">
-      <div id="lbStatus">Loading leaderboard&hellip;</div>
-      <table class="lb-table" id="lbTable" style="display:none;">
-        <tbody id="lbBody"></tbody>
+  <div class="display-card" id="top5Card">
+    <div class="display-card-title">Top 5</div>
+    <div class="lb-table-wrap">
+      <div id="top5Status">Loading top positions&hellip;</div>
+      <table class="lb-table" id="top5Table" style="display:none;">
+        <tbody id="top5Body"></tbody>
       </table>
     </div>
-    <div class="lb-footer" id="lbFooter" style="display:none;"></div>
+    <div class="lb-footer" id="top5Footer" style="display:none;"></div>
   </div>
 
-  <!-- ── VIDEO ─────────────────────────────────────────────────────────────── -->
-  <div class="display-card">
+  <div class="display-card" id="videoCard">
     <div class="display-card-title">Video</div>
     {% if video_available %}
     <div class="video-wrap">
-      <video id="mainVideo" controls loop>
+      <video id="mainVideo" controls loop autoplay muted playsinline>
         <source src="/video" type="video/mp4">
         Your browser does not support the video tag.
       </video>
@@ -182,11 +260,46 @@
     {% endif %}
   </div>
 
+  <div class="display-card" id="windowCard">
+    <div class="display-card-title">Further Positions</div>
+    <div class="lb-table-wrap">
+      <div id="windowStatus">Loading rotating positions&hellip;</div>
+      <table class="lb-table" id="windowTable" style="display:none;">
+        <tbody id="windowBody"></tbody>
+      </table>
+    </div>
+    <div class="lb-footer" id="windowFooter" style="display:none;"></div>
+  </div>
+
+  <div class="display-card" id="teamCard">
+    <div class="display-card-title">Supporters</div>
+    <div class="sponsor-wrap">
+      {% for sponsor in sponsor_logos %}
+      <div class="sponsor-tile{% if loop.last %} wide{% endif %}">
+        {% if sponsor.exists %}
+        <img class="sponsor-logo" src="{{ sponsor.url }}" alt="Supporter {{ sponsor.filename }}">
+        {% else %}
+        <div class="sponsor-missing">
+          Missing supporter logo:<br>
+          {{ sponsor.expected_path if sponsor.expected_path else sponsor.url }}
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
 </div>
 
 <script>
-  // ── Leaderboard fetch + render ───────────────────────────────────────────
   const REFRESH_MS = {{ leaderboard_refresh_ms | int }};
+  const PINNED_TOP_COUNT = {{ pinned_top_count | int }};
+  const ROTATING_WINDOW_SIZE = {{ rotating_window_size | int }};
+  const WINDOW_ADVANCE_MS = {{ window_advance_ms | int }};
+
+  let allEntries = [];
+  let totalRuns = 0;
+  let windowStartOffset = 0;
 
   function rankClass(rank) {
     if (rank === 1) return "gold";
@@ -196,29 +309,15 @@
   }
 
   function rankLabel(rank) {
-    if (rank === 1) return "\uD83E\uDD47 1";
-    if (rank === 2) return "\uD83E\uDD48 2";
-    if (rank === 3) return "\uD83E\uDD49 3";
-    return String(rank);
+    if (rank === 1) return "#1";
+    if (rank === 2) return "#2";
+    if (rank === 3) return "#3";
+    return "#" + String(rank);
   }
 
-  function renderLeaderboard(data) {
-    var tbody = document.getElementById("lbBody");
-    var status = document.getElementById("lbStatus");
-    var table = document.getElementById("lbTable");
-    var footer = document.getElementById("lbFooter");
-
+  function renderRows(tbody, entries) {
     tbody.innerHTML = "";
-
-    if (!data.entries || data.entries.length === 0) {
-      status.textContent = "No runs recorded yet.";
-      status.style.display = "";
-      table.style.display = "none";
-      footer.style.display = "none";
-      return;
-    }
-
-    data.entries.forEach(function (entry) {
+    entries.forEach(function (entry) {
       var tr = document.createElement("tr");
 
       var tdRank = document.createElement("td");
@@ -235,23 +334,124 @@
 
       tbody.appendChild(tr);
     });
+  }
 
-    status.style.display = "none";
-    table.style.display = "";
-    footer.textContent = data.total_runs + " run" + (data.total_runs !== 1 ? "s" : "") + " total";
-    footer.style.display = "";
+  function buildRotatingWindow(entries) {
+    var remaining = entries.slice(PINNED_TOP_COUNT);
+    if (remaining.length === 0) {
+      return [];
+    }
+
+    var windowSize = Math.min(ROTATING_WINDOW_SIZE, remaining.length);
+    if (remaining.length <= windowSize) {
+      return remaining;
+    }
+
+    var result = [];
+    var start = ((windowStartOffset % remaining.length) + remaining.length) % remaining.length;
+    for (var idx = 0; idx < windowSize; idx += 1) {
+      var entry = remaining[(start + idx) % remaining.length];
+      result.push(entry);
+    }
+    return result;
+  }
+
+  function normalizeWindowOffset() {
+    var remainingCount = Math.max(0, allEntries.length - PINNED_TOP_COUNT);
+    if (remainingCount > 0) {
+      windowStartOffset = ((windowStartOffset % remainingCount) + remainingCount) % remainingCount;
+    } else {
+      windowStartOffset = 0;
+    }
+  }
+
+  function renderLeaderboard() {
+    var top5Body = document.getElementById("top5Body");
+    var top5Status = document.getElementById("top5Status");
+    var top5Table = document.getElementById("top5Table");
+    var top5Footer = document.getElementById("top5Footer");
+
+    var windowBody = document.getElementById("windowBody");
+    var windowStatus = document.getElementById("windowStatus");
+    var windowTable = document.getElementById("windowTable");
+    var windowFooter = document.getElementById("windowFooter");
+
+    var pinnedEntries = allEntries.slice(0, PINNED_TOP_COUNT);
+    var rotatingEntries = buildRotatingWindow(allEntries);
+
+    if (allEntries.length === 0) {
+      top5Status.textContent = "No runs recorded yet.";
+      top5Status.style.display = "";
+      top5Table.style.display = "none";
+      top5Footer.style.display = "none";
+
+      windowStatus.textContent = "No additional positions yet.";
+      windowStatus.style.display = "";
+      windowTable.style.display = "none";
+      windowFooter.style.display = "none";
+      return;
+    }
+
+    renderRows(top5Body, pinnedEntries);
+    top5Status.style.display = pinnedEntries.length > 0 ? "none" : "";
+    top5Table.style.display = pinnedEntries.length > 0 ? "" : "none";
+    top5Footer.textContent = "Pinned positions: 1-" + String(pinnedEntries.length);
+    top5Footer.style.display = pinnedEntries.length > 0 ? "" : "none";
+
+    if (rotatingEntries.length === 0) {
+      windowStatus.textContent = "No additional positions beyond top " + String(PINNED_TOP_COUNT) + ".";
+      windowStatus.style.display = "";
+      windowTable.style.display = "none";
+      windowFooter.style.display = "none";
+    } else {
+      renderRows(windowBody, rotatingEntries);
+      windowStatus.style.display = "none";
+      windowTable.style.display = "";
+
+      var extraCount = Math.max(0, allEntries.length - PINNED_TOP_COUNT);
+      var leadRank = rotatingEntries[0].rank;
+      windowFooter.innerHTML =
+        "<span class=\"window-marker\">Window lead rank: #" + String(leadRank) +
+        "</span> showing " + String(rotatingEntries.length) +
+        " of " + String(extraCount) + " additional positions";
+      windowFooter.style.display = "";
+    }
+
+    var totalSuffix = totalRuns === 1 ? " run total" : " runs total";
+    top5Footer.textContent = top5Footer.textContent + " • " + String(totalRuns) + totalSuffix;
+  }
+
+  function refreshFromPayload(data) {
+    var entries = Array.isArray(data.entries) ? data.entries : [];
+    allEntries = entries;
+    totalRuns = typeof data.total_runs === "number" ? data.total_runs : entries.length;
+    normalizeWindowOffset();
+    renderLeaderboard();
   }
 
   function fetchLeaderboard() {
     fetch("/api/leaderboard")
       .then(function (r) { return r.json(); })
-      .then(renderLeaderboard)
+      .then(refreshFromPayload)
       .catch(function (err) {
         console.warn("Leaderboard fetch failed:", err);
       });
   }
 
+  function advanceWindow() {
+    var remainingCount = Math.max(0, allEntries.length - PINNED_TOP_COUNT);
+    if (remainingCount <= ROTATING_WINDOW_SIZE || remainingCount === 0) {
+      return;
+    }
+    windowStartOffset += 1;
+    normalizeWindowOffset();
+    renderLeaderboard();
+  }
+
+  renderLeaderboard();
+
   fetchLeaderboard();
   setInterval(fetchLeaderboard, REFRESH_MS);
+  setInterval(advanceWindow, WINDOW_ADVANCE_MS);
 </script>
 {% endblock %}

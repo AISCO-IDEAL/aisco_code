@@ -11,9 +11,9 @@
     <p style="color:var(--muted); margin:0; font-size:0.9rem;">What would you like to do?</p>
   </div>
 
-  <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; width:100%; max-width:760px;">
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; width:100%; max-width:760px; align-items:stretch;">
 
-    <a id="liveCardLink" href="/launcher/assembly-selection?pipeline=live" style="text-decoration:none; color:inherit;">
+    <a id="liveCardLink" href="/launcher/assembly-selection?pipeline=live" style="text-decoration:none; color:inherit; display:block;">
       <div style="
         background:var(--theme-gradient-intro-card);
         border:2px solid var(--theme-surface-large);
@@ -23,6 +23,7 @@
         cursor:pointer;
         transition:border-color .2s, box-shadow .2s;
         box-shadow:0 0 0 0 color-mix(in srgb, var(--theme-surface-large) 0%, transparent);
+        height:100%; box-sizing:border-box;
       " onmouseover="this.style.borderColor='var(--theme-title-2)';this.style.boxShadow='0 0 18px 2px color-mix(in srgb, var(--theme-surface-large) 45%, transparent)';"
         onmouseout="this.style.borderColor='var(--theme-surface-large)';this.style.boxShadow='none';">
         <div style="font-size:2.4rem; margin-bottom:14px;">&#9654;</div>
@@ -37,7 +38,7 @@
       </div>
     </a>
 
-    <a href="/viewer/latent-explorer" style="text-decoration:none; color:inherit;">
+    <a href="/viewer/latent-explorer" style="text-decoration:none; color:inherit; display:block;">
       <div style="
         background:var(--theme-gradient-intro-card);
         border:2px solid var(--theme-sel-green);
@@ -47,6 +48,7 @@
         cursor:pointer;
         transition:border-color .2s, box-shadow .2s;
         box-shadow:0 0 0 0 color-mix(in srgb, var(--theme-sel-green) 0%, transparent);
+        height:100%; box-sizing:border-box;
       " onmouseover="this.style.borderColor='color-mix(in srgb, var(--theme-sel-green) 70%, var(--theme-white) 30%)';this.style.boxShadow='0 0 18px 2px color-mix(in srgb, var(--theme-sel-green) 45%, transparent)';"
         onmouseout="this.style.borderColor='var(--theme-sel-green)';this.style.boxShadow='none';">
         <div style="font-size:2.4rem; margin-bottom:14px;">&#9638;</div>

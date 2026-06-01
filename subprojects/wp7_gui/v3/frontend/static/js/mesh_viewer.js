@@ -696,8 +696,19 @@ export function initMeshViewer(containerEl, options = {}) {
         renderGlbControls();
     }
 
+    function clearMesh() {
+        if (currentObj) {
+            scene.remove(currentObj);
+            disposeObject(currentObj);
+            currentObj = null;
+        }
+        currentGlbComponents = [];
+        currentMeshType = null;
+    }
+
     return {
         loadMesh,
+        clearMesh,
         getViewState,
         setViewState,
         setOnControlsChange,

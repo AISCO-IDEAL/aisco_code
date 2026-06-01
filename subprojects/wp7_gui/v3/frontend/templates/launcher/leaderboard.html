@@ -8,8 +8,6 @@
         display: flex;
         flex-direction: column;
         gap: 16px;
-        max-width: 860px;
-        margin: 0 auto;
         padding: 4px 0 16px;
     }
 
@@ -24,13 +22,13 @@
     .lb-table {
         width: 100%;
         border-collapse: collapse;
-        font-size: 0.82rem;
+        font-size: 0.92rem;
     }
 
     .lb-table thead th {
-        padding: 10px 14px;
+        padding: 13px 20px;
         text-align: left;
-        font-size: 0.68rem;
+        font-size: 0.76rem;
         font-weight: 700;
         letter-spacing: 0.1em;
         text-transform: uppercase;
@@ -67,7 +65,7 @@
     }
 
     .lb-table td {
-        padding: 10px 14px;
+        padding: 14px 20px;
         color: var(--theme-text);
         vertical-align: middle;
     }
@@ -75,7 +73,7 @@
     .lb-table td.num {
         text-align: right;
         font-family: var(--theme-font-mono, monospace);
-        font-size: 0.85rem;
+        font-size: 0.96rem;
     }
 
     .lb-table td.lb-num-speed {
@@ -98,8 +96,8 @@
     }
 
     .lb-mini {
-        width: 34px;
-        height: 12px;
+        width: 54px;
+        height: 18px;
         border-radius: 3px;
         background: color-mix(in srgb, var(--theme-panel-2) 36%, transparent 64%);
     }
@@ -107,10 +105,10 @@
     /* ── Rank cell ──────────────────────────────────────────────────────────── */
     .lb-rank {
         font-weight: 700;
-        font-size: 0.9rem;
+        font-size: 1.05rem;
         font-family: var(--theme-font-mono, monospace);
         color: var(--theme-muted);
-        min-width: 40px;
+        min-width: 44px;
     }
 
     .lb-rank.gold   { color: #f5c842; }
@@ -120,7 +118,7 @@
     /* ── Run ID ─────────────────────────────────────────────────────────────── */
     .lb-run-id {
         font-family: var(--theme-font-mono, monospace);
-        font-size: 0.8rem;
+        font-size: 0.92rem;
         color: var(--theme-text);
         word-break: break-all;
     }
@@ -267,8 +265,7 @@
         {% else %}
         <span style="flex:1; font-size:0.72rem; color:var(--theme-muted); text-align:center;">Click a row to open in Archive</span>
         {% endif %}
-        <a href="/viewer" class="btn secondary">Archive</a>
-        <a id="doneHomeBtn" href="/" class="btn">Done — Home</a>
+        <a id="doneHomeBtn" href="/" class="btn">Home</a>
     </div>
 
     <!-- ── LEADERBOARD CARD ─────────────────────────────────────────────────── -->

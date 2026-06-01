@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -28,6 +29,7 @@ from subprojects.wp7_gui.v3.shared.artifact_index import list_artifacts
 from subprojects.wp7_gui.v3.shared.assembly_selection import AssemblySelectionService
 from subprojects.wp7_gui.v3.shared.config_overrides import ConfigOverrideManager
 from subprojects.wp7_gui.v3.shared.csv_metrics import CSVMetricsWriter
+from subprojects.wp7_gui.v3.shared.latent_explorer import get_leaderboard_csv_path
 from subprojects.wp7_gui.v3.shared.panel_visibility import load_panel_visibility_defaults
 from subprojects.wp7_gui.v3.shared.run_paths import (
     collect_run_dirs,
@@ -54,7 +56,8 @@ LOGGER = logging.getLogger(__name__)
 # Singletons shared across requests
 # ---------------------------------------------------------------------------
 _process_manager = ProcessManager(SETTINGS.logs_dir)
-_csv_metrics = CSVMetricsWriter(SETTINGS.logs_dir / "gui_runs_summary.csv")
+_csv_metrics = CSVMetricsWriter(get_leaderboard_csv_path(SETTINGS.logs_dir / "gui_runs_summary.csv"))
+_DEVICE_ID: str = socket.gethostname()
 _runtime_state: dict[str, Any] = {
     "active_cfg_folder": "",
     "run_started_at": None,
@@ -387,6 +390,7 @@ def _write_epoch_csv(
         drag_value=drag_value,
         solar_power_w=solar_power_w,
         cruising_speed_ms=cruising_speed_ms,
+        device_id=_DEVICE_ID,
     )
     return True
 
@@ -1028,7 +1032,7 @@ def api_leaderboard(current_run_id: str | None = None) -> JSONResponse:
         - ``effective_run_id``: the run_id that was ultimately highlighted.
         - ``total_runs``: total number of runs in the CSV.
     """
-    summary_path = SETTINGS.logs_dir / "gui_runs_summary.csv"
+    summary_path = get_leaderboard_csv_path(SETTINGS.logs_dir / "gui_runs_summary.csv")
     rows: list[dict[str, str]] = []
     if summary_path.exists():
         try:
@@ -1038,10 +1042,12 @@ def api_leaderboard(current_run_id: str | None = None) -> JSONResponse:
             LOGGER.warning("Could not read summary CSV %s: %s", summary_path, exc)
 
     # Resolve which run to highlight: explicit param takes priority, otherwise
-    # fall back to the most recently updated run by timestamp.
+    # fall back to the most recently updated run on THIS device by timestamp.
     effective_run_id = current_run_id
     if not effective_run_id and rows:
-        latest = max(rows, key=lambda r: r.get("timestamp", ""))
+        device_rows = [r for r in rows if r.get("device_id", "") == _DEVICE_ID]
+        pool = device_rows if device_rows else rows
+        latest = max(pool, key=lambda r: r.get("timestamp", ""))
         effective_run_id = latest.get("run_id") or None
 
     def _speed(row: dict[str, str]) -> float:
@@ -1124,7 +1130,7 @@ async def leaderboard_stream() -> StreamingResponse:
     """
 
     async def _gen():
-        summary_path = SETTINGS.logs_dir / "gui_runs_summary.csv"
+        summary_path = get_leaderboard_csv_path(SETTINGS.logs_dir / "gui_runs_summary.csv")
         try:
             last_mtime: float = summary_path.stat().st_mtime if summary_path.exists() else 0.0
         except OSError:

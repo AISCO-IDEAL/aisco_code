@@ -54,100 +54,72 @@
     <div class="dark-card toolbar">
         <a id="latExpBkRunBtn" href="#" class="btn secondary" style="display:none;">&#8592; Back to run</a>
         <div style="flex:1;"></div>
-        <a href="/" class="btn">Done &#8212; Home</a>
+        <a href="/" class="btn">Home</a>
     </div>
 
     <!-- ── Controls top bar ──────────────────────────────────────────────────── -->
-    <div class="dark-card" style="display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; padding:12px 16px;">
+    <div class="output-cols">
 
-        <!-- Pretrained Checkpoints -->
-        <div style="display:flex; flex-direction:column; gap:8px; min-width:180px;">
-            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                <span style="font-size:0.82rem; color:var(--theme-warning-text); font-weight:700;">Pretrained Checkpoints</span>
-                {% if not pretrained_configured %}
-                <span style="font-size:0.72rem; color:var(--muted); padding:2px 8px; border-radius:10px;
-                             background:color-mix(in srgb, var(--theme-warning-text) 10%, transparent);">
-                    root not configured
-                </span>
-                {% endif %}
+        <!-- LEFT: Run Selection -->
+        <div class="dark-card" style="padding:14px 16px; display:flex; flex-direction:column; gap:10px;">
+            <span style="font-size:0.82rem; color:var(--theme-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Run Selection</span>
+            <!-- Wheels + Load Run on the same row -->
+            <div style="display:flex; align-items:center; gap:16px;">
+                <!-- Wheels grid -->
+                <div style="display:grid; grid-template-columns:auto auto; gap:8px 12px; align-items:center; justify-content:start;">
+                    <span style="font-size:0.78rem; color:var(--theme-muted); white-space:nowrap; text-align:right;">Front Wheels</span>
+                    <div style="display:flex; gap:4px;" id="runFrontToggle">
+                        <button class="btn secondary" data-value="1">1</button>
+                        <button class="btn" data-value="2">2</button>
+                    </div>
+                    <span style="font-size:0.78rem; color:var(--theme-muted); white-space:nowrap; text-align:right;">Rear Wheels</span>
+                    <div style="display:flex; gap:4px;" id="runRearToggle">
+                        <button class="btn" data-value="1">1</button>
+                        <button class="btn secondary" data-value="2">2</button>
+                    </div>
+                </div>
+                <!-- comment between toggles and load button -->
+                <span style="font-size:0.85rem; color:var(--theme-muted); font-style:italic; align-self:center;">Min. 3 wheels</span>
+                <!-- Load Run aligned to the right of the wheels -->
+                <button class="btn" id="btnLoadNamedRun" style="align-self:stretch; white-space:nowrap; margin-left:auto;">Load Run</button>
             </div>
-            <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-size:0.78rem; color:var(--muted); width:54px; flex-shrink:0;">Wheels</span>
-                <div style="display:flex; gap:4px;" id="wheelsToggle">
-                    <button class="btn" data-value="3">3</button>
-                    <button class="btn secondary" data-value="4">4</button>
+            <!-- Run A/B row -->
+            <div style="display:grid; grid-template-columns:auto auto; gap:8px 12px; align-items:center; justify-content:start;">
+                <span style="font-size:0.78rem; color:var(--theme-muted); white-space:nowrap; text-align:right;">Run</span>
+                <div style="display:flex; gap:4px;" id="runAbToggle">
+                    <button class="btn" data-value="A">Run A</button>
+                    <button class="btn secondary" data-value="B">Run B</button>
                 </div>
             </div>
-            <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-size:0.78rem; color:var(--muted); width:54px; flex-shrink:0;">Solar</span>
-                <div style="display:flex; gap:4px;" id="solarToggle">
-                    <button class="btn" data-value="true">On</button>
-                    <button class="btn secondary" data-value="false">Off</button>
-                </div>
-            </div>
-            <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-size:0.78rem; color:var(--muted); width:54px; flex-shrink:0;">Drag</span>
-                <div style="display:flex; gap:4px;" id="dragToggle">
-                    <button class="btn" data-value="true">On</button>
-                    <button class="btn secondary" data-value="false">Off</button>
-                </div>
-            </div>
-            <button class="btn" id="btnAutoLoad" style="align-self:flex-start;">Load Pretrained</button>
         </div>
 
-        <div class="ctrl-divider"></div>
-
-        <!-- Custom Checkpoint -->
-        <div style="display:flex; flex-direction:column; gap:8px; min-width:220px; flex:1; max-width:340px;">
-            <span style="font-size:0.78rem; color:var(--muted); font-weight:600;">Custom Checkpoint</span>
-            <label style="font-size:0.78rem; color:var(--theme-muted);">Path or run directory</label>
-            <input id="ckptInput" type="text" placeholder="/cluster/work/fuge/AISCO/…"
-                style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:0.80rem;" />
-            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                <button class="btn" id="btnLoad">Load checkpoint</button>
-                <label style="font-size:0.78rem; color:var(--theme-muted); white-space:nowrap;">
-                    Resolution
-                    <input id="resInput" type="number" value="35" min="10" max="80"
-                        style="width:52px; margin-left:4px; padding:3px 5px; font-size:0.78rem;" />
-                </label>
+        <!-- CENTER: Latent Canvas -->
+        <div style="display:flex; flex-direction:column; align-items:center; gap:6px; justify-content:center;">
+            <div style="width:100%; aspect-ratio:1/1; position:relative;">
+                <canvas id="latentCanvas" width="300" height="300"
+                    style="position:absolute; inset:0; width:100%; height:100%; background:#0d1117;
+                           border:1px solid var(--theme-border, #45475a); border-radius:4px;
+                           cursor:crosshair; display:block;"></canvas>
             </div>
-            <div id="statusMsg" style="font-size:0.75rem; color:var(--theme-muted); min-height:1em;">—</div>
-        </div>
-
-        <div class="ctrl-divider"></div>
-
-        <!-- Latent Canvas -->
-        <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
-            <div style="font-size:0.68rem; font-weight:700; color:var(--theme-muted); text-transform:uppercase; letter-spacing:0.06em;">Latent Space</div>
-            <div style="font-size:0.70rem; color:var(--theme-muted); text-align:center; line-height:1.4;">
-                Click a point to extract its mesh.<br>Red dots&nbsp;= pretrained anchors.
-            </div>
-            <canvas id="latentCanvas" width="300" height="300"
-                style="width:200px; height:200px; background:#0d1117; border:1px solid var(--theme-border, #45475a); border-radius:4px; cursor:crosshair; display:block;"></canvas>
             <div id="coordLabel" style="font-size:0.74rem; color:var(--theme-muted); min-height:1em;">&#x2014;</div>
         </div>
 
-        <div class="ctrl-divider"></div>
-
-        <!-- Path Animation -->
-        <div style="display:flex; flex-direction:column; gap:8px; min-width:160px;">
-            <span style="font-size:0.78rem; color:var(--muted); font-weight:600;">Path Animation</span>
+        <!-- RIGHT: Path Animation -->
+        <div class="dark-card" style="padding:14px 16px; display:flex; flex-direction:column; gap:10px;">
+            <span style="font-size:0.82rem; color:var(--theme-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Path Animation</span>
             <div style="font-size:0.72rem; color:var(--theme-muted); line-height:1.4;">
-                Traces a circular path through latent space and morphs shapes continuously.
+                Traces a spiral from (0,0) outward through the latent space.
             </div>
             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                 <button class="btn" id="btnAnimate">&#9654; Animate</button>
-                <label style="font-size:0.78rem; color:var(--theme-muted); white-space:nowrap;">
-                    Steps
-                    <input id="animSteps" type="number" value="16" min="4" max="64"
-                        style="width:46px; margin-left:4px; padding:3px 5px; font-size:0.78rem;" />
-                </label>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <span style="font-size:0.82rem; color:var(--theme-fg, #cdd6f4); font-weight:600;">Steps</span>
+                    <input id="animSteps" type="number" value="50" min="4" max="128"
+                        style="width:56px; padding:5px 8px; font-size:0.88rem; font-weight:600;
+                               color:var(--theme-fg, #cdd6f4); background:var(--theme-input, #1a1a2e);
+                               border:1px solid #f38ba8; border-radius:4px;" />
+                </div>
             </div>
-            <label style="font-size:0.78rem; color:var(--theme-muted); white-space:nowrap;">
-                Radius &#xd7;
-                <input id="animRadius" type="number" value="0.8" min="0.1" max="2.0" step="0.1"
-                    style="width:46px; margin-left:4px; padding:3px 5px; font-size:0.78rem;" />
-            </label>
             <div id="animStatus" style="font-size:0.74rem; color:var(--theme-muted); min-height:1em;">&#8212;</div>
         </div>
 
@@ -163,7 +135,8 @@
                     <div class="visual-title">Aeroshell Mesh</div>
                     <div id="meshContainer" style="position:relative; overflow:hidden; min-height:380px;">
                         <div id="meshPlaceholder" style="position:absolute; inset:0; display:flex; align-items:center;
-                              justify-content:center; color:var(--theme-muted); font-size:0.85rem; pointer-events:none;">
+                              justify-content:center; color:var(--theme-muted); font-size:0.85rem; pointer-events:none;
+                              background:var(--theme-panel, #1e2030);">
                             Click a latent point to load a mesh.
                         </div>
                     </div>
@@ -209,7 +182,8 @@
                     <div id="secCpPane" style="position:relative; overflow:hidden; min-height:380px;">
                         <div id="secCpMeshBox" style="width:100%; height:100%;"></div>
                         <div id="secCpPlaceholder" style="position:absolute; inset:0; display:flex; align-items:center;
-                              justify-content:center; flex-direction:column; gap:8px; color:var(--theme-muted); pointer-events:none;">
+                              justify-content:center; flex-direction:column; gap:8px; color:var(--theme-muted); pointer-events:none;
+                              background:var(--theme-panel, #1e2030);">
                             <span style="font-size:0.85rem;">CP Pressure Field</span>
                             <span style="font-size:0.72rem; text-align:center; padding:0 16px; line-height:1.5;">Blue&nbsp;= suction&nbsp;&nbsp;·&nbsp;&nbsp;Red&nbsp;= stagnation<br>Loads after mesh query</span>
                         </div>
@@ -218,7 +192,8 @@
                     <div id="secSolarPane" style="position:relative; overflow:hidden; min-height:380px; display:none;">
                         <div id="secSolarMeshBox" style="width:100%; height:100%;"></div>
                         <div id="secSolarPlaceholder" style="position:absolute; inset:0; display:flex; align-items:center;
-                              justify-content:center; flex-direction:column; gap:8px; color:var(--theme-muted); pointer-events:none;">
+                              justify-content:center; flex-direction:column; gap:8px; color:var(--theme-muted); pointer-events:none;
+                              background:var(--theme-panel, #1e2030);">
                             <span style="font-size:0.85rem;">Solar Illumination Quality</span>
                             <span style="font-size:0.72rem; text-align:center; padding:0 16px; line-height:1.5;">Dark&nbsp;= shadowed&nbsp;&nbsp;·&nbsp;&nbsp;Gold&nbsp;= sun-facing<br>Loads after mesh query</span>
                         </div>
@@ -227,13 +202,19 @@
             </div>
 
         </div>
+
+        <!-- Spiral scrubber bar — revealed after an animation run -->
+        <div id="spiralSliderRow" class="dark-card" style="display:none; gap:10px; align-items:center; margin:8px 0 4px;">
+            <span style="white-space:nowrap; font-size:0.82rem; color:var(--theme-muted);">Spiral Step</span>
+            <input type="range" id="spiralSlider" min="0" max="23" value="0" style="flex:1;">
+            <button id="spiralPlayBtn" class="btn secondary" style="font-size:0.78rem; padding:5px 14px;">&#9654;&nbsp;Play</button>
+        </div>
     </div>
 
 </div><!-- end flex wrapper -->
 
 <script>
-    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260521_2";
-    const PRETRAINED_CONFIGURED = {{ 'true' if pretrained_configured else 'false' }};
+    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260526";
 
     // ---------------------------------------------------------------------------
     // State
@@ -250,6 +231,19 @@
     let _secActiveTab = "cp";
     let _lastSolarMeshUrl = null;
 
+    // Spiral animation state
+    let _spiralPath = [];      // [{z0, z1}, …] — precomputed points for current run
+    let _spiralStep = 0;       // current position used by the scrubber
+    let _spiralPlaying = false;
+    let _spiralPlayInterval = null;
+
+    // Sync camera across all three latent viewers when the user rotates any one.
+    function _syncLatentViews(vs, skip) {
+        if (skip !== "main" && viewer) viewer.setViewState(vs);
+        if (skip !== "cp" && secCpViewer) secCpViewer.setViewState(vs);
+        if (skip !== "solar" && secSolarViewer) secSolarViewer.setViewState(vs);
+    }
+
     function secShowTab(tab) {
         _secActiveTab = tab;
         const cpPane = document.getElementById("secCpPane");
@@ -261,24 +255,41 @@
             if (solarPane) solarPane.style.display = "none";
             if (cpBtn) { cpBtn.style.borderBottomColor = "var(--theme-accent)"; cpBtn.style.color = "var(--theme-text)"; cpBtn.style.fontWeight = "600"; }
             if (solarBtn) { solarBtn.style.borderBottomColor = "transparent"; solarBtn.style.color = "var(--theme-muted)"; solarBtn.style.fontWeight = "400"; }
+            // Resize then push current camera into the now-visible CP viewer.
+            requestAnimationFrame(() => {
+                window.dispatchEvent(new Event("resize"));
+                const ref = (viewer || secSolarViewer) ? (viewer || secSolarViewer).getViewState() : null;
+                if (ref && secCpViewer) secCpViewer.setViewState(ref);
+            });
         } else {
             if (solarPane) solarPane.style.display = "";
             if (cpPane) cpPane.style.display = "none";
             if (solarBtn) { solarBtn.style.borderBottomColor = "var(--theme-accent)"; solarBtn.style.color = "var(--theme-text)"; solarBtn.style.fontWeight = "600"; }
             if (cpBtn) { cpBtn.style.borderBottomColor = "transparent"; cpBtn.style.color = "var(--theme-muted)"; cpBtn.style.fontWeight = "400"; }
-            // Init solar viewer now that pane is visible (it was display:none during first load).
-            if (!secSolarViewer && _lastSolarMeshUrl) {
-                _loadSecViewer("solar", _lastSolarMeshUrl);
-            } else if (secSolarViewer) {
-                window.dispatchEvent(new Event("resize"));
-            }
+            // Init/resize solar viewer after layout, then push current camera into it.
+            requestAnimationFrame(() => {
+                if (!secSolarViewer && _lastSolarMeshUrl) {
+                    _loadSecViewer("solar", _lastSolarMeshUrl);
+                } else if (secSolarViewer) {
+                    window.dispatchEvent(new Event("resize"));
+                    const ref = (viewer || secCpViewer) ? (viewer || secCpViewer).getViewState() : null;
+                    if (ref) secSolarViewer.setViewState(ref);
+                }
+            });
         }
     }
 
-    // Pretrained selector state
-    let selectedWheels = 3;
-    let selectedSolar = true;
-    let selectedDrag = true;
+    // Run selector state
+    let selectedFront = 2;
+    let selectedRear = 1;
+    let selectedRun = "A";
+
+    function getConfigFromWheels(front, rear) {
+        if (front === 2 && rear === 1) return "3w-2f1b";
+        if (front === 1 && rear === 2) return "3w-1f2b";
+        if (front === 2 && rear === 2) return "4w-2f2b";
+        return null; // e.g. 1F+1R — no trained run
+    }
 
     // ---------------------------------------------------------------------------
     // Latent metric DOM refs
@@ -294,12 +305,12 @@
 
     function drawTacho(canvas, speedKmh) {
         if (!canvas) return;
-        var maxKmh = 160;
+        var maxKmh = 120;
         var w = canvas.width, h = canvas.height;
         var ctx2 = canvas.getContext("2d");
         ctx2.clearRect(0, 0, w, h);
-        var cx = w / 2, cy = h * 0.50;
-        var r = Math.min(cx * 0.78, cy * 0.80);
+        var cx = w / 2, cy = h * 0.55;
+        var r = Math.min(cx * 0.78, cy * 0.70);
         var trackW = Math.max(5, r * 0.12);
         var startA = Math.PI * 5 / 6;
         var totalA = Math.PI * 4 / 3;
@@ -383,18 +394,68 @@
         });
     }
 
-    bindToggleGroup("wheelsToggle", (v) => { selectedWheels = parseInt(v, 10); });
-    bindToggleGroup("solarToggle", (v) => { selectedSolar = v === "true"; });
-    bindToggleGroup("dragToggle", (v) => { selectedDrag = v === "true"; });
+    bindToggleGroup("runFrontToggle", (v) => {
+        selectedFront = parseInt(v, 10);
+        // Guard: 1+1 is invalid — force rear to 2
+        if (selectedFront === 1 && selectedRear === 1) {
+            selectedRear = 2;
+            const rearGroup = document.getElementById("runRearToggle");
+            rearGroup.querySelectorAll("button").forEach((b) => {
+                b.className = b.dataset.value === "2" ? "btn" : "btn secondary";
+            });
+        }
+    });
+    bindToggleGroup("runRearToggle",  (v) => {
+        selectedRear = parseInt(v, 10);
+        // Guard: 1+1 is invalid — force front to 2
+        if (selectedRear === 1 && selectedFront === 1) {
+            selectedFront = 2;
+            const frontGroup = document.getElementById("runFrontToggle");
+            frontGroup.querySelectorAll("button").forEach((b) => {
+                b.className = b.dataset.value === "2" ? "btn" : "btn secondary";
+            });
+        }
+    });
+    bindToggleGroup("runAbToggle",    (v) => { selectedRun   = v; });
 
     // ---------------------------------------------------------------------------
     // Shared helper: apply a load-checkpoint API response
     // ---------------------------------------------------------------------------
+    function _resetMeshViews() {
+        // Clear all three mesh viewers
+        if (viewer) { viewer.clearMesh(); }
+        if (secCpViewer) { secCpViewer.clearMesh(); }
+        if (secSolarViewer) { secSolarViewer.clearMesh(); }
+        _lastSolarMeshUrl = null;
+
+        // Show placeholders
+        const meshPlaceholder = document.getElementById("meshPlaceholder");
+        if (meshPlaceholder) meshPlaceholder.style.display = "";
+        const cpPlaceholder = document.getElementById("secCpPlaceholder");
+        if (cpPlaceholder) cpPlaceholder.style.display = "";
+        const solarPlaceholder = document.getElementById("secSolarPlaceholder");
+        if (solarPlaceholder) solarPlaceholder.style.display = "";
+
+        // Reset metric displays
+        drawTacho(latentMetricSpeedTacho, null);
+        if (latentMetricDragEl) latentMetricDragEl.textContent = "\u2014";
+        if (latentMetricSolarEl) latentMetricSolarEl.textContent = "\u2014";
+
+        // Reset spiral state
+        _spiralPath = [];
+        _spiralStep = 0;
+        _spiralPlaying = false;
+        if (_spiralPlayInterval) { clearInterval(_spiralPlayInterval); _spiralPlayInterval = null; }
+        const spiralSliderRow = document.getElementById("spiralSliderRow");
+        if (spiralSliderRow) spiralSliderRow.style.display = "none";
+    }
+
     function applyCheckpointResponse(data) {
         resolvedPath = data.resolved_path;
         zRadius = data.z_radius || 2.0;
         zPretrained = data.z_pretrained || [];
         clickedZ = null;
+        _resetMeshViews();
         statusMsg.textContent =
             `Loaded · z_dim=${data.z_dim} · z_radius=${zRadius.toFixed(3)} ` +
             `· ${zPretrained.length} anchors · ${data.resolved_path.split("/").pop()}`;
@@ -407,7 +468,7 @@
     const canvas = document.getElementById("latentCanvas");
     const ctx = canvas.getContext("2d");
     const coordLabel = document.getElementById("coordLabel");
-    const statusMsg = document.getElementById("statusMsg");
+    const statusMsg = { set textContent(_) {} };  // status line removed — sink discards updates
 
     function drawCanvas(hoverZ) {
         const w = canvas.width, h = canvas.height;
@@ -430,6 +491,27 @@
         ctx.arc(cx, cy, zRadius * scale, 0, Math.PI * 2);
         ctx.stroke();
         ctx.setLineDash([]);
+
+        // Spiral path trace (shown after an animation run)
+        if (_spiralPath.length > 1) {
+            ctx.strokeStyle = "rgba(100,160,255,0.28)";
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            for (let i = 0; i < _spiralPath.length; i++) {
+                const px = cx + _spiralPath[i].z0 * scale;
+                const py = cy - _spiralPath[i].z1 * scale;
+                if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+            // Scrubber position marker
+            if (_spiralStep >= 0 && _spiralStep < _spiralPath.length) {
+                const sp = _spiralPath[_spiralStep];
+                ctx.fillStyle = "rgba(100,160,255,0.55)";
+                ctx.beginPath();
+                ctx.arc(cx + sp.z0 * scale, cy - sp.z1 * scale, 3.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
 
         // Pretrained anchor dots
         ctx.fillStyle = "#e05252";
@@ -492,6 +574,13 @@
             statusMsg.textContent = "Load a checkpoint first.";
             return;
         }
+        // Clear spiral trace and scrubber when the user picks a single point
+        _stopSpiralPlay();
+        _spiralPath = [];
+        _spiralStep = 0;
+        const sliderRow = document.getElementById("spiralSliderRow");
+        if (sliderRow) sliderRow.style.display = "none";
+
         const z = canvasToLatent(e.offsetX, e.offsetY);
         clickedZ = z;
         drawCanvas(null);
@@ -502,43 +591,20 @@
     drawCanvas(null);
 
     // ---------------------------------------------------------------------------
-    // Pretrained auto-load
+    // Named-run load
     // ---------------------------------------------------------------------------
-    document.getElementById("btnAutoLoad").addEventListener("click", async () => {
-        statusMsg.textContent = "Loading pretrained checkpoint…";
-        try {
-            const resp = await fetch("/viewer/api/latent/load-pretrained", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    wheels: selectedWheels,
-                    solar: selectedSolar,
-                    drag: selectedDrag,
-                }),
-            });
-            const data = await resp.json();
-            if (!resp.ok) {
-                statusMsg.textContent = "Error: " + (data.detail?.message || resp.statusText);
-                return;
-            }
-            applyCheckpointResponse(data);
-        } catch (err) {
-            statusMsg.textContent = "Network error: " + err.message;
+    document.getElementById("btnLoadNamedRun").addEventListener("click", async () => {
+        const config = getConfigFromWheels(selectedFront, selectedRear);
+        if (!config) {
+            statusMsg.textContent = "Combination not available (no trained run for 1F + 1R).";
+            return;
         }
-    });
-
-    // ---------------------------------------------------------------------------
-    // Checkpoint loading
-    // ---------------------------------------------------------------------------
-    document.getElementById("btnLoad").addEventListener("click", async () => {
-        const rawPath = document.getElementById("ckptInput").value.trim();
-        if (!rawPath) { statusMsg.textContent = "Enter a path first."; return; }
-        statusMsg.textContent = "Loading…";
+        statusMsg.textContent = "Loading run…";
         try {
-            const resp = await fetch("/viewer/api/latent/load-checkpoint", {
+            const resp = await fetch("/viewer/api/latent/load-named-run", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ checkpoint_path: rawPath }),
+                body: JSON.stringify({ config, run: selectedRun }),
             });
             const data = await resp.json();
             if (!resp.ok) {
@@ -555,7 +621,7 @@
     // Mesh extraction
     // ---------------------------------------------------------------------------
     async function queryMesh(z0, z1, overrideResolution) {
-        const resolution = overrideResolution ?? (parseInt(document.getElementById("resInput").value, 10) || 35);
+        const resolution = overrideResolution ?? 35;
         statusMsg.textContent = `Extracting mesh at z=(${z0.toFixed(3)}, ${z1.toFixed(3)})…`;
         try {
             const resp = await fetch("/viewer/api/latent/query-mesh", {
@@ -584,6 +650,7 @@
             if (!viewer) {
                 const { initMeshViewer } = await import(MESH_VIEWER_MODULE);
                 viewer = initMeshViewer(container, { controlMode: "turntable" });
+                viewer.setOnControlsChange((vs) => _syncLatentViews(vs, "main"));
             }
 
             // Preserve camera position across latent-point switches.
@@ -595,8 +662,7 @@
                     if (savedView) {
                         viewer.setViewState(savedView);
                     }
-                    statusMsg.textContent =
-                        `Mesh loaded · z=(${z0.toFixed(3)}, ${z1.toFixed(3)})`;
+                    statusMsg.textContent = "\u2014";
                     // Update metric displays
                     const speedMs = data.cruising_speed_ms != null ? Number(data.cruising_speed_ms) : null;
                     drawTacho(latentMetricSpeedTacho, speedMs != null ? speedMs * 3.6 : null);
@@ -619,6 +685,11 @@
     async function _loadSecViewer(tab, url) {
         if (!url) return;
         if (tab === "solar") _lastSolarMeshUrl = url;
+        // Don't initialise the viewer into a hidden pane — dimensions will be 0×0.
+        // secShowTab() will call us again once the pane is visible.
+        const paneId = tab === "cp" ? "secCpPane" : "secSolarPane";
+        const pane = document.getElementById(paneId);
+        if (pane && pane.style.display === "none") return;
         const boxId = tab === "cp" ? "secCpMeshBox" : "secSolarMeshBox";
         const placeholderId = tab === "cp" ? "secCpPlaceholder" : "secSolarPlaceholder";
         const container = document.getElementById(boxId);
@@ -629,11 +700,26 @@
 
         const { initMeshViewer } = await import(MESH_VIEWER_MODULE);
         if (tab === "cp") {
-            if (!secCpViewer) secCpViewer = initMeshViewer(container, { controlMode: "turntable" });
-            secCpViewer.loadMesh(url, null, null);
+            const isNew = !secCpViewer;
+            if (isNew) {
+                secCpViewer = initMeshViewer(container, { controlMode: "turntable" });
+                secCpViewer.setOnControlsChange((vs) => _syncLatentViews(vs, "cp"));
+            }
+            // For new viewers seed from a peer; for existing ones preserve current camera.
+            const savedView = isNew
+                ? (viewer ? viewer.getViewState() : (secSolarViewer ? secSolarViewer.getViewState() : null))
+                : secCpViewer.getViewState();
+            secCpViewer.loadMesh(url, savedView ? () => secCpViewer.setViewState(savedView) : null, null);
         } else {
-            if (!secSolarViewer) secSolarViewer = initMeshViewer(container, { controlMode: "turntable" });
-            secSolarViewer.loadMesh(url, null, null);
+            const isNew = !secSolarViewer;
+            if (isNew) {
+                secSolarViewer = initMeshViewer(container, { controlMode: "turntable" });
+                secSolarViewer.setOnControlsChange((vs) => _syncLatentViews(vs, "solar"));
+            }
+            const savedView = isNew
+                ? (viewer ? viewer.getViewState() : (secCpViewer ? secCpViewer.getViewState() : null))
+                : secSolarViewer.getViewState();
+            secSolarViewer.loadMesh(url, savedView ? () => secSolarViewer.setViewState(savedView) : null, null);
         }
     }
 
@@ -642,49 +728,130 @@
     // Traces a closed circular path (same start & end point) and loops until stopped.
     // ---------------------------------------------------------------------------
     let _animating = false;
-    let _animAngle = 0;
     const _ANIM_RESOLUTION = 20; // lower res for smooth playback
+
+    function _paintSpiralSlider() {
+        const slider = document.getElementById("spiralSlider");
+        if (!slider) return;
+        const accent = getComputedStyle(document.documentElement).getPropertyValue("--theme-slider-accent").trim();
+        if (accent) slider.style.accentColor = accent;
+    }
+
+    function _stopSpiralPlay() {
+        if (_spiralPlayInterval) { clearInterval(_spiralPlayInterval); _spiralPlayInterval = null; }
+        _spiralPlaying = false;
+        const btn = document.getElementById("spiralPlayBtn");
+        if (btn) { btn.textContent = "\u25b6\u00a0Play"; }
+    }
+
+    function _startSpiralPlay() {
+        _stopSpiralPlay();
+        if (!_spiralPath.length) return;
+        _spiralPlaying = true;
+        const btn = document.getElementById("spiralPlayBtn");
+        if (btn) btn.textContent = "\u23f8\u00a0Pause";
+        const startIdx = _spiralStep;
+        _spiralPlayInterval = setInterval(async () => {
+            _spiralStep = (_spiralStep + 1) % _spiralPath.length;
+            const slider = document.getElementById("spiralSlider");
+            if (slider) slider.value = String(_spiralStep);
+            _paintSpiralSlider();
+            const { z0, z1 } = _spiralPath[_spiralStep];
+            clickedZ = [z0, z1];
+            drawCanvas(null);
+            document.getElementById("animStatus").textContent =
+                `Play ${_spiralStep + 1}\u202f/\u202f${_spiralPath.length} \u00b7 z=(${z0.toFixed(2)},\u202f${z1.toFixed(2)})`;
+            if (resolvedPath) await queryMesh(z0, z1, _ANIM_RESOLUTION);
+            // Stop when we wrap back to where we started
+            if (_spiralStep === startIdx) _stopSpiralPlay();
+        }, 600);
+    }
+
+    // Build an Archimedean spiral from (0,0) out to zRadius*rFactor over `steps` samples.
+    function _buildSpiralPath(steps, rFactor, turns) {
+        const rMax = zRadius * rFactor;
+        const path = [];
+        for (let i = 0; i < steps; i++) {
+            const t = steps > 1 ? i / (steps - 1) : 0;
+            const r = rMax * t;
+            const angle = t * turns * 2 * Math.PI;
+            path.push({ z0: Math.cos(angle) * r, z1: Math.sin(angle) * r });
+        }
+        return path;
+    }
 
     async function runAnimationLoop() {
         const btn = document.getElementById("btnAnimate");
         const animStatusEl = document.getElementById("animStatus");
-        while (_animating) {
-            const steps = Math.max(4, parseInt(document.getElementById("animSteps").value, 10) || 16);
-            const rFactor = Math.max(0.05, parseFloat(document.getElementById("animRadius").value) || 0.8);
-            const r = zRadius * rFactor;
-            const z0 = Math.cos(_animAngle) * r;
-            const z1 = Math.sin(_animAngle) * r;
-            const stepNum = Math.round(_animAngle / (2 * Math.PI / steps)) % steps + 1;
+        const sliderRow = document.getElementById("spiralSliderRow");
+        const slider = document.getElementById("spiralSlider");
 
+        const steps   = Math.max(4, parseInt(document.getElementById("animSteps").value, 10) || 50);
+        const rFactor = 1.0;
+        const turns   = 4.0;
+
+        _spiralPath = _buildSpiralPath(steps, rFactor, turns);
+        _spiralStep = 0;
+        if (sliderRow) sliderRow.style.display = "none";
+
+        for (let i = 0; i < _spiralPath.length && _animating; i++) {
+            _spiralStep = i;
+            const { z0, z1 } = _spiralPath[i];
             clickedZ = [z0, z1];
             drawCanvas(null);
-            animStatusEl.textContent = `Step ${stepNum} / ${steps} \u00b7 z\u2080=(${z0.toFixed(2)},\u202f${z1.toFixed(2)})`;
-
+            animStatusEl.textContent = `Step ${i + 1}\u202f/\u202f${steps} \u00b7 z=(${z0.toFixed(2)},\u202f${z1.toFixed(2)})`;
             try { await queryMesh(z0, z1, _ANIM_RESOLUTION); } catch (_) { /* continue on error */ }
             if (!_animating) break;
-
-            _animAngle = (_animAngle + (2 * Math.PI / steps)) % (2 * Math.PI);
-            // Brief pause so the rendered mesh is visible before requesting the next one.
             await new Promise(resolve => setTimeout(resolve, 250));
         }
-        if (btn) { btn.textContent = "\u25b6 Animate"; btn.className = "btn"; }
-        animStatusEl.textContent = "Stopped.";
+
+        const completed = _animating; // still true → loop ran to end without Stop
         _animating = false;
+        if (btn) { btn.textContent = "\u25b6 Animate"; btn.className = "btn"; }
+        animStatusEl.textContent = completed ? "Done \u2014 scrub below." : "Stopped.";
+
+        // Show scrubber after any run that produced points
+        if (_spiralPath.length > 1 && sliderRow && slider) {
+            slider.min = "0";
+            slider.max = String(_spiralPath.length - 1);
+            slider.value = String(_spiralStep);
+            sliderRow.style.display = "flex";
+            _paintSpiralSlider();
+            drawCanvas(null);
+        }
     }
 
     document.getElementById("btnAnimate").addEventListener("click", () => {
         if (_animating) {
-            _animating = false; // loop checks this and exits
+            _animating = false;
         } else {
             if (!resolvedPath) { statusMsg.textContent = "Load a checkpoint first."; return; }
+            _stopSpiralPlay();
             _animating = true;
-            _animAngle = 0; // always start from angle 0 so path is closed
             const btn = document.getElementById("btnAnimate");
             btn.textContent = "\u23f9 Stop";
             btn.className = "btn danger";
             document.getElementById("animStatus").textContent = "Starting\u2026";
             runAnimationLoop();
         }
+    });
+
+    document.getElementById("spiralSlider").addEventListener("input", async function () {
+        _stopSpiralPlay();
+        const idx = parseInt(this.value, 10);
+        if (!_spiralPath.length || idx < 0 || idx >= _spiralPath.length) return;
+        _spiralStep = idx;
+        _paintSpiralSlider();
+        const { z0, z1 } = _spiralPath[idx];
+        clickedZ = [z0, z1];
+        drawCanvas(null);
+        document.getElementById("animStatus").textContent =
+            `Scrub ${idx + 1}\u202f/\u202f${_spiralPath.length} \u00b7 z=(${z0.toFixed(2)},\u202f${z1.toFixed(2)})`;
+        if (resolvedPath) await queryMesh(z0, z1, _ANIM_RESOLUTION);
+    });
+
+    document.getElementById("spiralPlayBtn").addEventListener("click", () => {
+        if (_spiralPlaying) { _stopSpiralPlay(); } else { _startSpiralPlay(); }
     });
 
   // M5: Back-to-run passthrough

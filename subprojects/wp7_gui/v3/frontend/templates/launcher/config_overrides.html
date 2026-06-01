@@ -9,6 +9,12 @@
     font-weight: 600;
   }
 
+  /* ---- more vertical breathing room between settings ---- */
+  #formArea .param-row {
+    padding: 0 16px;
+    border-bottom: none;
+  }
+
   /* ---- remove spinners from number inputs ---- */
   .param-input[type="number"] { -moz-appearance: textfield; }
   .param-input[type="number"]::-webkit-inner-spin-button,
@@ -40,8 +46,8 @@
   .toggle-switch {
     position: relative;
     display: inline-block;
-    width: 44px;
-    height: 24px;
+    width: 56px;
+    height: 30px;
     cursor: pointer;
     flex-shrink: 0;
   }
@@ -62,9 +68,9 @@
   .toggle-slider::before {
     content: "";
     position: absolute;
-    width: 18px;
-    height: 18px;
-    left: 2px;
+    width: 22px;
+    height: 22px;
+    left: 3px;
     top: 50%;
     transform: translateY(-50%);
     background: var(--theme-muted);
@@ -76,7 +82,7 @@
     border-color: color-mix(in srgb, var(--theme-accent, #4fa) 50%, var(--theme-panel) 50%);
   }
   .toggle-switch input:checked + .toggle-slider::before {
-    transform: translateX(20px) translateY(-50%);
+    transform: translateX(26px) translateY(-50%);
     background: var(--theme-accent, #4fa);
   }
   .toggle-switch input:disabled + .toggle-slider {
@@ -84,7 +90,7 @@
     cursor: not-allowed;
   }
 </style>
-<div class="section-grid" style="grid-template-rows: auto auto minmax(220px, 0.62fr) auto minmax(120px, 0.38fr); height: 100%;">
+<div class="section-grid" style="grid-template-rows: auto auto 1fr auto 90px; height: 100%;">
 
   <!-- Wizard navigation -->
   <div class="dark-card toolbar">
@@ -99,17 +105,17 @@
     {% else %}
     <div style="flex:1;"></div>
     {% endif %}
-    <a id="btnNext" href="/launcher/output?pipeline=live" class="btn">Next →</a>
+    <a id="btnNext" href="/launcher/output?pipeline=live" class="btn" style="margin-left:auto;">Next →</a>
   </div>
 
-  <!-- Config locked banner (shown by applyConfigFreeze; display:none keeps row height 0 until needed) -->
-  <div id="configLockedBanner" style="display:none; padding:8px 14px; background:color-mix(in srgb, var(--theme-warning-text) 12%, transparent); border-radius:8px; font-size:0.82rem; color:var(--theme-text);">
+  <!-- Config locked banner (visibility:hidden reserves row space so layout never shifts) -->
+  <div id="configLockedBanner" style="visibility:hidden; padding:8px 14px; background:color-mix(in srgb, var(--theme-warning-text) 12%, transparent); border-radius:8px; font-size:0.82rem; color:var(--theme-text);">
     🔒 Config locked — run is in progress or completed.
   </div>
 
   <!-- Config form -->
-  <div class="card" style="display:flex; flex-direction:column; min-height:0; overflow:hidden;">
-    <div id="formArea" style="flex:1; overflow-y:auto; min-height:0;">
+  <div class="card" style="display:flex; flex-direction:column; min-height:0; overflow:hidden; max-height:35vh;">
+    <div id="formArea" style="flex:1; overflow-y:auto; min-height:0; display:flex; flex-direction:column; justify-content:space-evenly;">
       <div style="color: var(--theme-muted); font-style: italic; text-align: center; padding: 40px 10px;">
         {% if pipeline == 'live' %}Loading session…{% else
         %}Select a session above to view its configuration.{% endif %}
@@ -123,16 +129,16 @@
   </div>
 
   {% if pipeline == 'live' %}
-  <!-- Run controls -->
-  <div class="card" style="display:grid; grid-template-rows:auto auto; gap:10px; padding-top: 10px; padding-bottom: 10px;">
-    <div style="font-size:0.9rem; font-weight:700; color:var(--theme-text);">2 - Run/Stop</div>
-    <div class="toolbar" style="gap: 10px;">
-      <button class="btn" id="btnRun" disabled>&#9654; Run</button>
-      <button class="btn secondary" id="btnStop" disabled>&#9632; Stop</button>
-      <div style="flex:1; min-width:190px; font-size:0.82rem; color:var(--theme-muted);">
-        Progress is shown in the top navigation bar once Run is started.
-      </div>
-    </div>
+  <!-- Run controls — big bare buttons -->
+  <div style="display:flex; gap:10px; padding:6px 0;">
+    <button class="btn secondary" id="btnStop" disabled
+            style="height:80px; min-width:80px; font-size:1.6rem; font-weight:700; padding:0 24px;">
+        &#9632;&nbsp;Stop
+    </button>
+    <button class="btn" id="btnRun" disabled
+            style="height:80px; flex:1; font-size:1.6rem; font-weight:700; padding:0 24px;">
+        &#9654;&nbsp;Run
+    </button>
   </div>
 
   <!-- Output console -->
@@ -397,7 +403,7 @@
     if (_saveBtn) _saveBtn.style.display = "none";
     // Show the pre-rendered locked banner (plain text, like assembly_selection.html)
     const _banner = document.getElementById("configLockedBanner");
-    if (_banner) _banner.style.display = "block";
+    if (_banner) _banner.style.visibility = "visible";
     console.info("[AISCO] Config frozen.");
   }
 
@@ -470,14 +476,9 @@
     progressHost.style.display = visible ? "block" : "none";
   }
 
-  // ── M7: beforeunload guard ─────────────────────────────────────────────────
-  function _runUnloadGuard(e) {
-    if (_suppressBeforeUnloadOnce) {
-      _suppressBeforeUnloadOnce = false;
-      return;
-    }
-    e.preventDefault();
-    return (e.returnValue = "A WP4 run is in progress. Are you sure you want to leave?");
+  // ── M7: beforeunload guard (disabled) ─────────────────────────────────────
+  function _runUnloadGuard(_e) {
+    _suppressBeforeUnloadOnce = false;
   }
 
   function _nextOutputHref() {
