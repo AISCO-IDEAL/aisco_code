@@ -67,7 +67,6 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.utils.storage_utils import (
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.wandb_utils import patch_wandb_log_for_monotonic_steps
 from subprojects.wp4_aeroshell_optimizer.v2.src.visuals.visual_wrapper import VisualisationManager
-
 from subprojects.wp7_gui.v3.syncing.sync import DriveSync
 
 configure_headless_pyvista()
