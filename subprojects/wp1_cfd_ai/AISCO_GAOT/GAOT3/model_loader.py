@@ -9,18 +9,18 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 import torch
+import wandb
 import yaml
 from torch_geometric.data import Batch, Data
 
-import wandb
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.sdf_influence import compute_sdf_parameter_influence
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.shear_force import ShearForce
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.metadata import DATASET_METADATA
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.pyg_transforms import RescalePosition, RescalePositionNew
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.model.gaot_3d import GAOT3D
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.scale import rescale, rescale_new
-from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import Environment, detect_environment
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import Environment, detect_environment
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
 if TYPE_CHECKING:
@@ -62,9 +62,33 @@ class ModelLoader:
         )
 
     def _get_checkpoint_path(self) -> str:
-        csv_path = self.cfd_config["metrics_csv_path"][{Environment.WSL: "_wsl", Environment.EULER: "_euler", Environment.AISCO_BEAST: "_beast", Environment.SLURM: "_euler"}[detect_environment()]]; model_id = str(self.cfd_config["model_id"]); df = pd.read_csv(csv_path); df = pd.read_csv(csv_path, header=None) if df.empty else df; legacy = "setup" not in df.columns or "path" not in df.columns
-        ckpt = next((ast.literal_eval(str((row.iloc[4] if legacy else row["path"]))).get("ckpt_path") for _, row in df.iterrows() if str(ast.literal_eval(str((row.iloc[0] if legacy else row["setup"]))).get("id")) == model_id), None)
-        return ckpt if ckpt is not None else (_ for _ in ()).throw(ValueError(f"No GAOT checkpoint found for model_id={model_id} in metrics file: {csv_path}"))
+        csv_path = self.cfd_config["metrics_csv_path"][
+            {
+                Environment.WSL: "_wsl",
+                Environment.EULER: "_euler",
+                Environment.AISCO_BEAST: "_beast",
+                Environment.SLURM: "_euler",
+            }[detect_environment()]
+        ]
+        model_id = str(self.cfd_config["model_id"])
+        df = pd.read_csv(csv_path)
+        df = pd.read_csv(csv_path, header=None) if df.empty else df
+        legacy = "setup" not in df.columns or "path" not in df.columns
+        ckpt = next(
+            (
+                ast.literal_eval(str((row.iloc[4] if legacy else row["path"]))).get("ckpt_path")
+                for _, row in df.iterrows()
+                if str(ast.literal_eval(str(row.iloc[0] if legacy else row["setup"])).get("id")) == model_id
+            ),
+            None,
+        )
+        return (
+            ckpt
+            if ckpt is not None
+            else (_ for _ in ()).throw(
+                ValueError(f"No GAOT checkpoint found for model_id={model_id} in metrics file: {csv_path}")
+            )
+        )
 
     def _load_model(self) -> None:
         config_path = self.model_path.replace("model.pt", "config.yaml")

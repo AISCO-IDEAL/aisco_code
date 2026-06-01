@@ -625,9 +625,7 @@ def _windows_volume_drive_letters_by_label(label: str) -> list[str]:
 
 def _windows_volume_roots_by_label(label: str) -> list[Path]:
     """Resolve Windows drive roots that match a filesystem label."""
-    roots: list[Path] = []
-    for letter in _windows_volume_drive_letters_by_label(label):
-        roots.append(_windows_drive_root(letter))
+    roots: list[Path] = [_windows_drive_root(letter) for letter in _windows_volume_drive_letters_by_label(label)]
     return roots
 
 
@@ -1046,7 +1044,7 @@ def api_leaderboard(current_run_id: str | None = None) -> JSONResponse:
     effective_run_id = current_run_id
     if not effective_run_id and rows:
         device_rows = [r for r in rows if r.get("device_id", "") == _DEVICE_ID]
-        pool = device_rows if device_rows else rows
+        pool = device_rows or rows
         latest = max(pool, key=lambda r: r.get("timestamp", ""))
         effective_run_id = latest.get("run_id") or None
 

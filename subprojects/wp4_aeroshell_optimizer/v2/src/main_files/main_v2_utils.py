@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import csv
 import fcntl
 import json
@@ -38,11 +39,8 @@ def _consume_unique_german_name() -> str | None:
     lock_file.parent.mkdir(parents=True, exist_ok=True)
 
     with lock_file.open("a+", encoding="utf-8") as lock_handle:
-        try:
+        with contextlib.suppress(Exception):  # Best effort lock: if fcntl is unavailable, continue without it.
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
-        except Exception:
-            # Best effort lock: if fcntl is unavailable, continue without it.
-            pass
 
         raw_lines = _RUN_NAME_POOL_PATH.read_text(encoding="utf-8").splitlines()
         available = [line.strip() for line in raw_lines if line.strip()]

@@ -59,9 +59,7 @@ PRETRAINED_ROOT: Path | None = None
 # ---------------------------------------------------------------------------
 
 # Path to wp4 general_config — used to read beast_storage_dir at call time.
-_GENERAL_CONFIG_PATH = (
-    _REPO_ROOT / "subprojects" / "wp4_aeroshell_optimizer" / "v2" / "configs" / "general_config.yaml"
-)
+_GENERAL_CONFIG_PATH = _REPO_ROOT / "subprojects" / "wp4_aeroshell_optimizer" / "v2" / "configs" / "general_config.yaml"
 
 # Maps (config_label, run_letter) → folder name under {beast_storage_dir}/Completed/.
 # config_label encodes wheel count and front/back split:
@@ -140,21 +138,14 @@ def resolve_named_run_path(config: str, run: str) -> Path:
     key = (config, run)
     if key not in _NAMED_RUNS:
         valid_configs = sorted({k[0] for k in _NAMED_RUNS})
-        raise ValueError(
-            f"Unknown named run: config={config!r}, run={run!r}. "
-            f"Valid configs: {valid_configs}. Valid runs: A, B."
-        )
+        raise ValueError(f"Unknown named run: config={config!r}, run={run!r}. Valid configs: {valid_configs}. Valid runs: A, B.")
     beast_dir = get_beast_storage_dir()
     if beast_dir is None:
-        raise ValueError(
-            "beast_storage_dir is not configured in general_config.yaml "
-            "(storage_paths.beast_storage_dir)."
-        )
+        raise ValueError("beast_storage_dir is not configured in general_config.yaml (storage_paths.beast_storage_dir).")
     folder = beast_dir / "Completed" / _NAMED_RUNS[key]
     if not folder.exists():
         raise FileNotFoundError(
-            f"Named run directory not found: {folder}. "
-            "Ensure the Completed/ subfolder exists on this machine."
+            f"Named run directory not found: {folder}. Ensure the Completed/ subfolder exists on this machine."
         )
     return folder
 
@@ -630,8 +621,8 @@ def _solar_selection_colormap(soft_mask_01: np.ndarray) -> np.ndarray:
     selected = np.asarray(soft_mask_01, dtype=np.float32) >= 0.5
     rgb = np.where(
         selected[:, None],
-        np.array([243, 156, 18], dtype=np.uint8),   # selected: assembly orange #F39C12
-        np.array([93, 173, 226], dtype=np.uint8),    # not selected: aeroshell blue #5DADE2
+        np.array([243, 156, 18], dtype=np.uint8),  # selected: assembly orange #F39C12
+        np.array([93, 173, 226], dtype=np.uint8),  # not selected: aeroshell blue #5DADE2
     )
     return rgb.astype(np.uint8)
 
