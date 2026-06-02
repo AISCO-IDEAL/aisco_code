@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ page_title or "AISCO Display" }}</title>
+  <link rel="stylesheet" href="/static/css/main.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/arcade.css">
+  <style>
+    :root {
+      {{ theme_css_vars | default("") | safe }}
+    }
+  </style>
+  <script>
+    window.AISCO_GUI_THEME = {{ gui_theme_json | default('{}') | safe }};
+  </script>
+  <script src="/static/js/utils.js"></script>
+  {% block head %}{% endblock %}
+</head>
+
+<body>
+
+  <main class="shell">
+    <header class="top-bar">
+      <div class="left"><img src="/static/img/Ideal.png" alt="IDEAL" onerror="this.style.display='none'"></div>
+      <div class="center"><img src="/static/img/logo.png" alt="AISCO" onerror="this.style.display='none'"></div>
+      <div class="right"><img src="/static/img/ACE.png" alt="aCe" onerror="this.style.display='none'"></div>
+    </header>
+
+    <div class="body-layout" style="grid-template-columns: 1fr;">
+      <section class="workspace">
+        <header class="workspace-top">
+          <h2>{{ page_title or "AISCO Display" }}</h2>
+          <p class="hint">{% block hint %}{% endblock %}</p>
+        </header>
+        <div class="workspace-body">
+          {% block content %}{% endblock %}
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="/static/js/arcade.js"></script>
+
+</body>
+
+</html>

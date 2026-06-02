@@ -76,9 +76,9 @@
 /* ---------- form inputs ---------- */
 .param-row {
   display: grid;
-  grid-template-columns: 1fr 200px;
+  grid-template-columns: 1fr 260px;
   gap: 12px;
-  padding: 8px 12px;
+  padding: 14px 12px;
   align-items: center;
   border-bottom: 1px solid color-mix(in srgb, var(--theme-text-box) 55%, var(--theme-white) 45%);
 }
@@ -103,9 +103,9 @@
 .param-input {
   border: 1px solid var(--theme-surface-large);
   border-radius: 6px;
-  padding: 6px 8px;
+  padding: 9px 12px;
   font-family: var(--theme-font-mono);
-  font-size: 0.86rem;
+  font-size: 1.0rem;
   background: color-mix(in srgb, var(--theme-panel) 88%, var(--theme-black) 12%);
   color: var(--theme-text);
 }
@@ -399,4 +399,18 @@ textarea:focus {
 .badge.green {
   background: var(--theme-ok-bg);
   color: var(--theme-ok-text);
+}
+
+/* ── Wizard nav lock (M4) ───────────────────────────────────────────────────── */
+.nav-locked .sub-nav a {
+  pointer-events: none;
+  opacity: 0.40;
+  cursor: not-allowed;
+}
+
+.session-label {
+  font-size: 0.68rem;
+  color: var(--theme-muted);
+  padding: 4px 10px 8px;
+  word-break: break-all;
 }

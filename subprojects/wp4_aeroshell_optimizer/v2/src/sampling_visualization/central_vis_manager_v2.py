@@ -612,7 +612,7 @@ class CentralVisManagerV2(_BaseVisManager):
 
     def vis_aero_sdf_influence(self, epoch: int, method: str, variant: str, verts: Any, faces: Any, values: Any) -> None:
         vt = self._slotted(f"aero/sdf_influence/{method}/{variant}")
-        type_cfg = vis_type_config(self._visual_types, vt)
+        type_cfg = vis_type_config(self._visual_types, vt, epoch)
         if type_cfg is None:
             return
 

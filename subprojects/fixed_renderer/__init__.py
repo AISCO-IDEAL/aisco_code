@@ -6,7 +6,7 @@ from .look_at import look_at
 from .mesh import Mesh
 from .perspective import perspective
 from .projection import projection
-from .rasterize import Rasterize, rasterize, rasterize_depth, rasterize_rgbad, rasterize_silhouettes
+from .rasterize_wrapper import Rasterize, rasterize, rasterize_depth, rasterize_rgbad, rasterize_silhouettes
 from .renderer import Renderer
 from .save_obj import save_obj
 from .vertices_to_faces import vertices_to_faces

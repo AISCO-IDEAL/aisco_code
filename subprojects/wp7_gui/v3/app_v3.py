@@ -10,17 +10,24 @@ Run as directly:  python3 subprojects/wp7_gui/v3/app_v3.py   (from repo root)
 from __future__ import annotations
 
 import logging
+import sys
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from subprojects.wp7_gui.v3.core.settings import SETTINGS
-from subprojects.wp7_gui.v3.modes.launcher.routes import router as launcher_router
-from subprojects.wp7_gui.v3.modes.viewer.routes import router as viewer_router
-from subprojects.wp7_gui.v3.shared.api_router import router as api_router
-from subprojects.wp7_gui.v3.shared.theme import build_template_theme_context
+# Prefer repository-local packages over site-packages when run as a script.
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from subprojects.wp7_gui.v3.core.settings import SETTINGS  # noqa: E402
+from subprojects.wp7_gui.v3.modes.launcher.routes import router as launcher_router  # noqa: E402
+from subprojects.wp7_gui.v3.modes.viewer.routes import router as viewer_router  # noqa: E402
+from subprojects.wp7_gui.v3.shared.api_router import router as api_router  # noqa: E402
+from subprojects.wp7_gui.v3.shared.theme import build_template_theme_context  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 LOGGER = logging.getLogger(__name__)

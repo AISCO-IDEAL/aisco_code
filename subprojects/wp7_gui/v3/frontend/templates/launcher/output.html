@@ -22,41 +22,86 @@
         min-width: 0;
     }
 
-    /* ── Metric placeholder cards (middle column) ───────────────────────────── */
+    /* ── Metric cards (middle column) ───────────────────────────────────────── */
     .metric-card {
-        border: 1px dashed color-mix(in srgb, var(--theme-title-2) 50%, var(--theme-border) 50%);
+        border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent 30%);
         border-radius: 8px;
-        padding: 12px 10px;
+        padding: 12px 10px 10px;
         display: flex;
         flex-direction: column;
-        align-items: center;
-        justify-content: center;
+        align-items: stretch;
+        justify-content: flex-start;
         gap: 3px;
-        min-height: 88px;
-        text-align: center;
-        background: color-mix(in srgb, var(--theme-panel) 35%, transparent 65%);
+        min-height: 152px;
+        text-align: left;
+        background: color-mix(in srgb, var(--theme-panel) 45%, transparent 55%);
     }
 
     .metric-card__name {
         font-size: 0.68rem;
         font-weight: 700;
         letter-spacing: 0.12em;
-        color: var(--theme-warning-text);
+        color: var(--theme-muted);
         text-transform: uppercase;
     }
 
     .metric-card__value {
-        font-size: 1.6rem;
+        font-size: 2rem;
         font-weight: 700;
         color: var(--theme-text);
         font-family: var(--theme-font-mono, monospace);
         line-height: 1;
     }
 
+    .metric-card__graph {
+        width: 100%;
+        height: 62px;
+        border-radius: 6px;
+        margin-top: 6px;
+        background: color-mix(in srgb, var(--theme-panel-2) 30%, transparent 70%);
+    }
+
+    .metric-card__tacho {
+        width: 100%;
+        height: 140px;
+        border-radius: 6px;
+        display: block;
+    }
+
     .metric-card__hint {
         font-size: 0.64rem;
         color: var(--theme-muted);
         margin-top: 2px;
+    }
+
+    .metric-card[data-metric="speed"] {
+        border-color: var(--theme-metric-speed-border);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-metric-speed-border) 25%, transparent 75%);
+    }
+
+    .metric-card[data-metric="speed"] .metric-card__name,
+    .metric-card[data-metric="speed"] .metric-card__value {
+        color: var(--theme-metric-speed-text);
+    }
+
+    .metric-card[data-metric="drag"] {
+        border-color: var(--theme-metric-drag-border);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-metric-drag-border) 25%, transparent 75%);
+    }
+
+    .metric-card[data-metric="drag"] .metric-card__name,
+    .metric-card[data-metric="drag"] .metric-card__value {
+        color: var(--theme-metric-drag-text);
+    }
+
+    .metric-card[data-metric="solar"] {
+        border-color: var(--theme-metric-solar-border);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-metric-solar-border) 25%, transparent 75%);
+    }
+
+    .metric-card[data-metric="solar"] .metric-card__name,
+    .metric-card[data-metric="solar"] .metric-card__value {
+        color: var(--theme-metric-solar-text);
     }
 
     /* ── Run name in toolbar ────────────────────────────────────────────────── */
@@ -142,52 +187,87 @@
             min-width: 140px;
         }
     }
+
+    /* ── Launch loading overlay ─────────────────────────────────────────────── */
+    @keyframes launch-spin { to { transform: rotate(360deg); } }
+    .launch-spinner {
+        width: 56px; height: 56px;
+        border: 5px solid color-mix(in srgb, var(--theme-accent, #4fa) 18%, transparent);
+        border-top-color: var(--theme-accent, #4fa);
+        border-radius: 50%;
+        animation: launch-spin 0.9s linear infinite;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
+{% if pipeline == 'live' %}
+<!-- Loading overlay — shown from run launch until first epoch is received -->
+<div id="launchLoadingOverlay" style="display:none; position:fixed; inset:0; z-index:9000;
+     background:color-mix(in srgb, var(--theme-bg, #0d1117) 88%, transparent);
+     backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+     flex-direction:column; align-items:center; justify-content:center; gap:24px;">
+    <div class="launch-spinner"></div>
+    <div style="font-size:1.4rem; font-weight:700; color:var(--theme-text);">Starting run&hellip;</div>
+    <div style="font-size:0.88rem; color:var(--theme-muted);">Waiting for the first epoch to be written.</div>
+</div>
+{% endif %}
 <div class="section-grid" style="grid-template-rows: auto 1fr;">
 
     <!-- ── TOOLBAR ─────────────────────────────────────────────────────────── -->
     <div class="dark-card toolbar" style="position:relative;">
         {% if pipeline == 'live' %}
-        <a href="/launcher/optimization?pipeline=live" class="btn secondary">← Back to Run</a>
+        <a href="/launcher/config-overrides?pipeline=live" class="btn secondary">&larr; Back</a>
         {% else %}
-        <a href="/launcher/config-overrides?pipeline=completed" class="btn secondary">← Back</a>
+        <a href="/launcher/config-overrides?pipeline=completed" class="btn secondary">&larr; Back</a>
         {% endif %}
 
-        <span id="runNameDisplay">—</span>
-
-        <button class="btn secondary" id="btnEditPanels">Edit Panels</button>
-        <a href="/" class="btn">Done — Home</a>
-
-        <!-- Panel editor dropdown -->
-        <div class="dark-card" id="panelEditorCard"
-            style="display:none; position:absolute; top:calc(100% + 8px); right:0; z-index:20; width:min(420px, calc(100vw - 48px)); gap:10px; padding:10px 12px; box-shadow:0 18px 38px color-mix(in srgb, var(--theme-black) 22%, transparent);">
-            <div style="display:flex; align-items:center; gap:10px;">
-                <div style="font-size:0.82rem; color:var(--theme-warning-text); font-weight:700;">Priority Visualization
-                    Order</div>
-                <div style="flex:1;"></div>
-                <button class="btn secondary" id="btnClosePanelEditor"
-                    style="padding:4px 10px; font-size:0.8rem;">Close</button>
+        {% if pipeline == 'live' %}
+        <div id="progressHost" style="flex:1; padding:0 10px; display:none;">
+            <div class="progress-bar-wrap" id="progressWrap">
+                <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
             </div>
-            <div style="font-size:0.74rem; color:var(--theme-muted); line-height:1.6;">
-                The right panel searches for available meshes in the priority order below.
-                Select which to display using the radio buttons on the right column.
-                Edit <code>MESH_PRIORITY</code> in the page source to change the search order.
-            </div>
-            <div id="priorityListPreview" style="display:flex; flex-direction:column; gap:3px; margin-top:4px;"></div>
+            <div id="progressLabel" style="font-size:0.78rem; color:var(--theme-muted); font-weight:600; margin-top:3px;">Loading...</div>
         </div>
+        <span id="runNameDisplay" style="display:none;"></span>
+        {% else %}
+        <span id="runNameDisplay">&#x2014;</span>
+        {% endif %}
+
+        {% if pipeline == 'live' %}
+        <button id="printMeshBtn" class="btn secondary">Print Mesh</button>
+        <span id="printMeshStatus" style="max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.72rem; color:var(--theme-muted);"></span>
+        {% endif %}
+
+        <a href="/launcher/leaderboard?pipeline={{ pipeline }}" id="leaderboardBtn" class="btn">Next &rarr;</a>
+
+
     </div>
 
     <!-- ── MAIN 3-COLUMN CONTENT ──────────────────────────────────────────── -->
     <div style="overflow:auto; min-height:0; padding:2px 0;">
+        <div class="dark-card" style="display:grid; gap:8px; margin:0 auto 12px; max-width:980px; justify-items:center; text-align:center;">
+            <div style="display:flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap; width:100%;">
+                <div class="visual-title" style="margin:0;">Visualization Selection</div>
+                <label
+                    style="display:flex; align-items:center; gap:5px; font-size:0.72rem; color:var(--theme-muted); cursor:pointer; white-space:nowrap;">
+                    <input type="checkbox" id="includeGradientsToggle"> Include gradients (4)
+                </label>
+            </div>
+            <div style="font-size:0.74rem; color:var(--theme-muted); line-height:1.5; max-width:760px;">
+                Default selection shows Cp Field and Solar - Selection. Enable gradients to include two gradient visualizations as well.
+            </div>
+            <div id="rightPanelSelector" class="right-selector" style="width:min(760px, 100%); text-align:left;">
+                <span style="font-size:0.72rem; color:var(--theme-muted);">Waiting for artifacts&#x2026;</span>
+            </div>
+        </div>
+
         <div class="output-cols">
 
             <!-- LEFT: Primary GLB mesh -->
             <div class="output-col">
-                <div class="visual-card" style="grid-template-rows: auto 1fr auto auto auto;">
-                    <div class="visual-title">Aeroshell Mesh (GLB)</div>
+                <div class="visual-card" style="grid-template-rows: auto 1fr auto;">
+                    <div class="visual-title">Aeroshell Mesh (GLB, Vision Cone)</div>
 
                     <div id="primaryGlbMeshBox">
                         <span id="primaryGlbPlaceholder"
@@ -200,53 +280,35 @@
                         style="display:none; padding:6px 8px; border:1px solid color-mix(in srgb, var(--theme-text-box) 65%, var(--theme-white) 35%); border-radius:6px; background:color-mix(in srgb, var(--theme-text-box) 24%, var(--theme-white) 76%); gap:6px;">
                     </div>
 
-                    <div
-                        style="display:flex; gap:8px; align-items:center; font-size:0.78rem; color:var(--theme-muted);">
-                        <span style="white-space:nowrap;">Epoch</span>
-                        <input type="range" id="primaryGlbSlider" min="0" max="0" value="0" disabled style="flex:1;">
-                    </div>
-
-                    <div>
-                        <button id="primaryGlbPlay" class="btn secondary" style="font-size:0.78rem; padding:5px 14px;"
-                            disabled>&#9654; Play</button>
-                    </div>
                 </div>
             </div>
 
             <!-- MIDDLE: Metric placeholders -->
             <div class="output-col">
-                <div class="metric-card">
-                    <div class="metric-card__name">CS</div>
-                    <div class="metric-card__value" id="metricCS">&#x2014;</div>
-                    <div class="metric-card__hint">Cruising speed &middot; not yet linked</div>
+                <div class="metric-card" data-metric="speed">
+                    <div class="metric-card__name">Speed (km/h)</div>
+                    <canvas class="metric-card__tacho" id="metricSpeedTacho" width="300" height="140"></canvas>
+                    <canvas class="metric-card__graph" id="metricSpeedGraph" width="420" height="96"></canvas>
+                    <div class="metric-card__hint">Continuously refreshed from run metrics</div>
                 </div>
-                <div class="metric-card">
+                <div class="metric-card" data-metric="drag">
                     <div class="metric-card__name">Drag</div>
                     <div class="metric-card__value" id="metricDrag">&#x2014;</div>
-                    <div class="metric-card__hint">Drag coefficient &middot; not yet linked</div>
+                    <canvas class="metric-card__graph" id="metricDragGraph" width="420" height="96"></canvas>
+                    <div class="metric-card__hint">Force in Newtons (N)</div>
                 </div>
-                <div class="metric-card">
+                <div class="metric-card" data-metric="solar">
                     <div class="metric-card__name">Solar</div>
                     <div class="metric-card__value" id="metricSolar">&#x2014;</div>
-                    <div class="metric-card__hint">Solar yield &middot; not yet linked</div>
+                    <canvas class="metric-card__graph" id="metricSolarGraph" width="420" height="96"></canvas>
+                    <div class="metric-card__hint">Output power in Watts (W)</div>
                 </div>
             </div>
 
             <!-- RIGHT: Single visualization with radio selection -->
             <div class="output-col">
-                <div class="visual-card" style="grid-template-rows: auto auto 1fr auto auto auto;">
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <div class="visual-title">Secondary Visualization</div>
-                        <span style="flex:1;"></span>
-                        <label
-                            style="display:flex; align-items:center; gap:5px; font-size:0.72rem; color:var(--theme-muted); cursor:pointer; white-space:nowrap;">
-                            <input type="checkbox" id="cameraSyncToggle"> Sync camera
-                        </label>
-                    </div>
-
-                    <div id="rightPanelSelector" class="right-selector">
-                        <span style="font-size:0.72rem; color:var(--theme-muted);">Waiting for artifacts&#x2026;</span>
-                    </div>
+                <div class="visual-card" style="grid-template-rows: auto 1fr auto;">
+                    <div class="visual-title">Secondary Visualization</div>
 
                     <div id="rightPanelMeshBox" class="priority-mesh-box">
                         <span id="rightPanelPlaceholder"
@@ -259,19 +321,19 @@
                         style="display:none; padding:6px 8px; border:1px solid color-mix(in srgb, var(--theme-text-box) 65%, var(--theme-white) 35%); border-radius:6px; background:color-mix(in srgb, var(--theme-text-box) 24%, var(--theme-white) 76%); gap:6px;">
                     </div>
 
-                    <div
-                        style="display:flex; gap:8px; align-items:center; font-size:0.78rem; color:var(--theme-muted);">
-                        <span style="white-space:nowrap;">Epoch</span>
-                        <input type="range" id="rightPanelSlider" min="0" max="0" value="0" disabled style="flex:1;">
-                    </div>
-
-                    <div>
-                        <button id="rightPanelPlay" class="btn secondary" style="font-size:0.78rem; padding:5px 14px;"
-                            disabled>&#9654; Play</button>
+                    <div style="display:none;">
+                        <input type="range" id="rightPanelSlider" min="0" max="0" value="0" disabled>
+                        <button id="rightPanelPlay" class="btn secondary" disabled>&#9654; Play</button>
                     </div>
                 </div>
             </div>
 
+        </div>
+
+        <div class="dark-card" style="display:flex; gap:10px; align-items:center; margin:10px auto 0; max-width:980px;">
+            <span style="white-space:nowrap; font-size:0.82rem; color:var(--theme-muted);">Global Epoch</span>
+            <input type="range" id="primaryGlbSlider" min="0" max="0" value="0" disabled style="flex:1;">
+            <button id="primaryGlbPlay" class="btn secondary" style="font-size:0.78rem; padding:5px 14px;" disabled>&#9654; Play</button>
         </div>
     </div>
 
@@ -283,7 +345,7 @@
     const isLive = pipeline === "live";
     const LAUNCHER_API = "/launcher/api";
     const VIEWER_API = "/viewer/api";
-    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260521_2";
+    const MESH_VIEWER_MODULE = "/static/js/mesh_viewer.js?v=20260526_2";
     const PANEL_VISIBILITY_DEFAULTS = {{ panel_visibility_defaults_json | safe }};
     const PANEL_DEFAULTS = PANEL_VISIBILITY_DEFAULTS.launcher;
     const modeKey = isLive ? "live" : "completed";
@@ -297,7 +359,6 @@
         var _cfg = {{ mesh_priority_json | safe
     }};
     var _raw = Array.isArray(_cfg.priority) ? _cfg.priority : [];
-    window._MESH_PRIORITY_MAX_SHOWN = typeof _cfg.max_shown === "number" ? _cfg.max_shown : 5;
     window._MESH_PRIORITY = _raw.map(function (e) {
         return {
             type: e.type,
@@ -307,7 +368,9 @@
     });
     }());
     var MESH_PRIORITY = window._MESH_PRIORITY;
-    var MESH_PRIORITY_MAX_SHOWN = window._MESH_PRIORITY_MAX_SHOWN;
+    const INCLUDE_GRADIENTS_KEY = "aiscoOutputIncludeGradientsV3";
+    const LEGACY_EXPERT_MODE_KEY = "aiscoOutputExpertModeV3";
+    const RUN_KEY = "aiscoRunLaunchedV3";
 
     // ── DOM references ─────────────────────────────────────────────────────────
     const runNameDisplay = document.getElementById("runNameDisplay");
@@ -324,12 +387,18 @@
     const rightPanelGlbControls = document.getElementById("rightPanelGlbControls");
     const rightPanelSlider = document.getElementById("rightPanelSlider");
     const rightPanelPlayBtn = document.getElementById("rightPanelPlay");
-    const cameraSyncToggle = document.getElementById("cameraSyncToggle");
-    const btnEditPanels = document.getElementById("btnEditPanels");
-    const panelEditorCard = document.getElementById("panelEditorCard");
-    const btnClosePanelEditor = document.getElementById("btnClosePanelEditor");
-    const priorityListPreview = document.getElementById("priorityListPreview");
+    const includeGradientsToggle = document.getElementById("includeGradientsToggle");
+    const leaderboardBtn = document.getElementById("leaderboardBtn");
+    const printMeshBtn = document.getElementById("printMeshBtn");
+    const printMeshStatus = document.getElementById("printMeshStatus");
     const statusLabel = document.getElementById("statusLabel");
+    const metricSpeedValue = document.getElementById("metricCS");  // null after tacho migration; kept for compat
+    const metricDragValue = document.getElementById("metricDrag");
+    const metricSolarValue = document.getElementById("metricSolar");
+    const metricSpeedTacho = document.getElementById("metricSpeedTacho");
+    const metricSpeedGraph = document.getElementById("metricSpeedGraph");
+    const metricDragGraph = document.getElementById("metricDragGraph");
+    const metricSolarGraph = document.getElementById("metricSolarGraph");
 
     // ── State ──────────────────────────────────────────────────────────────────
     let primaryGlbFiles = [];
@@ -347,6 +416,7 @@
 
     // Shared play interval used when epoch-sync is active
     let syncPlayInterval = null;
+    let syncPlayStartIdx = null;
 
     // Persistent user-controlled camera states, updated by onControlsChange.
     // Restored after each epoch load so the camera never jumps to a stale
@@ -357,7 +427,33 @@
     let availableItems = [];   // all items with data, in priority order
     let activeRightLabel = null; // currently selected label
     let latestArtifactData = null;
+    let includeGradientsEnabled =
+        localStorage.getItem(INCLUDE_GRADIENTS_KEY) === "1";
     let artifactPollTimer = null;
+    let metricsPollTimer = null;
+    let liveRunIsRunning = isLive;
+    let _metricsHistory = null; // retained across slider moves
+    let _epochLocked = false;   // true when user has scrubbed away from latest
+
+    function nearestEpochIndex(files, targetEpoch) {
+        if (!Array.isArray(files) || !files.length) return 0;
+        var bestIdx = 0;
+        var bestDist = Infinity;
+        for (var i = 0; i < files.length; i++) {
+            var ep = files[i] && files[i].epoch;
+            if (ep === null || ep === undefined || !Number.isFinite(Number(ep))) continue;
+            var dist = Math.abs(Number(ep) - Number(targetEpoch));
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestIdx = i;
+            }
+        }
+        return bestIdx;
+    }
+
+    if (includeGradientsToggle) {
+        includeGradientsToggle.checked = includeGradientsEnabled;
+    }
 
     const _urlParams = new URLSearchParams(window.location.search);
     const cfgSession = _urlParams.get("cfg_session") || null;
@@ -376,6 +472,256 @@
         if (accent) slider.style.accentColor = accent;
     }
 
+    function applySyncedViewState(targetViewer, sourceViewState) {
+        if (!targetViewer || !sourceViewState || !sourceViewState.camera || !sourceViewState.target) return;
+        targetViewer.setViewState(sourceViewState);
+    }
+
+    function _metricColor(cssVarName, fallback) {
+        var value = getComputedStyle(document.documentElement).getPropertyValue(cssVarName).trim();
+        return value || fallback;
+    }
+
+    function _formatMetric(value, decimals, suffix) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) return "—";
+        return Number(value).toFixed(decimals) + "\u00a0" + suffix;
+    }
+
+    function drawMetricTrend(canvas, values, strokeColor, markerFraction) {
+        if (!canvas) return;
+        var ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        var w = canvas.width;
+        var h = canvas.height;
+        ctx.clearRect(0, 0, w, h);
+
+        ctx.strokeStyle = "rgba(255,255,255,0.16)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, h - 1);
+        ctx.lineTo(w, h - 1);
+        ctx.stroke();
+
+        var series = (values || []).filter(function (v) { return v !== null && v !== undefined && Number.isFinite(Number(v)); })
+            .map(function (v) { return Number(v); });
+        if (series.length < 2) return;
+
+        var minVal = Math.min.apply(null, series);
+        var maxVal = Math.max.apply(null, series);
+        var span = Math.max(1e-9, maxVal - minVal);
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (var i = 0; i < series.length; i++) {
+            var x = (i / (series.length - 1)) * (w - 2) + 1;
+            var y = h - 2 - ((series[i] - minVal) / span) * (h - 6);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        if (markerFraction != null && Number.isFinite(markerFraction)) {
+            var mx = markerFraction * (w - 2) + 1;
+            ctx.strokeStyle = "rgba(255,255,255,0.55)";
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(mx, 0);
+            ctx.lineTo(mx, h - 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+    }
+
+    function drawTacho(canvas, speedKmh) {
+        if (!canvas) return;
+        var maxKmh = 120;
+        var w = canvas.width, h = canvas.height;
+        var ctx2 = canvas.getContext("2d");
+        ctx2.clearRect(0, 0, w, h);
+        var cx = w / 2;
+        var cy = h * 0.55;
+        var r = Math.min(cx * 0.78, cy * 0.70);
+        var trackW = Math.max(5, r * 0.12);
+        var startA = Math.PI * 5 / 6;  // 150° – 0 km/h
+        var totalA = Math.PI * 4 / 3;  // 240° sweep clockwise through top
+        var endA   = Math.PI / 6;       // 30°  – max km/h
+        // Background track
+        ctx2.save();
+        ctx2.lineWidth = trackW;
+        ctx2.strokeStyle = "rgba(60,72,90,0.70)";
+        ctx2.lineCap = "round";
+        ctx2.beginPath();
+        ctx2.arc(cx, cy, r - trackW / 2, startA, endA, false);
+        ctx2.stroke();
+        ctx2.restore();
+        // Colored fill proportional to speed
+        if (speedKmh != null && isFinite(speedKmh) && speedKmh > 0) {
+            var frac0 = Math.max(0, Math.min(1, speedKmh / maxKmh));
+            ctx2.save();
+            ctx2.lineWidth = trackW;
+            ctx2.globalAlpha = 0.78;
+            ctx2.strokeStyle = _metricColor("--theme-metric-speed-border", "#66CC99");
+            ctx2.lineCap = "round";
+            ctx2.beginPath();
+            ctx2.arc(cx, cy, r - trackW / 2, startA, startA + totalA * frac0, false);
+            ctx2.stroke();
+            ctx2.restore();
+        }
+        // Tick marks & labels (0, 40, 80, 120, 160 km/h)
+        var labelFont = Math.max(9, Math.round(r * 0.19));
+        var labelR = r + Math.max(12, r * 0.26);
+        ctx2.save();
+        ctx2.font = labelFont + "px monospace";
+        ctx2.textAlign = "center";
+        ctx2.textBaseline = "middle";
+        [0, 0.25, 0.5, 0.75, 1.0].forEach(function (tf) {
+            var ang = startA + totalA * tf;
+            var cosA = Math.cos(ang), sinA = Math.sin(ang);
+            ctx2.lineWidth = 1.5;
+            ctx2.strokeStyle = "rgba(130,150,185,0.65)";
+            ctx2.beginPath();
+            ctx2.moveTo(cx + (r - trackW * 1.8) * cosA, cy + (r - trackW * 1.8) * sinA);
+            ctx2.lineTo(cx + (r + 2) * cosA, cy + (r + 2) * sinA);
+            ctx2.stroke();
+            ctx2.fillStyle = "rgba(150,170,210,0.80)";
+            ctx2.fillText(String(Math.round(maxKmh * tf)), cx + labelR * cosA, cy + labelR * sinA);
+        });
+        ctx2.restore();
+        // Needle
+        var needleA = (speedKmh != null && isFinite(speedKmh))
+            ? startA + totalA * Math.max(0, Math.min(1, speedKmh / maxKmh))
+            : startA;
+        ctx2.save();
+        ctx2.strokeStyle = "rgba(235,76,66,0.95)";
+        ctx2.lineWidth = Math.max(2, r * 0.048);
+        ctx2.lineCap = "round";
+        ctx2.beginPath();
+        ctx2.moveTo(cx, cy);
+        ctx2.lineTo(cx + r * 0.82 * Math.cos(needleA), cy + r * 0.82 * Math.sin(needleA));
+        ctx2.stroke();
+        ctx2.fillStyle = "rgba(235,76,66,0.95)";
+        ctx2.beginPath();
+        ctx2.arc(cx, cy, Math.max(3, r * 0.07), 0, Math.PI * 2);
+        ctx2.fill();
+        ctx2.restore();
+        // Speed text below hub
+        ctx2.save();
+        ctx2.fillStyle = "rgba(195,215,245,0.92)";
+        ctx2.font = "bold " + Math.max(11, Math.round(r * 0.22)) + "px monospace";
+        ctx2.textAlign = "center";
+        ctx2.textBaseline = "top";
+        var tachoTxt = (speedKmh != null && isFinite(speedKmh)) ? Number(speedKmh).toFixed(1) + " km/h" : "n/a";
+        ctx2.fillText(tachoTxt, cx, cy + r * 0.15);
+        ctx2.restore();
+    }
+
+    function applyMetricDisplaysForEpoch(epochNum) {
+        if (!_metricsHistory || !_metricsHistory.epoch || !_metricsHistory.epoch.length) return;
+        var epochs = _metricsHistory.epoch;
+        var bestIdx = 0;
+        var bestDist = Infinity;
+        for (var i = 0; i < epochs.length; i++) {
+            var d = Math.abs(Number(epochs[i]) - epochNum);
+            if (d < bestDist) { bestDist = d; bestIdx = i; }
+        }
+        var frac = epochs.length > 1 ? bestIdx / (epochs.length - 1) : 0;
+        var speedMs = _metricsHistory.cruising_speed_ms ? _metricsHistory.cruising_speed_ms[bestIdx] : null;
+        var speedKmh = speedMs == null ? null : Number(speedMs) * 3.6;
+        if (metricSpeedValue) metricSpeedValue.textContent = _formatMetric(speedKmh, 2, "km/h");
+        drawTacho(metricSpeedTacho, speedKmh);
+        if (metricDragValue) metricDragValue.textContent = _formatMetric(_metricsHistory.drag_value ? _metricsHistory.drag_value[bestIdx] : null, 2, "N");
+        if (metricSolarValue) metricSolarValue.textContent = _formatMetric(_metricsHistory.solar_power_w ? _metricsHistory.solar_power_w[bestIdx] : null, 1, "W");
+        var speedSeriesKmh = (_metricsHistory.cruising_speed_ms || []).map(function (v) { return v == null ? null : Number(v) * 3.6; });
+        drawMetricTrend(metricSpeedGraph, speedSeriesKmh, _metricColor("--theme-metric-speed-border", "#66CC99"), frac);
+        drawMetricTrend(metricDragGraph, _metricsHistory.drag_value || [], _metricColor("--theme-metric-drag-border", "#66A3FF"), frac);
+        drawMetricTrend(metricSolarGraph, _metricsHistory.solar_power_w || [], _metricColor("--theme-metric-solar-border", "#FFD966"), frac);
+    }
+
+    function applyMetricDisplaysForFraction(frac) {
+        if (!_metricsHistory || !_metricsHistory.epoch || !_metricsHistory.epoch.length) return false;
+        var clamped = Math.max(0, Math.min(1, Number(frac) || 0));
+        var idx = _metricsHistory.epoch.length > 1
+            ? Math.round(clamped * (_metricsHistory.epoch.length - 1))
+            : 0;
+        var speedMs = _metricsHistory.cruising_speed_ms ? _metricsHistory.cruising_speed_ms[idx] : null;
+        var speedKmh = speedMs == null ? null : Number(speedMs) * 3.6;
+        if (metricSpeedValue) metricSpeedValue.textContent = _formatMetric(speedKmh, 2, "km/h");
+        drawTacho(metricSpeedTacho, speedKmh);
+        if (metricDragValue) metricDragValue.textContent = _formatMetric(_metricsHistory.drag_value ? _metricsHistory.drag_value[idx] : null, 2, "N");
+        if (metricSolarValue) metricSolarValue.textContent = _formatMetric(_metricsHistory.solar_power_w ? _metricsHistory.solar_power_w[idx] : null, 1, "W");
+        var speedSeriesKmh = (_metricsHistory.cruising_speed_ms || []).map(function (v) { return v == null ? null : Number(v) * 3.6; });
+        drawMetricTrend(metricSpeedGraph, speedSeriesKmh, _metricColor("--theme-metric-speed-border", "#66CC99"), clamped);
+        drawMetricTrend(metricDragGraph, _metricsHistory.drag_value || [], _metricColor("--theme-metric-drag-border", "#66A3FF"), clamped);
+        drawMetricTrend(metricSolarGraph, _metricsHistory.solar_power_w || [], _metricColor("--theme-metric-solar-border", "#FFD966"), clamped);
+        return true;
+    }
+
+    function applyMetricDisplaysForCurrentView() {
+        var _lf = primaryGlbFiles[primaryGlbIdx];
+        if (_lf && _lf.epoch != null) {
+            applyMetricDisplaysForEpoch(_lf.epoch);
+            return true;
+        }
+        var _rf = rightPanelFiles[rightPanelIdx];
+        if (_rf && _rf.epoch != null) {
+            applyMetricDisplaysForEpoch(_rf.epoch);
+            return true;
+        }
+        if (primaryGlbFiles.length > 1) {
+            return applyMetricDisplaysForFraction(primaryGlbIdx / (primaryGlbFiles.length - 1));
+        }
+        if (rightPanelFiles.length > 1) {
+            return applyMetricDisplaysForFraction(rightPanelIdx / (rightPanelFiles.length - 1));
+        }
+        return applyMetricDisplaysForFraction(0);
+    }
+
+    function applyMetricDisplays(latestMetrics, history) {
+        var speedMs = latestMetrics ? latestMetrics.cruising_speed_ms : null;
+        var speedKmh = speedMs == null ? null : Number(speedMs) * 3.6;
+        if (metricSpeedValue) metricSpeedValue.textContent = _formatMetric(speedKmh, 2, "km/h");
+        drawTacho(metricSpeedTacho, speedKmh);
+        if (metricDragValue) metricDragValue.textContent = _formatMetric(latestMetrics ? latestMetrics.drag_value : null, 2, "N");
+        if (metricSolarValue) metricSolarValue.textContent = _formatMetric(latestMetrics ? latestMetrics.solar_power_w : null, 1, "W");
+
+        var speedSeriesKmh = (history && history.cruising_speed_ms ? history.cruising_speed_ms : [])
+            .map(function (v) { return v == null ? null : Number(v) * 3.6; });
+        drawMetricTrend(metricSpeedGraph, speedSeriesKmh, _metricColor("--theme-metric-speed-border", "#66CC99"));
+        drawMetricTrend(metricDragGraph, history ? history.drag_value : [], _metricColor("--theme-metric-drag-border", "#66A3FF"));
+        drawMetricTrend(metricSolarGraph, history ? history.solar_power_w : [], _metricColor("--theme-metric-solar-border", "#FFD966"));
+    }
+
+    async function refreshLiveMetrics() {
+        if (!isLive) return;
+        try {
+            var pair = await Promise.all([
+                fetch(LAUNCHER_API + "/run/metrics/latest?t=" + Date.now(), { cache: "no-store" }),
+                fetch(LAUNCHER_API + "/run/metrics/history?limit=120&t=" + Date.now(), { cache: "no-store" }),
+            ]);
+            if (!pair[0].ok || !pair[1].ok) return;
+            var latest = await pair[0].json();
+            var historyPayload = await pair[1].json();
+            var latestMetrics = latest.found ? latest : null;
+            var history = historyPayload && historyPayload.history ? historyPayload.history : {
+                epoch: [], drag_value: [], solar_power_w: [], cruising_speed_ms: [],
+            };
+            if (latest.run_dir && runNameDisplay.textContent === "—") {
+                var parts = String(latest.run_dir).replace(/\\/g, "/").split("/");
+                var name = parts.filter(Boolean).pop();
+                if (name) {
+                    runNameDisplay.textContent = name;
+                    updateLeaderboardLink(name);
+                }
+            }
+            _metricsHistory = history;
+            if (!applyMetricDisplaysForCurrentView()) {
+                applyMetricDisplays(latestMetrics, history);
+            }
+        } catch (err) {
+            console.debug("refreshLiveMetrics:", err);
+        }
+    }
+
     // ── Primary GLB (left panel) ───────────────────────────────────────────────
     function loadPrimaryGlb() {
         if (!primaryGlbFiles.length) return;
@@ -387,9 +733,9 @@
                 primaryGlbViewer.setGlbControlsHost(primaryGlbControls);
                 primaryGlbViewer.setOnControlsChange(function (vs) {
                     primaryUserView = vs;
-                    if (cameraSyncToggle.checked && rightPanelViewer) {
+                    if (rightPanelViewer) {
                         rightPanelUserView = vs;
-                        rightPanelViewer.setViewState(vs);
+                        applySyncedViewState(rightPanelViewer, vs);
                     }
                 });
             }
@@ -401,7 +747,7 @@
                     const vc = info && info.hasVertexColors ? "yes" : "no";
                     primaryGlbStatus.textContent =
                         file.name + " (" + (primaryGlbIdx + 1) + "/" + primaryGlbFiles.length + ") \u00b7 VC:" + vc;
-                    if (primaryUserView) primaryGlbViewer.setViewState(primaryUserView);
+                    if (primaryUserView) applySyncedViewState(primaryGlbViewer, primaryUserView);
                 },
                 function (err) {
                     primaryGlbPlaceholder.style.display = "none";
@@ -441,13 +787,19 @@
         primaryGlbPlayBtn.disabled = primaryGlbFiles.length <= 1;
         paintSlider(primaryGlbSlider);
         loadPrimaryGlb();
+        syncRightEpochToPrimary();
     }
 
-    // Helper: sync right epoch to match the current primary epoch (proportional)
+    // Helper: sync right epoch to match the current primary epoch (by epoch number)
     function syncRightEpochToPrimary() {
-        if (!cameraSyncToggle.checked || !rightPanelFiles.length || !primaryGlbFiles.length) return;
-        var pct = primaryGlbFiles.length > 1 ? primaryGlbIdx / (primaryGlbFiles.length - 1) : 0;
-        rightPanelIdx = Math.round(pct * (rightPanelFiles.length - 1));
+        if (!rightPanelFiles.length || !primaryGlbFiles.length) return;
+        var source = primaryGlbFiles[primaryGlbIdx];
+        if (source && source.epoch != null) {
+            rightPanelIdx = nearestEpochIndex(rightPanelFiles, source.epoch);
+        } else {
+            var pct = primaryGlbFiles.length > 1 ? primaryGlbIdx / (primaryGlbFiles.length - 1) : 0;
+            rightPanelIdx = Math.round(pct * (rightPanelFiles.length - 1));
+        }
         rightPanelSlider.value = String(rightPanelIdx);
         paintSlider(rightPanelSlider);
         // Ensure the right panel restores to the primary's current camera after load.
@@ -458,11 +810,16 @@
         loadRightPanel();
     }
 
-    // Helper: sync primary epoch to match the current right epoch (proportional)
+    // Helper: sync primary epoch to match the current right epoch (by epoch number)
     function syncPrimaryEpochToRight() {
-        if (!cameraSyncToggle.checked || !primaryGlbFiles.length || !rightPanelFiles.length) return;
-        var pct = rightPanelFiles.length > 1 ? rightPanelIdx / (rightPanelFiles.length - 1) : 0;
-        primaryGlbIdx = Math.round(pct * (primaryGlbFiles.length - 1));
+        if (!primaryGlbFiles.length || !rightPanelFiles.length) return;
+        var source = rightPanelFiles[rightPanelIdx];
+        if (source && source.epoch != null) {
+            primaryGlbIdx = nearestEpochIndex(primaryGlbFiles, source.epoch);
+        } else {
+            var pct = rightPanelFiles.length > 1 ? rightPanelIdx / (rightPanelFiles.length - 1) : 0;
+            primaryGlbIdx = Math.round(pct * (primaryGlbFiles.length - 1));
+        }
         primaryGlbSlider.value = String(primaryGlbIdx);
         paintSlider(primaryGlbSlider);
         loadPrimaryGlb();
@@ -471,6 +828,7 @@
     // Shared synced-play helpers
     function stopSyncedPlay() {
         if (syncPlayInterval) { clearInterval(syncPlayInterval); syncPlayInterval = null; }
+        syncPlayStartIdx = null;
         primaryGlbPlaying = false; rightPanelPlaying = false;
         primaryGlbPlayBtn.textContent = "\u25b6 Play";
         rightPanelPlayBtn.textContent = "\u25b6 Play";
@@ -480,6 +838,7 @@
         stopSyncedPlay();
         if (!primaryGlbFiles.length) return;
         primaryGlbPlaying = true; rightPanelPlaying = true;
+        syncPlayStartIdx = primaryGlbIdx;
         primaryGlbPlayBtn.textContent = "\u23f8 Pause";
         rightPanelPlayBtn.textContent = "\u23f8 Pause";
         syncPlayInterval = setInterval(function () {
@@ -488,86 +847,110 @@
             paintSlider(primaryGlbSlider);
             loadPrimaryGlb();
             if (rightPanelFiles.length) {
-                var pct = primaryGlbFiles.length > 1 ? primaryGlbIdx / (primaryGlbFiles.length - 1) : 0;
-                rightPanelIdx = Math.round(pct * (rightPanelFiles.length - 1));
+                var _src = primaryGlbFiles[primaryGlbIdx];
+                if (_src && _src.epoch != null) {
+                    rightPanelIdx = nearestEpochIndex(rightPanelFiles, _src.epoch);
+                } else {
+                    var _pct = primaryGlbFiles.length > 1 ? primaryGlbIdx / (primaryGlbFiles.length - 1) : 0;
+                    rightPanelIdx = Math.round(_pct * (rightPanelFiles.length - 1));
+                }
                 rightPanelSlider.value = String(rightPanelIdx);
                 paintSlider(rightPanelSlider);
                 loadRightPanel();
             }
-            if (primaryGlbIdx === 0) { stopSyncedPlay(); }
+            applyMetricDisplaysForCurrentView();
+            if (syncPlayStartIdx !== null && primaryGlbIdx === syncPlayStartIdx) { stopSyncedPlay(); }
         }, 500);
     }
 
     primaryGlbSlider.addEventListener("input", function (e) {
-        if (primaryGlbPlaying) {
-            primaryGlbPlaying = false;
-            clearInterval(primaryGlbPlayInterval);
-            primaryGlbPlayBtn.textContent = "\u25b6 Play";
-        }
+        stopSyncedPlay();
         primaryGlbIdx = parseInt(e.target.value, 10);
         paintSlider(primaryGlbSlider);
         loadPrimaryGlb();
         syncRightEpochToPrimary();
+        var _f = primaryGlbFiles[primaryGlbIdx];
+        if (_f && _f.epoch != null) {
+            var _last = primaryGlbFiles[primaryGlbFiles.length - 1];
+            _epochLocked = _last && _last.epoch != null ? Number(_f.epoch) < Number(_last.epoch) : false;
+            applyMetricDisplaysForCurrentView();
+        } else {
+            _epochLocked = false;
+            applyMetricDisplaysForCurrentView();
+        }
     });
 
     primaryGlbPlayBtn.addEventListener("click", function () {
-        if (cameraSyncToggle.checked) {
-            if (primaryGlbPlaying) { stopSyncedPlay(); } else { startSyncedPlay(); }
-            return;
-        }
-        if (primaryGlbPlaying) {
-            primaryGlbPlaying = false;
-            clearInterval(primaryGlbPlayInterval);
-            primaryGlbPlayBtn.textContent = "\u25b6 Play";
+        if (primaryGlbPlaying || rightPanelPlaying) {
+            stopSyncedPlay();
         } else {
-            primaryGlbPlaying = true;
-            primaryGlbPlayBtn.textContent = "\u23f8 Pause";
-            primaryGlbPlayInterval = setInterval(function () {
-                primaryGlbIdx = (primaryGlbIdx + 1) % primaryGlbFiles.length;
-                primaryGlbSlider.value = String(primaryGlbIdx);
-                paintSlider(primaryGlbSlider);
-                loadPrimaryGlb();
-                if (primaryGlbIdx === 0) {
-                    primaryGlbPlaying = false;
-                    clearInterval(primaryGlbPlayInterval);
-                    primaryGlbPlayBtn.textContent = "\u25b6 Play";
-                }
-            }, 500);
+            startSyncedPlay();
         }
     });
 
     // ── Right panel (single viewer with radio selection) ──────────────────────
     function buildPriorityFileList(data) {
-        var result = [];
+        var allItems = [];
         var usedExtras = {};
         var extras = Array.isArray(data.extra_ply_groups) ? data.extra_ply_groups : [];
 
         for (var i = 0; i < MESH_PRIORITY.length; i++) {
-            if (result.length >= MESH_PRIORITY_MAX_SHOWN) break;
             var entry = MESH_PRIORITY[i];
 
             if (entry.type === "glb_cone") {
-                var files = Array.isArray(data.meshes_glb_cone) ? data.meshes_glb_cone : [];
-                if (files.length) result.push({ label: entry.label, files: files });
+                continue;
+            }
 
-            } else if (entry.type === "ply") {
+            if (entry.type === "ply") {
                 var files = Array.isArray(data.meshes) ? data.meshes : [];
-                if (files.length) result.push({ label: entry.label, files: files });
+                if (files.length) allItems.push({ label: entry.label, files: files });
 
             } else if (entry.type === "extra_group") {
                 for (var j = 0; j < extras.length; j++) {
-                    if (result.length >= MESH_PRIORITY_MAX_SHOWN) break;
                     var group = extras[j];
                     if (usedExtras[group.label]) continue;
                     var testStr = group.label || "";
                     if (!entry.match || entry.match.test(testStr)) {
                         usedExtras[group.label] = true;
-                        result.push({ label: group.label, files: group.ply_files || [] });
+                        allItems.push({ label: group.label, files: group.ply_files || [] });
                     }
                 }
             }
         }
-        return result;
+
+        function firstMatch(regex) {
+            return allItems.find(function (it) { return regex.test((it && it.label) || ""); }) || null;
+        }
+
+        var cpField = firstMatch(/\baero\b.*\bcp\b|\bcp\s*field\b/i);
+        var solarSelection = firstMatch(/\bsolar\b.*\bselection\b/i);
+        var selected = [cpField, solarSelection].filter(function (it, idx, arr) {
+            return !!it && arr.indexOf(it) === idx;
+        });
+
+        if (includeGradientsEnabled) {
+            var gradientItems = allItems.filter(function (it) {
+                return /\bmesh\s*gradients?\b|\bgradient\b/i.test((it && it.label) || "");
+            });
+            var gradientChoices = [];
+            var solarGradient = gradientItems.find(function (it) { return /\bsolar\b/i.test(it.label); }) || null;
+            if (solarGradient) gradientChoices.push(solarGradient);
+            var nonSolarGradient = gradientItems.find(function (it) {
+                return gradientChoices.indexOf(it) === -1 && !/\bsolar\b/i.test(it.label);
+            }) || null;
+            if (nonSolarGradient) gradientChoices.push(nonSolarGradient);
+            for (var g = 0; g < gradientItems.length && gradientChoices.length < 2; g++) {
+                if (gradientChoices.indexOf(gradientItems[g]) === -1) gradientChoices.push(gradientItems[g]);
+            }
+            gradientChoices.slice(0, 2).forEach(function (it) {
+                if (selected.indexOf(it) === -1) selected.push(it);
+            });
+        }
+
+        if (!selected.length) {
+            return allItems.slice(0, includeGradientsEnabled ? 4 : 2);
+        }
+        return selected;
     }
 
     function loadRightPanel() {
@@ -580,15 +963,15 @@
                 rightPanelViewer.setGlbControlsHost(rightPanelGlbControls);
                 rightPanelViewer.setOnControlsChange(function (vs) {
                     rightPanelUserView = vs;
-                    if (cameraSyncToggle.checked && primaryGlbViewer) {
+                    if (primaryGlbViewer) {
                         primaryUserView = vs;
-                        primaryGlbViewer.setViewState(vs);
+                        applySyncedViewState(primaryGlbViewer, vs);
                     }
                 });
-                if (cameraSyncToggle.checked && primaryGlbViewer) {
+                if (primaryGlbViewer) {
                     var vs = primaryGlbViewer.getViewState();
                     if (vs) {
-                        rightPanelViewer.setViewState(vs);
+                        applySyncedViewState(rightPanelViewer, vs);
                         rightPanelUserView = vs;
                     }
                 }
@@ -601,7 +984,7 @@
                     var vc = info && info.hasVertexColors ? "yes" : "no";
                     rightPanelStatus.textContent =
                         file.name + " (" + (rightPanelIdx + 1) + "/" + rightPanelFiles.length + ") \u00b7 VC:" + vc;
-                    if (rightPanelUserView) rightPanelViewer.setViewState(rightPanelUserView);
+                    if (rightPanelUserView) applySyncedViewState(rightPanelViewer, rightPanelUserView);
                 },
                 function (err) {
                     rightPanelPlaceholder.style.display = "none";
@@ -619,11 +1002,7 @@
         if (activeRightLabel === label) return;
 
         // Stop any playback
-        if (rightPanelPlaying) {
-            rightPanelPlaying = false;
-            clearInterval(rightPanelPlayInterval);
-            rightPanelPlayBtn.textContent = "\u25b6 Play";
-        }
+        stopSyncedPlay();
 
         activeRightLabel = label;
 
@@ -656,7 +1035,11 @@
         paintSlider(rightPanelSlider);
         rightPanelPlaceholder.style.display = "block";
         rightPanelStatus.style.display = "none";
-        loadRightPanel();
+        if (primaryGlbFiles.length) {
+            syncRightEpochToPrimary();
+        } else {
+            loadRightPanel();
+        }
     }
 
     function renderPrioritySelector() {
@@ -690,31 +1073,10 @@
         });
     }
 
-    function renderPriorityListPreview() {
-        priorityListPreview.innerHTML = "";
-        MESH_PRIORITY.forEach(function (entry, i) {
-            var hasData = availableItems.some(function (it) { return it.label === entry.label; });
-            var isActive = entry.label === activeRightLabel;
-            var el = document.createElement("div");
-            el.style.cssText =
-                "font-size:0.72rem;color:var(--theme-muted);display:flex;gap:6px;align-items:center;";
-            var badge = isActive
-                ? "<span style=\"background:color-mix(in srgb,var(--theme-title-2) 25%,transparent);color:var(--theme-warning-text);border-radius:3px;padding:0 4px;font-size:0.65rem;font-weight:700;\">shown</span>"
-                : (hasData
-                    ? "<span style=\"color:var(--theme-muted);font-size:0.65rem;\">available</span>"
-                    : "");
-            el.innerHTML =
-                "<span style=\"color:var(--theme-warning-text);font-weight:700;min-width:16px;\">" + (i + 1) + ".</span>" +
-                "<span style=\"flex:1;\">" + entry.label + "</span>" + badge;
-            priorityListPreview.appendChild(el);
-        });
-    }
-
     function updatePriorityPanels(data) {
         availableItems = buildPriorityFileList(data);
 
         renderPrioritySelector();
-        renderPriorityListPreview();
 
         if (!availableItems.length) return;
 
@@ -740,75 +1102,88 @@
             rightPanelSlider.disabled = rightPanelFiles.length <= 1;
             rightPanelPlayBtn.disabled = rightPanelFiles.length <= 1;
             paintSlider(rightPanelSlider);
+            if (primaryGlbFiles.length) {
+                syncRightEpochToPrimary();
+            } else {
+                loadRightPanel();
+            }
         }
     }
 
     // Right panel slider / play button
     rightPanelSlider.addEventListener("input", function (e) {
-        if (rightPanelPlaying) {
-            rightPanelPlaying = false;
-            clearInterval(rightPanelPlayInterval);
-            rightPanelPlayBtn.textContent = "\u25b6 Play";
-        }
+        stopSyncedPlay();
         rightPanelIdx = parseInt(e.target.value, 10);
         paintSlider(rightPanelSlider);
-        loadRightPanel();
         syncPrimaryEpochToRight();
+        syncRightEpochToPrimary();
+        var _f = rightPanelFiles[rightPanelIdx];
+        if (_f && _f.epoch != null) {
+            var _last = rightPanelFiles[rightPanelFiles.length - 1];
+            _epochLocked = _last && _last.epoch != null ? Number(_f.epoch) < Number(_last.epoch) : false;
+            applyMetricDisplaysForCurrentView();
+        } else {
+            _epochLocked = false;
+            applyMetricDisplaysForCurrentView();
+        }
     });
 
     rightPanelPlayBtn.addEventListener("click", function () {
-        if (cameraSyncToggle.checked) {
-            if (rightPanelPlaying) { stopSyncedPlay(); } else { startSyncedPlay(); }
-            return;
-        }
-        if (rightPanelPlaying) {
-            rightPanelPlaying = false;
-            clearInterval(rightPanelPlayInterval);
-            rightPanelPlayBtn.textContent = "\u25b6 Play";
-        } else {
-            rightPanelPlaying = true;
-            rightPanelPlayBtn.textContent = "\u23f8 Pause";
-            rightPanelPlayInterval = setInterval(function () {
-                rightPanelIdx = (rightPanelIdx + 1) % rightPanelFiles.length;
-                rightPanelSlider.value = String(rightPanelIdx);
-                paintSlider(rightPanelSlider);
-                loadRightPanel();
-                if (rightPanelIdx === 0) {
-                    rightPanelPlaying = false;
-                    clearInterval(rightPanelPlayInterval);
-                    rightPanelPlayBtn.textContent = "\u25b6 Play";
-                }
-            }, 500);
+        if (rightPanelPlaying) { stopSyncedPlay(); } else { startSyncedPlay(); }
+    });
+
+    includeGradientsToggle?.addEventListener("change", function () {
+        includeGradientsEnabled = !!includeGradientsToggle.checked;
+        localStorage.setItem(INCLUDE_GRADIENTS_KEY, includeGradientsEnabled ? "1" : "0");
+        if (latestArtifactData) {
+            updatePriorityPanels(latestArtifactData);
         }
     });
 
-    // Camera sync toggle
-    cameraSyncToggle.addEventListener("change", function () {
-        if (!cameraSyncToggle.checked) {
-            // If a synced play was running, stop it cleanly (independent plays stop too)
-            if (syncPlayInterval) { stopSyncedPlay(); }
-            return;
-        }
-        // Sync camera: copy primary's view to the right panel and persist it
-        if (primaryGlbViewer && rightPanelViewer) {
-            var vs = primaryGlbViewer.getViewState();
-            if (vs) {
-                rightPanelViewer.setViewState(vs);
-                rightPanelUserView = vs;
+    // ── Print mesh helper ─────────────────────────────────────────────────────
+    function setPrintMeshReady(ready) {
+        if (!printMeshBtn) return;
+        printMeshBtn.disabled = false;
+    }
+
+    async function runPrintMeshExport() {
+        if (!printMeshBtn) return;
+        printMeshBtn.disabled = true;
+        if (printMeshStatus) printMeshStatus.textContent = "Exporting...";
+        try {
+            var resp = await fetch(LAUNCHER_API + "/run/print-mesh", { method: "POST" });
+            var data = await resp.json();
+            if (!resp.ok) {
+                var detail = data && data.detail ? data.detail : {};
+                throw new Error(detail.message || data.message || ("Export failed (" + resp.status + ")"));
             }
+            if (data.status === "no_meshes") {
+                if (printMeshStatus) printMeshStatus.textContent = "No meshes found";
+            } else {
+                var cloud = data.wandb_upload || {};
+                var sd = data.sd_export || {};
+                var sdText = sd.ok ? "SD done!" : (sd.message || "SD failed");
+                var cloudText = cloud.ok ? "W&B done!" : "W&B not uploaded";
+                if (printMeshStatus) printMeshStatus.textContent = "Local done! " + sdText + " " + cloudText;
+                await fetchLiveArtifacts();
+            }
+            printMeshBtn.disabled = false;
+        } catch (err) {
+            if (printMeshStatus) printMeshStatus.textContent = err.message;
+            printMeshBtn.disabled = false;
         }
-        // Sync epoch position: snap right panel to match primary
-        syncRightEpochToPrimary();
-    });
+    }
 
-    // ── Panel editor ───────────────────────────────────────────────────────────
-    btnEditPanels.addEventListener("click", function () {
-        panelEditorCard.style.display =
-            panelEditorCard.style.display === "none" ? "grid" : "none";
-    });
-    btnClosePanelEditor.addEventListener("click", function () {
-        panelEditorCard.style.display = "none";
-    });
+    if (printMeshBtn) {
+        printMeshBtn.addEventListener("click", runPrintMeshExport);
+    }
+
+    // ── Leaderboard link helper ────────────────────────────────────────────────
+    function updateLeaderboardLink(runName) {
+        if (!leaderboardBtn || !runName) return;
+        leaderboardBtn.href = "/launcher/leaderboard?pipeline=" +
+            encodeURIComponent(pipeline) + "&run_id=" + encodeURIComponent(runName);
+    }
 
     // ── Artifact processing ────────────────────────────────────────────────────
     function processArtifacts(data) {
@@ -817,10 +1192,17 @@
         if (data.run_dir && runNameDisplay.textContent === "\u2014") {
             var parts = String(data.run_dir).replace(/\\/g, "/").split("/");
             var name = parts.filter(Boolean).pop();
-            if (name) runNameDisplay.textContent = name;
+            if (name) {
+                runNameDisplay.textContent = name;
+                updateLeaderboardLink(name);
+            }
         }
 
-        updatePrimaryGlb(data.meshes_glb || []);
+        if (isLive && data.run_dir && !liveRunIsRunning) {
+            setPrintMeshReady(true);
+        }
+
+        updatePrimaryGlb(data.meshes_glb_cone || []);
         updatePriorityPanels(data);
     }
 
@@ -856,32 +1238,144 @@
             }
 
             var run = runs[0];
-            runNameDisplay.textContent = run.name || run.run_id || "\u2014";
+            var resolvedName = run.name || run.run_id || "\u2014";
+            runNameDisplay.textContent = resolvedName;
+            updateLeaderboardLink(resolvedName);
 
             var runId = run.run_id || (run.model_hash + "/" + run.name);
             var artResp = await fetch(VIEWER_API + "/runs/" + encodeURIComponent(runId) + "/artifacts");
             if (!artResp.ok) throw new Error("artifacts " + artResp.status);
             var artData = await artResp.json();
             processArtifacts(artData);
+            try {
+                var metResp = await fetch(VIEWER_API + "/runs/" + encodeURIComponent(runId) + "/metrics");
+                if (metResp.ok) {
+                    var metData = await metResp.json();
+                    if (metData && metData.found && metData.history) {
+                        _metricsHistory = metData.history;
+                        if (!applyMetricDisplaysForCurrentView()) {
+                            applyMetricDisplays(metData.latest, metData.history);
+                        }
+                    }
+                }
+            } catch (_metErr) { /* metrics optional */ }
         } catch (e) {
             statusLabel.textContent = "Error loading artifacts: " + e.message;
             console.error("fetchViewerArtifacts:", e);
         }
     }
 
+    // ── Progress bar (live pipeline only) ──────────────────────────────────────
+    var _progressFill = isLive ? document.getElementById("progressFill") : null;
+    var _progressLabel = isLive ? document.getElementById("progressLabel") : null;
+    var _progressHost = isLive ? document.getElementById("progressHost") : null;
+    var _progressEventSource = null;
+    var _progressReconnectTimer = null;
+    var _progressCompleted = false;
+
+    function _setProgressVisible(visible) {
+        if (_progressHost) _progressHost.style.display = visible ? "block" : "none";
+    }
+
+    function _startProgressSSE() {
+        if (_progressEventSource) { _progressEventSource.close(); _progressEventSource = null; }
+        if (_progressReconnectTimer) { clearTimeout(_progressReconnectTimer); _progressReconnectTimer = null; }
+        _progressCompleted = false;
+        _progressEventSource = new EventSource(LAUNCHER_API + "/run/stream/logs");
+        _progressEventSource.addEventListener("epoch", function (ev) {
+            var _ov = document.getElementById("launchLoadingOverlay");
+            if (_ov) _ov.style.display = "none";
+            var d = JSON.parse(ev.data);
+            var pct = d.total > 0 ? Math.min(100, ((d.epoch + 1) / d.total) * 100) : 0;
+            if (_progressFill) _progressFill.style.width = pct + "%";
+            if (_progressLabel) _progressLabel.textContent = "Epoch " + (d.epoch + 1) + " / " + d.total + " (" + pct.toFixed(1) + "%)";
+        });
+        _progressEventSource.addEventListener("done", function (ev) {
+            var _ov = document.getElementById("launchLoadingOverlay");
+            if (_ov) _ov.style.display = "none";
+            var d = JSON.parse(ev.data);
+            if (_progressFill) _progressFill.style.width = "100%";
+            if (_progressLabel) _progressLabel.textContent = d.return_code === 0 ? "Completed." : "Finished (code " + d.return_code + ")";
+            if (_progressEventSource) { _progressEventSource.close(); _progressEventSource = null; }
+            _progressCompleted = true;
+        });
+        _progressEventSource.onerror = function () {
+            if (_progressReconnectTimer) clearTimeout(_progressReconnectTimer);
+            _progressReconnectTimer = setTimeout(function () {
+                _progressReconnectTimer = null;
+                if (_progressCompleted) return;
+                fetch(LAUNCHER_API + "/run/state").then(function (r) { return r.json(); }).then(function (s) {
+                    if (!s.running && s.return_code !== null) {
+                        if (_progressFill) _progressFill.style.width = "100%";
+                        if (_progressLabel) _progressLabel.textContent = s.return_code === 0 ? "Completed." : "Finished (code " + s.return_code + ")";
+                        _progressCompleted = true;
+                        liveRunIsRunning = false;
+                        if (latestArtifactData && latestArtifactData.run_dir) setPrintMeshReady(s.return_code === 0);
+                    } else if (s.running) {
+                        _startProgressSSE();
+                    }
+                }).catch(function () {});
+            }, 5000);
+        };
+    }
+
     // ── Boot ───────────────────────────────────────────────────────────────────
     if (isLive) {
+        if (!localStorage.getItem(RUN_KEY)) {
+            _setProgressVisible(false);
+        } else {
+            _setProgressVisible(true);
+        }
+        // Seed progress bar from last known run state
+        fetch(LAUNCHER_API + "/run/progress").then(function (r) { return r.json(); }).then(function (prog) {
+            if (prog.completed) {
+                if (_progressFill) _progressFill.style.width = "100%";
+                if (_progressLabel) _progressLabel.textContent = "Completed.";
+                _progressCompleted = true;
+                liveRunIsRunning = false;
+                if (latestArtifactData && latestArtifactData.run_dir) setPrintMeshReady(true);
+            } else if (prog.current_epoch >= 0) {
+                if (_progressFill) _progressFill.style.width = prog.progress_percent + "%";
+                if (_progressLabel) _progressLabel.textContent = "Epoch " + (prog.current_epoch + 1) + " / " + prog.num_epochs + " (" + prog.progress_percent.toFixed(1) + "%)";
+                // Epochs already written — dismiss loading overlay immediately
+                var _ov = document.getElementById("launchLoadingOverlay");
+                if (_ov) _ov.style.display = "none";
+            }
+        }).catch(function () {});
+
         fetch(LAUNCHER_API + "/run/state")
             .then(function (r) { return r.json(); })
             .then(function (state) {
+                liveRunIsRunning = !!state.running;
                 fetchLiveArtifacts();
-                if (state.running) {
+                refreshLiveMetrics();
+                if (state.running && localStorage.getItem(RUN_KEY)) {
+                    // Show loading overlay — hidden once first epoch arrives or progress already has data
+                    var _ov = document.getElementById("launchLoadingOverlay");
+                    if (_ov) _ov.style.display = "flex";
                     artifactPollTimer = setInterval(fetchLiveArtifacts, 3000);
+                    metricsPollTimer = setInterval(refreshLiveMetrics, 1000);
+                    _startProgressSSE();
                 } else {
-                    statusLabel.textContent = "Run complete \u2014 showing final artifacts.";
+                    if (localStorage.getItem(RUN_KEY)) {
+                        statusLabel.textContent = "Run complete \u2014 showing final artifacts.";
+                    } else {
+                        statusLabel.textContent = "Run not started yet \u2014 waiting for artifacts from this session.";
+                    }
+                    metricsPollTimer = setInterval(refreshLiveMetrics, 3000);
+                    if (!_progressCompleted && localStorage.getItem(RUN_KEY)) {
+                        if (_progressFill) _progressFill.style.width = "100%";
+                        if (_progressLabel) _progressLabel.textContent = "Completed.";
+                        _progressCompleted = true;
+                    }
+                    if (latestArtifactData && latestArtifactData.run_dir) setPrintMeshReady(state.return_code === 0 || state.return_code === null);
                 }
             })
-            .catch(function () { fetchLiveArtifacts(); });
+            .catch(function () {
+                fetchLiveArtifacts();
+                refreshLiveMetrics();
+                metricsPollTimer = setInterval(refreshLiveMetrics, 3000);
+            });
     } else {
         fetchViewerArtifacts();
     }

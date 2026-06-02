@@ -1,5 +1,5 @@
 general_info:
-  CSE: "False"  # Cruising Speed Estimation  # USED — total_loss.py: self._use_cse
+  CSE: "True"  # Cruising Speed Estimation  # USED — total_loss.py: self._use_cse
   ALM: "True"  # Augmented Lagrangian Method  # USED — total_loss.py: self._use_alm
 
   # ---------------------------------------------------------------------------
@@ -59,6 +59,8 @@ general_info:
   cse_params:  # physical constants for CSE; also picks which category is drag/solar
     drag_category: "aero"
     solar_category: "solar"
+    optimize_drag: true   # if false, drag still feeds CSE as detached value (no CSE gradient to drag branch)
+    optimize_solar: true  # if false, solar still feeds CSE as detached value (no CSE gradient to solar branch)
     mass: 210
     c_losses: 20
     rolling_friction_coefficient: 0.006
@@ -119,8 +121,8 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     _role: objective
     _sign: minimize
     _disabled_epochs: []
-    null_loss_aero: [1, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]  # weight=50.0 is the drag surrogate constant returned by the null loss; training weight is forced to 0.0 by TotalLossV2 (is_null_loss marker)
-    gaot_loss: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
+    null_loss_aero: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]  # weight=50.0 is the drag surrogate constant returned by the null loss; training weight is forced to 0.0 by TotalLossV2 (is_null_loss marker)
+    gaot_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
 
   bb_inner:
     _role: constraint
@@ -199,7 +201,7 @@ losses: # [compute: bool, weight: float, path: str]  # TotalLossV2 dynamically l
     solar_v5: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v5.py"]
     solar_v6: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v6.py"]
     solar_v7: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_v7.py"]
-    solar_s_r: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SR.py"] # single ray
+    solar_s_r: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SR.py"] # single ray
     solar_s_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SRRT.py"] # single ray ray tracing
     solar_m_r: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MR.py"]  # multi ray
     solar_m_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MRRT.py"]  # multi ray ray tracing
@@ -368,6 +370,10 @@ bb_config:  # bb_v3.py: self.losses_config["bb_config"]
 
 cfd:
   model_id: 65531686      # Options: Any Euler-run-id that trained a Gaot-Model in Version 2/3 or a key for Version 1
+  metrics_csv_path:
+    _wsl: "/home/eschaerer/AISCO_code/subprojects/wp1_cfd_ai/data_wsl/metric.csv"
+    _euler: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv"
+    _beast: "/home/aisco/results/metrics.csv"
   version: 3              # Options: 1, 2, 3      Recomendation: 3
   visualisations: true    # Options: true, false  Recomendation: true
   v_inf: 25.0             # Default: 25.0         Recomendation: Has to Match the Value used during respective GAOT-Training
@@ -392,6 +398,10 @@ cfd:
 
 cfd_local:
   model_id: 65531686      # Options: Any Euler-run-id that trained a Gaot-Model in Version 2/3 or a key for Version 1
+  metrics_csv_path:
+    _wsl: "/home/eschaerer/AISCO_code/subprojects/wp1_cfd_ai/data_wsl/metric.csv"
+    _euler: "/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv"
+    _beast: "/home/aisco/results/metrics.csv"
   version: 3              # Options: 1, 2, 3      Recomendation: 3
   visualisations: true    # Options: true, false  Recomendation: true
   v_inf: 25.0             # Default: 25.0         Recomendation: Has to Match the Value used during respective GAOT-Training

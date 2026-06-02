@@ -98,3 +98,34 @@ def parse_metrics(log_text: str) -> dict[str, float | None]:
             metrics["cruising_speed_ms"] = float(speed_matches[-1])
 
     return metrics
+
+
+def parse_epoch_blocks(log_text: str) -> dict[int, dict[str, float | None]]:
+    """Return metrics for every epoch block found in log_text.
+
+    An epoch block starts at an ``[Epoch N]`` marker and ends just before the
+    next marker (or at end-of-text for the last block).  All blocks except the
+    last are *complete* — the last block may still be accumulating lines.
+
+    Returns:
+        Dict mapping epoch number to its :func:`parse_metrics` result.
+        Empty dict when no epoch markers are found.
+    """
+    positions: list[tuple[int, int]] = []
+    positions.extend((m.start(), int(m.group(1))) for pattern in _EPOCH_PATTERNS for m in pattern.finditer(log_text))
+    if not positions:
+        return {}
+
+    positions.sort()
+    # Keep only the first occurrence of each epoch number
+    seen: dict[int, int] = {}
+    for pos, epoch_num in positions:
+        if epoch_num not in seen:
+            seen[epoch_num] = pos
+
+    ordered = sorted(seen.items())  # [(epoch_num, start_pos), ...]
+    result: dict[int, dict[str, float | None]] = {}
+    for i, (epoch_num, start_pos) in enumerate(ordered):
+        end_pos = ordered[i + 1][1] if i + 1 < len(ordered) else len(log_text)
+        result[epoch_num] = parse_metrics(log_text[start_pos:end_pos])
+    return result

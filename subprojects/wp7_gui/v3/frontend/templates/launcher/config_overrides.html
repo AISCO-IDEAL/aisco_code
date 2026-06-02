@@ -1,57 +1,162 @@
 {% extends "base.html" %}
-{% block hint %}{% if pipeline == 'live' %}Edit whitelisted config values, save to a session folder, then run.{% else
-%}Browse config values used for a completed run (read-only).{% endif %}{% endblock %}
+{% block hint %}{% if pipeline == 'live' %}Edit config overrides, then launch a training run and watch live progress below.{% else %}Browse config values used for a completed run (read-only).{% endif %}{% endblock %}
 
 {% block content %}
-<div class="section-grid" style="grid-template-rows: auto auto 1fr auto; height: 100%;">
+<style>
+  /* ---- larger param labels ---- */
+  #formArea .param-label {
+    font-size: 0.96rem;
+    font-weight: 600;
+  }
+
+  /* ---- more vertical breathing room between settings ---- */
+  #formArea .param-row {
+    padding: 0 16px;
+    border-bottom: none;
+  }
+
+  /* ---- remove spinners from number inputs ---- */
+  .param-input[type="number"] { -moz-appearance: textfield; }
+  .param-input[type="number"]::-webkit-inner-spin-button,
+  .param-input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  /* ---- flat section header ---- */
+  .param-section-header {
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--theme-muted);
+    padding: 10px 12px 4px;
+    margin-top: 6px;
+  }
+  .param-section-header:first-child { margin-top: 0; }
+
+  /* ---- toggle switch ---- */
+  label.toggle-switch.param-input {
+    border: none;
+    padding: 0;
+    background: transparent;
+    display: inline-flex;
+    align-items: center;
+  }
+  .toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 56px;
+    height: 30px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+  }
+  .toggle-slider {
+    position: absolute;
+    inset: 0;
+    background: color-mix(in srgb, var(--theme-surface-large) 80%, var(--theme-black) 20%);
+    border-radius: 24px;
+    transition: background 0.2s;
+    border: 1px solid var(--theme-surface-large);
+  }
+  .toggle-slider::before {
+    content: "";
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    left: 3px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--theme-muted);
+    border-radius: 50%;
+    transition: transform 0.2s, background 0.2s;
+  }
+  .toggle-switch input:checked + .toggle-slider {
+    background: color-mix(in srgb, var(--theme-accent, #4fa) 35%, var(--theme-panel) 65%);
+    border-color: color-mix(in srgb, var(--theme-accent, #4fa) 50%, var(--theme-panel) 50%);
+  }
+  .toggle-switch input:checked + .toggle-slider::before {
+    transform: translateX(26px) translateY(-50%);
+    background: var(--theme-accent, #4fa);
+  }
+  .toggle-switch input:disabled + .toggle-slider {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+</style>
+<div class="section-grid" style="grid-template-rows: auto auto 1fr auto 90px; height: 100%;">
 
   <!-- Wizard navigation -->
   <div class="dark-card toolbar">
-    <a href="/launcher/assembly-selection?pipeline={{ pipeline }}" class="btn secondary">← Back</a>
+    <a id="btnBackToAssembly" href="/launcher/assembly-selection?pipeline={{ pipeline }}" class="btn secondary">← Back</a>
+    {% if pipeline == 'live' %}
+    <div id="progressHost" style="flex:1; padding:0 10px; display:none;">
+      <div class="progress-bar-wrap" id="progressWrap">
+        <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+      </div>
+      <div id="progressLabel" style="font-size:0.78rem; color:var(--theme-muted); font-weight:600; margin-top:3px;">Idle</div>
+    </div>
+    {% else %}
     <div style="flex:1;"></div>
-    <a id="btnNext" href="/launcher/optimization?pipeline=live" class="btn">Next →</a>
+    {% endif %}
+    <a id="btnNext" href="/launcher/output?pipeline=live" class="btn" style="margin-left:auto;">Next →</a>
   </div>
 
-  <!-- Session toolbar -->
-  <div class="dark-card toolbar">
-    {% if pipeline == 'live' %}
-    <button class="btn" id="btnInit">Start new session</button>
-    <button class="btn secondary" id="btnReload" disabled>Reset to defaults</button>
-    <div class="session-info" id="sessionInfo">No active session.</div>
-    <button class="btn" id="btnSave" disabled>Save changes</button>
-    <button class="btn danger" id="btnDiscard" disabled>Discard session</button>
-    <button class="btn danger" id="btnCleanAll">Clean all sessions</button>
-    {% else %}
-    <button class="btn" id="btnInit">Start new session</button>
-    <button class="btn secondary" id="btnReload" disabled>Reset to defaults</button>
-    <div class="session-info" id="sessionInfo">No active session.</div>
-    <button class="btn" id="btnSave" disabled>Save changes</button>
-    <button class="btn danger" id="btnDiscard" disabled>Discard session</button>
-    <button class="btn danger" id="btnCleanAll">Clean all sessions</button>
-    {% endif %}
+  <!-- Config locked banner (visibility:hidden reserves row space so layout never shifts) -->
+  <div id="configLockedBanner" style="visibility:hidden; padding:8px 14px; background:color-mix(in srgb, var(--theme-warning-text) 12%, transparent); border-radius:8px; font-size:0.82rem; color:var(--theme-text);">
+    🔒 Config locked — run is in progress or completed.
   </div>
 
   <!-- Config form -->
-  <div class="card" style="overflow-y: auto; min-height: 0;">
-    <div id="formArea">
+  <div class="card" style="display:flex; flex-direction:column; min-height:0; overflow:hidden; max-height:35vh;">
+    <div id="formArea" style="flex:1; overflow-y:auto; min-height:0; display:flex; flex-direction:column; justify-content:space-evenly;">
       <div style="color: var(--theme-muted); font-style: italic; text-align: center; padding: 40px 10px;">
-        {% if pipeline == 'live' %}Click &ldquo;Start new session&rdquo; to copy configs and begin editing.{% else
+        {% if pipeline == 'live' %}Loading session…{% else
         %}Select a session above to view its configuration.{% endif %}
       </div>
     </div>
+    {% if pipeline == 'live' %}
+    <div style="display:flex; justify-content:space-between; padding:8px 12px; border-top:1px solid color-mix(in srgb, var(--theme-text-box) 55%, var(--theme-white) 45%);">      <button class="btn secondary" id="btnReload" disabled>&#8635; Reset to defaults</button>
+      <button class="btn" id="btnSaveChanges" disabled style="background:var(--theme-sel-red); border-color:var(--theme-sel-red); color:#fff;">Save Changes</button>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if pipeline == 'live' %}
+  <!-- Run controls — big bare buttons -->
+  <div style="display:flex; gap:10px; padding:6px 0;">
+    <button class="btn secondary" id="btnStop" disabled
+            style="height:80px; min-width:80px; font-size:1.6rem; font-weight:700; padding:0 24px;">
+        &#9632;&nbsp;Stop
+    </button>
+    <button class="btn" id="btnRun" disabled
+            style="height:80px; flex:1; font-size:1.6rem; font-weight:700; padding:0 24px;">
+        &#9654;&nbsp;Run
+    </button>
   </div>
 
   <!-- Output console -->
-  <div class="dark-card" style="max-height: 200px; display: grid; grid-template-rows: auto 1fr; gap: 6px;">
+  <div class="card" style="max-height: 200px; display: grid; grid-template-rows: auto 1fr; gap: 6px;">
     <div style="font-size: 0.82rem; color: var(--theme-warning-text); font-weight: 600;">Output</div>
     <div class="console" id="outputConsole">Ready.</div>
   </div>
+  {% endif %}
 </div>
 
 <script>
-  const STORAGE_KEY = "aiscoOverrideFolderV3";
-  const PENDING_ID_KEY = "aiscoPendingAssemblyIdV3";
-  const LOSSES_CFG = "losses_v0_config.yaml";
+  const STORAGE_KEY    = "aiscoOverrideFolderV3";
+  const PENDING_ID_KEY = "aiscoPendingAssemblyIdV3"; // TODO: remove once M1 is confirmed stable
+  const FROZEN_KEY     = "aiscoConfigFrozenV3";
+  const RUN_KEY        = "aiscoRunLaunchedV3";
+  const ASM_FROZEN_KEY = "aiscoAssemblyFrozenV3";
+  const RETURN_URL_KEY = "aiscoReturnUrlV3";
+  const LOSSES_CFG     = "losses_v0_config.yaml";
   const ASSEMBLY_ID_PATH = "bb_config.assembly_id";
   const API = "/launcher/api";
   const pipeline = "{{ pipeline }}";
@@ -59,17 +164,25 @@
   let activeFolder = localStorage.getItem(STORAGE_KEY) || "";
   let cachedSchema = null;
 
-  const btnInit = document.getElementById("btnInit");
-  const btnReload = document.getElementById("btnReload");
-  const btnDiscard = document.getElementById("btnDiscard");
-  const btnCleanAll = document.getElementById("btnCleanAll");
-  const btnSave = document.getElementById("btnSave");
-  const btnNext = document.getElementById("btnNext");
+  const btnReload  = document.getElementById("btnReload");
+  const btnNext    = document.getElementById("btnNext");
   const sessionInfo = document.getElementById("sessionInfo");
-  const formArea = document.getElementById("formArea");
-  const output = document.getElementById("outputConsole");
+  const formArea   = document.getElementById("formArea");
+  const output     = document.getElementById("outputConsole");
 
   const log = makeConsoleLogger(output);
+
+  // ── M2: Back button interceptor — unfreeze assembly if run not yet launched ─
+  const btnBackToAssembly = document.getElementById("btnBackToAssembly");
+  if (btnBackToAssembly && pipeline === "live") {
+    btnBackToAssembly.addEventListener("click", () => {
+      if (!localStorage.getItem(RUN_KEY)) {
+        localStorage.removeItem(ASM_FROZEN_KEY);
+        console.info("[AISCO] Assembly unfrozen (run not launched).");
+      }
+      // allow normal navigation
+    });
+  }
 
   function updateNextHref() {
     if (!btnNext) return;
@@ -79,7 +192,7 @@
       const folderParam = activeFolder ? `&cfg_folder=${encodeURIComponent(activeFolder)}` : "";
       btnNext.href = `/launcher/output?pipeline=completed${cfgParam}${folderParam}`;
     } else {
-      btnNext.href = "/launcher/optimization?pipeline=live";
+      btnNext.href = "/launcher/output?pipeline=live";
     }
   }
 
@@ -87,17 +200,18 @@
     activeFolder = folder || "";
     if (activeFolder) {
       localStorage.setItem(STORAGE_KEY, activeFolder);
-      sessionInfo.textContent = "Active: " + activeFolder.split("/").pop();
+      if (sessionInfo) sessionInfo.textContent = "Active: " + activeFolder.split("/").pop();
       if (btnReload) btnReload.disabled = false;
-      if (btnDiscard) btnDiscard.disabled = false;
     } else {
       localStorage.removeItem(STORAGE_KEY);
-      sessionInfo.textContent = "No active session.";
+      if (sessionInfo) sessionInfo.textContent = "No active session.";
       if (btnReload) btnReload.disabled = true;
-      if (btnDiscard) btnDiscard.disabled = true;
-      if (btnSave) btnSave.disabled = true;
     }
     updateNextHref();
+    const _runBtn = document.getElementById("btnRun");
+    if (_runBtn) _runBtn.disabled = !activeFolder;
+    const _saveBtn = document.getElementById("btnSaveChanges");
+    if (_saveBtn) _saveBtn.disabled = !activeFolder;
   }
 
   function checkValidity() {
@@ -117,16 +231,31 @@
       inp.classList.toggle("invalid", !ok);
       if (!ok) valid = false;
     });
-    if (btnSave) btnSave.disabled = !valid || !activeFolder;
   }
 
   function makeInput(param, current) {
     const t = param.type;
     const isAssemblyIdParam = param.path === ASSEMBLY_ID_PATH;
-    if (t === "bool" || t === "enum") {
+    if (t === "bool") {
+      const label = document.createElement("label");
+      label.className = "toggle-switch param-input";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = (current === true || String(current) === "true");
+      if (isAssemblyIdParam) {
+        cb.disabled = true;
+        label.title = "Assembly ID is controlled from the assembly-selection page.";
+      }
+      const slider = document.createElement("span");
+      slider.className = "toggle-slider";
+      label.appendChild(cb);
+      label.appendChild(slider);
+      return label;
+    }
+    if (t === "enum") {
       const sel = document.createElement("select");
       sel.className = "param-input";
-      const choices = t === "bool" ? [true, false] : (param.choices || []);
+      const choices = param.choices || [];
       choices.forEach(v => {
         const opt = document.createElement("option");
         opt.value = String(v); opt.textContent = String(v);
@@ -171,60 +300,26 @@
     return inp;
   }
 
-  function extractRunName(folder) {
-    const basename = folder.split("/").pop();
-    const m = basename.match(/^(.+?)_(\d{8}_\d{6})(?:_\d+)?$/);
-    if (!m) return "";
-    return m[1] === "gui_override" ? "" : m[1];
-  }
-
   function renderForm(schema, values) {
     formArea.innerHTML = "";
 
-    // Run name field (top of form, always shown when a session is active)
-    const nameSection = document.createElement("details");
-    nameSection.className = "config-section"; nameSection.open = true;
-    const nameSummary = document.createElement("summary");
-    nameSummary.textContent = "Session";
-    nameSection.appendChild(nameSummary);
-    const nameRow = document.createElement("div"); nameRow.className = "param-row";
-    const nameLabelWrap = document.createElement("div");
-    const nameLabelEl = document.createElement("div"); nameLabelEl.className = "param-label";
-    nameLabelEl.textContent = "Run name"; nameLabelWrap.appendChild(nameLabelEl);
-    const nameMetaEl = document.createElement("span"); nameMetaEl.className = "param-meta";
-    nameMetaEl.textContent = "Renames the session folder to <name>_<timestamp> on save · string";
-    nameLabelWrap.appendChild(nameMetaEl);
-    const nameInp = document.createElement("input");
-    nameInp.id = "runNameFormInput"; nameInp.className = "param-input";
-    nameInp.type = "text"; nameInp.placeholder = "(no custom name)";
-    nameInp.value = extractRunName(activeFolder);
-    nameInp.addEventListener("input", checkValidity);
-    nameRow.appendChild(nameLabelWrap); nameRow.appendChild(nameInp);
-    nameSection.appendChild(nameRow);
-    formArea.appendChild(nameSection);
     for (const [cfgName, cfgEntry] of Object.entries(schema.configs || {})) {
       const cfgVals = (values && values[cfgName]) || {};
-      const details = document.createElement("details");
-      details.className = "config-section"; details.open = true;
-      const summary = document.createElement("summary");
-      summary.textContent = `${cfgEntry.label || cfgName} — ${cfgName}`;
-      details.appendChild(summary);
       for (const param of (cfgEntry.params || [])) {
         const row = document.createElement("div"); row.className = "param-row";
         const labelWrap = document.createElement("div");
         const labelEl = document.createElement("div"); labelEl.className = "param-label";
-        labelEl.textContent = param.label || param.path; labelWrap.appendChild(labelEl);
-        const meta = document.createElement("span"); meta.className = "param-meta";
-        let mt = `${param.path} · ${param.type}`;
-        if ("min" in param || "max" in param) mt += ` · [${param.min ?? "-∞"}, ${param.max ?? "+∞"}]`;
-        if (param.choices) mt += ` · ${JSON.stringify(param.choices)}`;
-        if (param.path === ASSEMBLY_ID_PATH) mt += " · locked (set in assembly selection)";
-        meta.textContent = mt; labelWrap.appendChild(meta);
+        let _labelText = (param.label || param.path).toUpperCase();
+        if ((param.type === "int" || param.type === "float") && param.path !== ASSEMBLY_ID_PATH) {
+          if ("min" in param || "max" in param) _labelText += `  [${param.min ?? "-\u221e"}, ${param.max ?? "+\u221e"}]`;
+        } else if (param.type === "bool") {
+          _labelText += "  ON/OFF";
+        }
+        labelEl.textContent = _labelText; labelWrap.appendChild(labelEl);
         const inp = makeInput(param, cfgVals[param.path]);
         inp.dataset.cfg = cfgName; inp.dataset.path = param.path; inp.dataset.type = param.type;
-        row.appendChild(labelWrap); row.appendChild(inp); details.appendChild(row);
+        row.appendChild(labelWrap); row.appendChild(inp); formArea.appendChild(row);
       }
-      formArea.appendChild(details);
     }
     checkValidity();
   }
@@ -240,7 +335,10 @@
       try {
         if (t === "int") { value = parseInt(inp.value, 10); if (isNaN(value)) throw new Error(); }
         else if (t === "float") { value = parseFloat(inp.value); if (isNaN(value)) throw new Error(); }
-        else if (t === "bool") { value = inp.value === "true"; }
+        else if (t === "bool") {
+          const cb = inp.querySelector ? inp.querySelector("input[type='checkbox']") : null;
+          value = cb ? cb.checked : (inp.value === "true");
+        }
         else { value = inp.value; }
       } catch { inp.classList.add("invalid"); invalid = true; return; }
       if (!updates[cfg]) updates[cfg] = {};
@@ -265,6 +363,7 @@
   }
 
   async function applyPendingAssemblyId(folder) {
+    // TODO: remove PENDING_ID_KEY fallback once M1 (home-click session creation) is confirmed stable
     const pendingId = localStorage.getItem(PENDING_ID_KEY);
     if (pendingId === null || !folder) return;
     const mapId = parseInt(pendingId, 10);
@@ -283,24 +382,39 @@
     }
   }
 
-  btnInit?.addEventListener("click", async () => {
-    btnInit.disabled = true;
-    try {
-      const initUrl = `${API}/config-overrides/init`;
-      const r = await fetch(initUrl, { method: "POST" });
-      if (!r.ok) { const d = await r.json(); throw new Error(d.detail?.message || r.status); }
-      const d = await r.json();
-      log(`Session: ${d.name} (${d.copied_files.length} files)`, "success");
-      setFolder(d.folder);
-      await applyPendingAssemblyId(d.folder);
-      await loadSchemaAndValues();
-    } catch (err) { log(`ERROR: ${err.message}`, "error"); }
-    finally { btnInit.disabled = false; }
-  });
+  // ── M3: Apply config freeze UI state ──────────────────────────────────────────
+  function applyConfigFreeze() {
+    // Disable all param inputs (handles both regular inputs and toggle switches)
+    formArea.querySelectorAll(".param-input").forEach(inp => {
+      if (inp.tagName === "LABEL") {
+        const cb = inp.querySelector("input");
+        if (cb) cb.disabled = true;
+        inp.style.pointerEvents = "none";
+        inp.style.opacity = "0.45";
+      } else {
+        inp.disabled = true;
+      }
+    });
+    // Hide Reset, Run, and Save Changes buttons
+    if (btnReload) btnReload.style.display = "none";
+    const _runBtn = document.getElementById("btnRun");
+    if (_runBtn) _runBtn.style.display = "none";
+    const _saveBtn = document.getElementById("btnSaveChanges");
+    if (_saveBtn) _saveBtn.style.display = "none";
+    // Show the pre-rendered locked banner (plain text, like assembly_selection.html)
+    const _banner = document.getElementById("configLockedBanner");
+    if (_banner) _banner.style.visibility = "visible";
+    console.info("[AISCO] Config frozen.");
+  }
 
+  // ── M8: Reset to defaults — preserves assembly ID ─────────────────────────────
   btnReload?.addEventListener("click", async () => {
     if (!activeFolder) return;
     if (!confirm("Reset all configs in this session to WP4 defaults? Unsaved edits will be lost.")) return;
+    // Capture current assembly ID before reset
+    const asmIdEl = formArea.querySelector(`[data-path="${ASSEMBLY_ID_PATH}"]`);
+    const capturedAsmId = (asmIdEl && asmIdEl.value.trim() !== "")
+      ? parseInt(asmIdEl.value.trim(), 10) : null;
     try {
       const r = await fetch(`${API}/config-overrides/reset`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -310,62 +424,16 @@
       const d = await r.json();
       log(`Reset ${d.reset_files.length} file(s) to defaults.`, "success");
       await loadSchemaAndValues();
-    } catch (err) { log(`ERROR: ${err.message}`, "error"); }
-  });
-
-  btnDiscard?.addEventListener("click", async () => {
-    if (!activeFolder || !confirm(`Delete session ${activeFolder.split("/").pop()}?`)) return;
-    try {
-      const r = await fetch(`${API}/config-overrides/cleanup`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ folders: [activeFolder] })
-      });
-      const d = await r.json();
-      log(`Removed: ${d.removed.join(", ") || "(none)"}`, "success");
-      setFolder("");
-    } catch (err) { log(`ERROR: ${err.message}`, "error"); }
-  });
-
-  btnCleanAll?.addEventListener("click", async () => {
-    if (!confirm("Delete ALL sessions?")) return;
-    try {
-      const r = await fetch(`${API}/config-overrides/cleanup`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ all: true })
-      });
-      const d = await r.json();
-      log(`Removed ${d.removed.length} session(s)`, "success");
-      setFolder("");
-    } catch (err) { log(`ERROR: ${err.message}`, "error"); }
-  });
-
-  btnSave?.addEventListener("click", async () => {
-    if (!activeFolder) return;
-    const updates = collectUpdates();
-    if (!updates) { log("Fix invalid fields before saving.", "error"); return; }
-    try {
-      // Rename session folder if a new run name was entered
-      const newName = (document.getElementById("runNameFormInput")?.value || "").trim();
-      const currentName = extractRunName(activeFolder);
-      if (newName && newName !== currentName) {
-        const rr = await fetch(`${API}/config-overrides/rename`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ folder: activeFolder, run_name: newName }),
+      // Re-apply preserved assembly ID after form re-renders
+      if (capturedAsmId !== null && !isNaN(capturedAsmId)) {
+        await fetch(`${API}/config-overrides/values`, {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ folder: activeFolder, updates: { [LOSSES_CFG]: { [ASSEMBLY_ID_PATH]: capturedAsmId } } }),
         });
-        if (!rr.ok) { const rd = await rr.json(); throw new Error(rd.detail?.message || rr.status); }
-        const rd = await rr.json();
-        activeFolder = rd.new_folder;
-        localStorage.setItem(STORAGE_KEY, activeFolder);
-        sessionInfo.textContent = "Active: " + activeFolder.split("/").pop();
-        log(`Renamed to: ${activeFolder.split("/").pop()}`, "success");
+        const newAsmEl = formArea.querySelector(`[data-path="${ASSEMBLY_ID_PATH}"]`);
+        if (newAsmEl) newAsmEl.value = String(capturedAsmId);
+        log(`Assembly ID ${capturedAsmId} preserved after reset.`, "success");
       }
-      const r = await fetch(`${API}/config-overrides/values`, {
-        method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ folder: activeFolder, updates })
-      });
-      if (!r.ok) { const d = await r.json(); throw new Error(d.detail?.message || r.status); }
-      const d = await r.json();
-      log(`Saved: ${d.written.join(", ")}`, "success");
     } catch (err) { log(`ERROR: ${err.message}`, "error"); }
   });
 
@@ -378,10 +446,237 @@
         setFolder(activeFolder);
         await applyPendingAssemblyId(activeFolder);
         await loadSchemaAndValues();
+        // M3: re-apply freeze state if page was reloaded after run launched
+        if (pipeline === "live" && localStorage.getItem(FROZEN_KEY)) {
+          applyConfigFreeze();
+        }
       } else { log("Stored session no longer exists; cleared.", "error"); setFolder(""); }
     } catch (err) { log(`Could not restore: ${err.message}`, "error"); setFolder(""); }
   })();
 
   updateNextHref();
+
+  {% if pipeline == 'live' %}
+  // ---------------------------------------------------------------------------
+  // Run controls
+  // ---------------------------------------------------------------------------
+  const progressFill  = document.getElementById("progressFill");
+  const progressLabel = document.getElementById("progressLabel");
+  const progressHost  = document.getElementById("progressHost");
+  const btnSaveChanges = document.getElementById("btnSaveChanges");
+  const btnRun        = document.getElementById("btnRun");
+  const btnStop       = document.getElementById("btnStop");
+  let progressEventSource = null;
+  let _runCompleted   = false;
+  let _reconnectTimer = null;
+  let _suppressBeforeUnloadOnce = false;
+
+  function setProgressVisible(visible) {
+    if (!progressHost) return;
+    progressHost.style.display = visible ? "block" : "none";
+  }
+
+  // ── M7: beforeunload guard (disabled) ─────────────────────────────────────
+  function _runUnloadGuard(_e) {
+    _suppressBeforeUnloadOnce = false;
+  }
+
+  function _nextOutputHref() {
+    return (btnNext && btnNext.href) ? btnNext.href : "/launcher/output?pipeline=live";
+  }
+
+  async function saveConfigChanges() {
+    if (!activeFolder) throw new Error("No active session.");
+    const updates = collectUpdates();
+    if (!updates) throw new Error("Fix invalid fields before saving.");
+
+    // Save values
+    const r = await fetch(`${API}/config-overrides/values`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folder: activeFolder, updates })
+    });
+    if (!r.ok) { const d = await r.json(); throw new Error(d.detail?.message || r.status); }
+    const d = await r.json();
+    log(`Config saved: ${d.written.join(", ")}`, "success");
+  }
+
+  function navigateToOutputLive() {
+    _suppressBeforeUnloadOnce = true;
+    window.removeEventListener("beforeunload", _runUnloadGuard);
+    window.location.href = _nextOutputHref();
+  }
+
+  // Register guard immediately if run was launched in a previous page load
+  if (localStorage.getItem(RUN_KEY)) {
+    window.addEventListener("beforeunload", _runUnloadGuard);
+    setProgressVisible(true);
+  } else {
+    setProgressVisible(false);
+  }
+
+  // ── M6: Go Home from locked banner ────────────────────────────────────────
+  function clearWizardState() {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(ASM_FROZEN_KEY);
+    localStorage.removeItem(FROZEN_KEY);
+    localStorage.removeItem(RUN_KEY);
+    localStorage.removeItem(PENDING_ID_KEY);
+    localStorage.removeItem(RETURN_URL_KEY);
+    console.info("[AISCO] Wizard state cleared.");
+  }
+
+  const btnGoHome = document.getElementById("btnGoHomeFromBanner");
+  if (btnGoHome) {
+    btnGoHome.addEventListener("click", async (e) => {
+      e.preventDefault();
+      window.removeEventListener("beforeunload", _runUnloadGuard);
+      try { await fetch(`${API}/run/home-reset`, { method: "POST" }); } catch (_) {}
+      clearWizardState();
+      window.location.href = "/";
+    });
+  }
+
+  function startSSEProgress() {
+    if (progressEventSource) { progressEventSource.close(); progressEventSource = null; }
+    if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
+    _runCompleted = false;
+    progressEventSource = new EventSource(`${API}/run/stream/logs`);
+    progressEventSource.addEventListener("epoch", e => {
+      const { epoch, total } = JSON.parse(e.data);
+      const pct = total > 0 ? Math.min(100, ((epoch + 1) / total) * 100) : 0;
+      progressFill.style.width = pct + "%";
+      progressLabel.textContent = `Epoch ${epoch + 1} / ${total} (${pct.toFixed(1)}%)`;
+    });
+    progressEventSource.addEventListener("done", e => {
+      const { return_code } = JSON.parse(e.data);
+      progressLabel.textContent = return_code === 0 ? "Completed." : `Finished (code ${return_code})`;
+      progressFill.style.width = "100%";
+      if (progressEventSource) { progressEventSource.close(); progressEventSource = null; }
+      btnRun.disabled = !activeFolder; btnStop.disabled = true;
+      _runCompleted = true;
+      window.removeEventListener("beforeunload", _runUnloadGuard); // M7: run finished
+    });
+    progressEventSource.onerror = () => {
+      if (_reconnectTimer) clearTimeout(_reconnectTimer);
+      _reconnectTimer = setTimeout(() => {
+        _reconnectTimer = null;
+        if (_runCompleted) return;
+        fetch(`${API}/run/state`).then(r => r.json()).then(state => {
+          if (!state.running && state.return_code !== null) {
+            if (progressEventSource) { progressEventSource.close(); progressEventSource = null; }
+            progressLabel.textContent = state.return_code === 0 ? "Completed." : `Finished (code ${state.return_code})`;
+            progressFill.style.width = "100%";
+            btnRun.disabled = !activeFolder; btnStop.disabled = true;
+            _runCompleted = true;
+            window.removeEventListener("beforeunload", _runUnloadGuard); // M7: run finished
+          }
+        }).catch(() => {});
+      }, 5000);
+    };
+  }
+
+  btnSaveChanges?.addEventListener("click", async () => {
+    if (!activeFolder) { log("No active session.", "error"); return; }
+    btnSaveChanges.disabled = true;
+    btnRun.disabled = true;
+    progressLabel.textContent = "Saving config\u2026";
+    try {
+      await saveConfigChanges();
+      progressLabel.textContent = "Saved.";
+    } catch (err) {
+      log(`ERROR: ${err.message}`, "error");
+      progressLabel.textContent = "Error: " + err.message;
+    } finally {
+      if (!localStorage.getItem(FROZEN_KEY)) {
+        btnSaveChanges.disabled = !activeFolder;
+        btnRun.disabled = !activeFolder;
+      }
+    }
+  });
+
+  // ── M3: Save + Run + Go to Output ─────────────────────────────────────────
+  btnRun.addEventListener("click", async () => {
+    if (!activeFolder) { log("No active session.", "error"); return; }
+    btnSaveChanges.disabled = true;
+    btnRun.disabled = true;
+    btnStop.disabled = false;
+    setProgressVisible(true);
+    progressFill.style.width = "0%";
+    progressLabel.textContent = "Saving\u2026";
+    try {
+      await saveConfigChanges();
+
+      // Freeze state and guard for active run.
+      localStorage.setItem(FROZEN_KEY, "1");
+      localStorage.setItem(RUN_KEY, "1");
+      localStorage.setItem(ASM_FROZEN_KEY, "1");
+      applyConfigFreeze();
+      window.addEventListener("beforeunload", _runUnloadGuard);
+      console.info("[AISCO] Save & Run: config frozen, launching run.");
+
+      // Start run, then navigate to Output (same destination as Next).
+      progressLabel.textContent = "Launching\u2026";
+      const rs = await fetch(`${API}/run/start`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cfg_folder: activeFolder }),
+      });
+      const rd2 = await rs.json();
+      if (!rs.ok) throw new Error(rd2.detail?.message || rs.status);
+
+      progressLabel.textContent = "Running\u2026 redirecting to output.";
+      navigateToOutputLive();
+    } catch (err) {
+      log(`ERROR: ${err.message}`, "error");
+      progressLabel.textContent = "Error: " + err.message;
+      if (!localStorage.getItem(FROZEN_KEY)) {
+        btnSaveChanges.disabled = !activeFolder;
+        btnRun.disabled = !activeFolder;
+        btnStop.disabled = true;
+      }
+    }
+  });
+
+  btnStop.addEventListener("click", async () => {
+    btnStop.disabled = true;
+    window.removeEventListener("beforeunload", _runUnloadGuard); // M7
+    await fetch(`${API}/run/stop`, { method: "POST" });
+    if (progressEventSource) { progressEventSource.close(); progressEventSource = null; }
+    progressLabel.textContent = "Stopped.";
+    btnSaveChanges.disabled = !activeFolder;
+    btnRun.disabled = !activeFolder;
+  });
+
+  // On page load: reconnect to an already-running process
+  (async () => {
+    if (!localStorage.getItem(RUN_KEY)) return;
+    try {
+      const state = await fetch(`${API}/run/state`).then(r => r.json());
+      if (state.running || state.log_path) {
+        setProgressVisible(true);
+        if (state.running) { btnRun.disabled = true; btnStop.disabled = false; }
+        const prog = await fetch(`${API}/run/progress`).then(r => r.json());
+        if (prog.completed) {
+          progressFill.style.width = "100%";
+          progressLabel.textContent = "Completed.";
+        } else if (prog.current_epoch >= 0) {
+          progressFill.style.width = prog.progress_percent + "%";
+          progressLabel.textContent = `Epoch ${prog.current_epoch + 1} / ${prog.num_epochs} (${prog.progress_percent.toFixed(1)}%) \u2014 reconnecting\u2026`;
+        }
+        if (state.running) startSSEProgress();
+      }
+    } catch (_) { /* non-fatal */ }
+  })();
+
+  function _reconnectRunIfNeeded() {
+    if (!localStorage.getItem(RUN_KEY)) return;
+    if (_runCompleted) return;
+    if (progressEventSource && progressEventSource.readyState !== EventSource.CLOSED) return;
+    fetch(`${API}/run/state`).then(r => r.json()).then(state => {
+      if (state.running) { btnRun.disabled = true; btnStop.disabled = false; startSSEProgress(); }
+    }).catch(() => {});
+  }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) _reconnectRunIfNeeded(); });
+  window.addEventListener("focus", _reconnectRunIfNeeded);
+  {% endif %}
 </script>
 {% endblock %}

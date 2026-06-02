@@ -8,7 +8,7 @@ endblock %}
 </script>
 <style>
     :root {
-        --sel-border: var(--theme-sel-border);
+        --sel-border: color-mix(in srgb, var(--theme-title-2) 45%, var(--theme-border) 55%);
         --sel-panel: var(--theme-sel-panel);
         --sel-text: var(--theme-sel-text);
         --sel-muted: var(--theme-sel-muted);
@@ -71,6 +71,12 @@ endblock %}
         font-size: 13px;
         color: var(--sel-text);
         background: var(--theme-panel);
+        -moz-appearance: textfield;
+    }
+    .map-load-row input::-webkit-inner-spin-button,
+    .map-load-row input::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
     }
 
     .map-load-row button {
@@ -162,6 +168,12 @@ endblock %}
         font: inherit;
         color: var(--sel-text);
         background: var(--theme-panel);
+        -moz-appearance: textfield;
+    }
+    .selection-table input[type="number"]::-webkit-inner-spin-button,
+    .selection-table input[type="number"]::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
     }
 
     .selection-table input[type="number"]:disabled {
@@ -264,8 +276,13 @@ endblock %}
         font-weight: 700;
     }
 
-    .ok {
+    #checks.ok {
         color: var(--sel-green);
+        font: 800 24px/1.2 var(--theme-font-ui);
+        text-align: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .bad {
@@ -324,9 +341,78 @@ endblock %}
 {% block content %}
 <div class="section-grid" style="grid-template-rows: auto 1fr; height: 100%;">
     <div class="dark-card toolbar">
-        <a href="/" class="btn secondary">← Back to Home</a>
+        <a id="backToHomeBtn" href="/" class="btn secondary">← Back to Home</a>
+        {% if pipeline == 'live' %}
+        <div id="progressHost" style="flex:1; padding:0 10px; display:none;">
+            <div class="progress-bar-wrap" id="progressWrap"><div class="progress-bar-fill" id="progressFill" style="width:0%"></div></div>
+            <div id="progressLabel" style="font-size:0.78rem; color:var(--theme-muted); font-weight:600; margin-top:3px;">Idle</div>
+        </div>
+        <script>(function () {
+            var runKey = "aiscoRunLaunchedV3";
+            var host = document.getElementById("progressHost");
+            var fill = document.getElementById("progressFill");
+            var lbl  = document.getElementById("progressLabel");
+            var _es = null, _timer = null, _done = false;
+            function _show() {
+                if (host) host.style.display = "block";
+            }
+            function _hide() {
+                if (host) host.style.display = "none";
+            }
+            function _start() {
+                if (_es) { _es.close(); _es = null; }
+                if (_timer) { clearTimeout(_timer); _timer = null; }
+                _done = false;
+                _es = new EventSource("/launcher/api/run/stream/logs");
+                _es.addEventListener("epoch", function (ev) {
+                    var d = JSON.parse(ev.data);
+                    var pct = d.total > 0 ? Math.min(100, ((d.epoch + 1) / d.total) * 100) : 0;
+                    if (fill) fill.style.width = pct + "%";
+                    if (lbl) lbl.textContent = "Epoch " + (d.epoch + 1) + " / " + d.total + " (" + pct.toFixed(1) + "%)";
+                });
+                _es.addEventListener("done", function (ev) {
+                    var d = JSON.parse(ev.data);
+                    if (fill) fill.style.width = "100%";
+                    if (lbl) lbl.textContent = d.return_code === 0 ? "Completed." : "Finished (code " + d.return_code + ")";
+                    if (_es) { _es.close(); _es = null; }
+                    _done = true;
+                });
+                _es.onerror = function () {
+                    if (_timer) clearTimeout(_timer);
+                    _timer = setTimeout(function () {
+                        _timer = null;
+                        if (_done) return;
+                        fetch("/launcher/api/run/state").then(function (r) { return r.json(); }).then(function (s) {
+                            if (!s.running && s.return_code !== null) {
+                                if (fill) fill.style.width = "100%";
+                                if (lbl) lbl.textContent = s.return_code === 0 ? "Completed." : "Finished (code " + s.return_code + ")";
+                                _done = true;
+                            } else if (s.running) { _start(); }
+                        }).catch(function () {});
+                    }, 5000);
+                };
+            }
+            if (!localStorage.getItem(runKey)) {
+                _hide();
+                return;
+            }
+            _show();
+            fetch("/launcher/api/run/progress").then(function (r) { return r.json(); }).then(function (p) {
+                if (p.completed) { if (fill) fill.style.width = "100%"; if (lbl) lbl.textContent = "Completed."; _done = true; }
+                else if (p.current_epoch >= 0) {
+                    if (fill) fill.style.width = p.progress_percent + "%";
+                    if (lbl) lbl.textContent = "Epoch " + (p.current_epoch + 1) + " / " + p.num_epochs + " (" + p.progress_percent.toFixed(1) + "%)";
+                }
+            }).catch(function () {});
+            fetch("/launcher/api/run/state").then(function (r) { return r.json(); }).then(function (s) {
+                if (s.running) { _start(); }
+                else if (s.return_code !== null) { if (fill) fill.style.width = "100%"; if (lbl) lbl.textContent = "Completed."; _done = true; }
+            }).catch(function () {});
+        }());</script>
+        {% else %}
         <div style="flex:1;"></div>
-        <a id="btnNextToOverrides" href="/launcher/config-overrides?pipeline={{ pipeline }}" class="btn">Next →</a>
+        {% endif %}
+        <a id="btnNextToOverrides" href="/launcher/config-overrides?pipeline={{ pipeline }}" class="btn" style="margin-left:auto;">Next →</a>
     </div>
 
     <div class="card" style="padding:14px; min-height:0; overflow:auto;">
@@ -351,7 +437,6 @@ endblock %}
                                     <th>X</th>
                                     <th>Y</th>
                                     <th>Z</th>
-                                    <th style="width:80px;">Order</th>
                                 </tr>
                             </thead>
                             <tbody id="controls"></tbody>
@@ -369,7 +454,7 @@ endblock %}
                 <div class="mesh-card">
                     <div class="mesh-title">Generated Aeroshell Mesh</div>
                     <div id="meshContainer">
-                        <span id="meshPlaceholder">No mesh loaded yet. Autosave will refresh this panel.</span>
+                        <span id="meshPlaceholder" aria-hidden="true"></span>
                     </div>
                     <div id="meshMeta">Waiting for first mesh...</div>
                     <div class="mesh-controls">
@@ -401,6 +486,7 @@ endblock %}
     let hasCheckWarnings = true;
     let maxAssemblyMapId = null;
     let assemblyPlyColorRgb = null;
+    let _assemblyFrozen = false; // M2: set true by freeze check; prevents table edits
 
     const statusEl = document.getElementById("status");
     const sourceStatusEl = document.getElementById("source-status");
@@ -520,11 +606,18 @@ endblock %}
     }
 
     function inputCell(part, axis, value, disabled = false) {
-        const disabledAttr = disabled ? " disabled title=\"Wheel Z is fixed and cannot be changed\"" : "";
+        const isDisabled = disabled || _assemblyFrozen;
+        const disabledAttr = isDisabled
+            ? (disabled
+                ? " disabled title=\"Wheel Z is fixed and cannot be changed\""
+                : " disabled title=\"Assembly is locked \u2014 go back to edit\"")
+            : "";
+        const minAttr = (part === "seat" && axis === "z") ? " min=\"100\" max=\"800\"" : "";
+        const eventAttr = axis === "z" ? "onchange" : "oninput";
         return `
       <td>
         <input type="number" step="1" value="${Math.round(value)}"
-          data-key="${part}" data-axis="${axis}"${disabledAttr} oninput="onEdit(this)">
+          data-key="${part}" data-axis="${axis}"${minAttr}${disabledAttr} ${eventAttr}="onEdit(this)">
       </td>
     `;
     }
@@ -533,6 +626,8 @@ endblock %}
         const body = document.getElementById("controls");
         body.innerHTML = "";
         const wheels = orderedParts().filter(([p]) => p.startsWith("wheel_"));
+        const removeBtn = document.getElementById("btnRemoveWheel");
+        if (removeBtn) removeBtn.disabled = _assemblyFrozen || wheels.length <= 3;
         for (const [part, vals] of orderedParts()) {
             const isWheel = part.startsWith("wheel_");
             const wIdx = wheels.findIndex(([p]) => p === part);
@@ -544,7 +639,6 @@ endblock %}
                 ${inputCell(part, "x", vals.x)}
                 ${inputCell(part, "y", vals.y)}
                 ${inputCell(part, "z", vals.z, isWheel)}
-                <td style="padding:4px 6px;">${isWheel ? `<div style="display:flex; gap:10px;"><button class="move-btn" ${canUp ? "" : "disabled"} style="background:var(--theme-white); border-color:var(--theme-surface-large); color:var(--theme-bg); min-width:34px;" onclick="movePart('${part}',-1)" title="Move up">&#8593;</button><button class="move-btn" ${canDn ? "" : "disabled"} style="background:var(--theme-white); border-color:var(--theme-title-2); color:var(--theme-bg); min-width:34px;" onclick="movePart('${part}',1)" title="Move down">&#8595;</button></div>` : ""}</td>
             `;
             body.appendChild(row);
         }
@@ -575,6 +669,7 @@ endblock %}
     }
 
     window.movePart = function movePart(part, dir) {
+        if (_assemblyFrozen) return;
         const wheels = orderedParts().filter(([p]) => p.startsWith("wheel_"));
         const idx = wheels.findIndex(([p]) => p === part);
         if (idx === -1) return;
@@ -592,12 +687,18 @@ endblock %}
     };
 
     window.onEdit = function onEdit(el) {
+        if (_assemblyFrozen) return;
         const key = el.dataset.key;
         const axis = el.dataset.axis;
         if (!params[key]) {
             return;
         }
-        params[key][axis] = parseFloat(el.value || "0");
+        let v = parseFloat(el.value || "0");
+        if (axis === "x") v = Math.max(bounds.xmin, Math.min(bounds.xmax, v));
+        if (axis === "y") v = Math.max(bounds.ymin, Math.min(bounds.ymax, v));
+        if (key === "seat" && axis === "z") v = Math.max(100, Math.min(800, v));
+        el.value = v;
+        params[key][axis] = v;
         markAssemblyEdited();
         drawPreview();
         scheduleAutosave(800);
@@ -712,6 +813,49 @@ endblock %}
         ctx.textAlign = "right";
         ctx.textBaseline = "alphabetic";
         ctx.fillText("X \u2192", canvasDrawSize.width - 4, zero.y - 6);
+
+        // "FRONT" text: perpendicular to X axis (rotated 90°, reads +Y → -Y in world coords)
+        // Arrow: parallel to X axis, to the right of the text, pointing in +X (driving) direction
+        {
+            const fontSize = 22;
+            const frontTextPos = toCanvas(bounds.xmax * 1.00, 0);
+            // Draw perpendicular FRONT text
+            ctx.save();
+            ctx.translate(frontTextPos.x, frontTextPos.y);
+            ctx.rotate(Math.PI / 2);
+            ctx.globalAlpha = 0.85;
+            ctx.fillStyle = C_CANVAS_LABEL;
+            ctx.font = `bold ${fontSize}px ${C_CANVAS_FONT}`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("FRONT", 0, 0);
+            ctx.restore();
+            // Draw horizontal arrow to the right of the text
+            const shaftLen = 44;
+            const headLen = 18;
+            const headHalf = 11;
+            const gap = 10;
+            const arrowStartX = frontTextPos.x + fontSize / 2 + gap;
+            const arrowY = frontTextPos.y;
+            ctx.save();
+            ctx.globalAlpha = 0.85;
+            ctx.strokeStyle = C_CANVAS_LABEL;
+            ctx.fillStyle = C_CANVAS_LABEL;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(arrowStartX, arrowY);
+            ctx.lineTo(arrowStartX + shaftLen, arrowY);
+            ctx.stroke();
+            const tipX = arrowStartX + shaftLen + headLen;
+            ctx.beginPath();
+            ctx.moveTo(tipX, arrowY);
+            ctx.lineTo(tipX - headLen, arrowY - headHalf);
+            ctx.lineTo(tipX - headLen, arrowY + headHalf);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+            ctx.globalAlpha = 1;
+        }
 
         // Y axis (blue) + label
         ctx.strokeStyle = C_CANVAS_AXIS_Y;
@@ -895,12 +1039,10 @@ endblock %}
         const p = pointerPos(event);
         if (dragPart) {
             const world = fromCanvas(p.x, p.y);
-            params[dragPart].x = world.x;
-            params[dragPart].y = world.y;
-            markAssemblyEdited();
+            params[dragPart].x = Math.max(bounds.xmin, Math.min(bounds.xmax, world.x));
+            params[dragPart].y = Math.max(bounds.ymin, Math.min(bounds.ymax, world.y));
             renderTable();
             drawPreview();
-            scheduleAutosave(140);
             return;
         }
         hoverPart = hitTest(p.x, p.y);
@@ -916,6 +1058,7 @@ endblock %}
         try {
             canvas.releasePointerCapture(event.pointerId);
         } catch (_) { }
+        markAssemblyEdited();
         scheduleAutosave(20);
     }
 
@@ -924,6 +1067,7 @@ endblock %}
     window.addEventListener("resize", drawPreview);
 
     function updateAddToMapButton() {
+        if (_assemblyFrozen) { btnAddToMap.disabled = true; return; }
         const loadedButUnchanged = loadedAssemblyMapId !== null && !hasUnsavedMapCloneChanges;
         if (addToMapInFlight) {
             btnAddToMap.disabled = true;
@@ -1025,7 +1169,11 @@ endblock %}
             params = await r.json();
             loadedAssemblyMapId = null;
             hasUnsavedMapCloneChanges = false;
-            sourceStatusEl.textContent = "Editing current GUI assembly.";
+            if (pipeline === "live") {
+                setLoadedAssemblySource(0);
+            } else {
+                sourceStatusEl.textContent = "Editing current GUI assembly.";
+            }
             updateAddToMapButton();
             renderTable();
             drawPreview();
@@ -1238,5 +1386,50 @@ endblock %}
     loadAssemblyPlyColorConfig();
     loadAssemblyMapMeta();
     loadParams();
+
+    // M2: Apply assembly-frozen state on page load (user navigated Back from config-overrides).
+    if (pipeline === "live" && localStorage.getItem("aiscoAssemblyFrozenV3")) {
+        // Set flag first so renderTable() (called by loadParams() async) renders frozen inputs.
+        _assemblyFrozen = true;
+        document.querySelectorAll(".selection-root input, .selection-root select").forEach(el => {
+            el.disabled = true;
+        });
+        if (assemblyIdInputEl) assemblyIdInputEl.disabled = true;
+        [btnAddToMap,
+         document.getElementById("btnAddWheel"),
+         document.getElementById("btnRemoveWheel"),
+         btnLoadAssemblyId
+        ].forEach(b => { if (b) b.disabled = true; });
+        document.querySelectorAll("canvas").forEach(c => { c.style.pointerEvents = "none"; });
+        const toolbar = document.querySelector(".toolbar");
+        if (toolbar) {
+            const banner = document.createElement("div");
+            banner.style.cssText = [
+                "padding:8px 14px",
+                "margin-top:8px",
+                "background:color-mix(in srgb, var(--theme-warning-text) 12%, transparent)",
+                "border-radius:8px",
+                "font-size:0.82rem",
+                "color:var(--theme-text)"
+            ].join(";");
+            banner.textContent = "\uD83D\uDD12 Assembly locked \u2014 Go Back to edit (only if run not yet started).";
+            toolbar.after(banner);
+        }
+    }
+
+    // M6: Back-to-Home clears wizard state and navigates home.
+    function clearWizardState() {
+        ["aiscoOverrideFolderV3", "aiscoAssemblyFrozenV3", "aiscoConfigFrozenV3",
+         "aiscoRunLaunchedV3", "aiscoPendingAssemblyIdV3", "aiscoReturnUrlV3"
+        ].forEach(k => localStorage.removeItem(k));
+        console.info("[AISCO] Wizard state cleared.");
+    }
+
+    document.getElementById("backToHomeBtn").addEventListener("click", async (e) => {
+        e.preventDefault();
+        try { await fetch("/launcher/api/run/home-reset", { method: "POST" }); } catch (_) {}
+        clearWizardState();
+        window.location.href = "/";
+    });
 </script>
 {% endblock %}

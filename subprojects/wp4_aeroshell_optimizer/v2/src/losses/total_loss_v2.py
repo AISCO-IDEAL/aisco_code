@@ -115,6 +115,8 @@ class TotalLossV2:
         )
 
         gi: dict[str, Any] = self.losses_config["general_info"]
+        # Backward-compat: keep the existing key name, but treat it as
+        # "include CSE objective in optimizer scalar".
         self.use_cse: bool = gi.get("CSE") == "True"
         self._deactivate_scheduler_mode: str = gi["deactivate_scheduler_mode"]
 
@@ -122,6 +124,8 @@ class TotalLossV2:
         cse_params: dict[str, Any] = gi.get("cse_params", {})
         self._cse_drag_category: str = cse_params.get("drag_category", "aero")
         self._cse_solar_category: str = cse_params.get("solar_category", "solar")
+        self._cse_optimize_drag: bool = bool(cse_params.get("optimize_drag", True))
+        self._cse_optimize_solar: bool = bool(cse_params.get("optimize_solar", True))
         self._cse_mass: float = float(cse_params.get("mass", 210))
         self._cse_c_losses: float = float(cse_params.get("c_losses", 20))
         self._cse_rolling_friction: float = float(cse_params.get("rolling_friction_coefficient", 0.006))
@@ -542,9 +546,13 @@ class TotalLossV2:
     ) -> WeightedLossResult:
         """Combine raw losses into a backpropable scalar plus a detached log dict.
 
-        * Objectives: CSE (drag+solar -> cruising speed) if ``self.use_cse``, else manual weights with _sign.
+        * Objectives: CSE contribution (drag+solar -> cruising speed) if ``self.use_cse``, else manual weights with _sign.
         * Constraints: ALM ``lambda*c + 0.5*mu*c^2`` if ``alm_manager`` is given, else manual weights.
         * Auxiliaries: always manual weights.
+
+        CSE telemetry (inputs + cruising speed) is always computed and logged, independent
+        of ``self.use_cse``. Per-channel CSE gradient flow is controlled via
+        ``general_info.cse_params.optimize_drag`` and ``optimize_solar``.
 
         When norm_manager is provided, both loss_scale and grad_scale are baked into each component
         tensor before it is returned (and before backward is called by the caller).
@@ -617,62 +625,75 @@ class TotalLossV2:
         log_data.update(getattr(self, "_skipped_log_zeros", {}))
 
         # --- Objectives ---------------------------------------------------
-        if self.use_cse:
-            if self._cse_drag_category not in self._objective_by_category:
-                raise KeyError(
-                    f"CSE active but drag category '{self._cse_drag_category}' is not configured. "
-                    f"Configured objective categories: {list(self._objective_by_category.keys())}"
-                )
-            if self._cse_solar_category not in self._objective_by_category:
-                raise KeyError(
-                    f"CSE active but solar category '{self._cse_solar_category}' is not configured. "
-                    f"Configured objective categories: {list(self._objective_by_category.keys())}"
-                )
-            drag_cat = self._cse_drag_category
-            solar_cat = self._cse_solar_category
-            drag_pf: float = float(self._cse_prefactors.get("drag", 1.0))
-            solar_pf: float = float(self._cse_prefactors.get("solar", 1.0))
+        drag_cat = self._cse_drag_category
+        solar_cat = self._cse_solar_category
+        drag_pf: float = float(self._cse_prefactors.get("drag", 1.0))
+        solar_pf: float = float(self._cse_prefactors.get("solar", 1.0))
 
-            # Resolve the tensor each CSE input will use.
-            # Active: live tensor (gradient flows). Inactive: cached detached value (no gradient).
-            # Cold-start fallback (cache empty, already off at epoch 0): zeros, like a weight-0 null loss.
-            drag_is_live: bool = drag_cat in bundle.objectives
-            solar_is_live: bool = solar_cat in bundle.objectives
-            drag_raw: torch.Tensor = (
-                bundle.objectives[drag_cat] if drag_is_live else self.drag_default_value * torch.ones(1, device=self._device)
+        if self.use_cse and self._cse_optimize_drag and drag_cat not in self._objective_by_category:
+            raise KeyError(
+                f"CSE optimization enabled for drag, but category '{drag_cat}' is not configured. "
+                f"Configured objective categories: {list(self._objective_by_category.keys())}"
             )
-            solar_raw: torch.Tensor = (
-                bundle.objectives[solar_cat] if solar_is_live else self.solar_default_value * torch.ones(1, device=self._device)
+        if self.use_cse and self._cse_optimize_solar and solar_cat not in self._objective_by_category:
+            raise KeyError(
+                f"CSE optimization enabled for solar, but category '{solar_cat}' is not configured. "
+                f"Configured objective categories: {list(self._objective_by_category.keys())}"
             )
 
-            v_cruise: torch.Tensor = cruising_speed(
-                solar_power=solar_raw * solar_pf,
-                drag_force_at_25ms=drag_raw * drag_pf,
-                mass=self._cse_mass,
-                c_losses=self._cse_c_losses,
-                rolling_friction_coefficient=self._cse_rolling_friction,
-                max_iter=self._cse_max_iter,
-                tol=self._cse_tol,
+        drag_raw_base: torch.Tensor = bundle.objectives.get(
+            drag_cat,
+            self.drag_default_value * torch.ones(1, device=self._device),
+        )
+        solar_raw_base: torch.Tensor = bundle.objectives.get(
+            solar_cat,
+            self.solar_default_value * torch.ones(1, device=self._device),
+        )
+        drag_has_live_tensor: bool = drag_cat in bundle.objectives
+        solar_has_live_tensor: bool = solar_cat in bundle.objectives
+        drag_grad_enabled: bool = drag_has_live_tensor and self._cse_optimize_drag
+        solar_grad_enabled: bool = solar_has_live_tensor and self._cse_optimize_solar
+
+        # Always compute/log CSE; detach channels whose optimization toggle is off.
+        drag_raw: torch.Tensor = drag_raw_base if drag_grad_enabled else drag_raw_base.detach()
+        solar_raw: torch.Tensor = solar_raw_base if solar_grad_enabled else solar_raw_base.detach()
+        v_cruise: torch.Tensor = cruising_speed(
+            solar_power=solar_raw * solar_pf,
+            drag_force_at_25ms=drag_raw * drag_pf,
+            mass=self._cse_mass,
+            c_losses=self._cse_c_losses,
+            rolling_friction_coefficient=self._cse_rolling_friction,
+            max_iter=self._cse_max_iter,
+            tol=self._cse_tol,
+        )
+        log_data["cruising_speed_ms"] = v_cruise.item()
+        log_data["cse/raw_drag_force_n"] = float(drag_raw_base.detach().item())
+        log_data["cse/raw_solar_power_w"] = float(solar_raw_base.detach().item())
+        log_data["cse/cruising_speed_ms"] = v_cruise.item()
+        log_data["cse/optimize_enabled"] = 1.0 if self.use_cse else 0.0
+        log_data["cse/optimize_drag_enabled"] = 1.0 if self._cse_optimize_drag else 0.0
+        log_data["cse/optimize_solar_enabled"] = 1.0 if self._cse_optimize_solar else 0.0
+        cse_loss_scale = norm_manager.get_loss_scale("cse_objective") if norm_manager else 1.0
+        log_data["normalized_losses/cse_objective"] = v_cruise.item() * cse_loss_scale
+
+        cse_has_grad_input = drag_grad_enabled or solar_grad_enabled
+        cse_contributes_to_optimizer = self.use_cse and cse_has_grad_input
+        if cse_contributes_to_optimizer:
+            # Minimize -v_cruise to maximize physical speed.
+            cse_scale = (
+                (norm_manager.get_loss_scale("cse_objective") * norm_manager.get_grad_scale("cse_objective"))
+                if norm_manager
+                else 1.0
             )
-            log_data["cruising_speed_ms"] = v_cruise.item()
-            log_data["cse/raw_drag_force_n"] = float(drag_raw.detach().item())
-            log_data["cse/raw_solar_power_w"] = float(solar_raw.detach().item())
-            log_data["cse/cruising_speed_ms"] = v_cruise.item()
-            cse_loss_scale = norm_manager.get_loss_scale("cse_objective") if norm_manager else 1.0
-            log_data["normalized_losses/cse_objective"] = v_cruise.item() * cse_loss_scale
-            # Only backprop if at least one input is live; both dead → v_cruise has no grad.
-            if drag_is_live or solar_is_live:
-                # Minimize -v_cruise to maximize physical speed
-                cse_scale = (
-                    (norm_manager.get_loss_scale("cse_objective") * norm_manager.get_grad_scale("cse_objective"))
-                    if norm_manager
-                    else 1.0
-                )
-                cse_weight = 1.0 if calibration_pass else self._cse_weight
-                weighted_components["cse_objective"] = -v_cruise * cse_scale * cse_weight
-                log_data["weighted_losses/cse_objective"] = (v_cruise * cse_loss_scale * cse_weight).item()
-                log_data["optimizer_losses/cse_objective"] = weighted_components["cse_objective"].detach().item()
+            cse_weight = 1.0 if calibration_pass else self._cse_weight
+            weighted_components["cse_objective"] = -v_cruise * cse_scale * cse_weight
+            log_data["weighted_losses/cse_objective"] = (v_cruise * cse_loss_scale * cse_weight).item()
+            log_data["optimizer_losses/cse_objective"] = weighted_components["cse_objective"].detach().item()
         else:
+            log_data["weighted_losses/cse_objective"] = 0.0
+            log_data["optimizer_losses/cse_objective"] = 0.0
+
+        if not self.use_cse:
             for category, t in bundle.objectives.items():
                 name: str = self._objective_by_category[category][0]
                 w: float = 1.0 if calibration_pass else self._manual_weights.get(name, 1.0)
@@ -746,8 +767,7 @@ class TotalLossV2:
         obj_sign: dict[str, float] = {
             self._objective_by_category[cat][0]: float(self._objective_signs.get(cat, 1)) for cat in self._objective_by_category
         }
-        if self.use_cse:
-            obj_sign["cse_objective"] = -1.0
+        obj_sign["cse_objective"] = -1.0 if self.use_cse else 0.0
         log_data["normalized_losses/total_loss"] = sum(
             obj_sign.get(k.removeprefix("normalized_losses/"), 1.0) * v
             for k, v in log_data.items()

@@ -9,10 +9,10 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 import torch
+import wandb
 import yaml
 from torch_geometric.data import Batch, Data
 
-import wandb
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.sdf_influence import compute_sdf_parameter_influence
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.shear_force import ShearForce
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.metadata import DATASET_METADATA
@@ -20,6 +20,7 @@ from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.pyg_transforms impor
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.model.gaot_3d import GAOT3D
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.utils.scale import rescale, rescale_new
 from subprojects.wp4_aeroshell_optimizer.v2.src.models.model_baseclass import BaseModel
+from subprojects.wp4_aeroshell_optimizer.v2.src.utils.device_detection import Environment, detect_environment
 from subprojects.wp5.unified_mesh_extraction import MeshSDFExtractor, load_mesh_extraction_config
 
 if TYPE_CHECKING:
@@ -61,16 +62,33 @@ class ModelLoader:
         )
 
     def _get_checkpoint_path(self) -> str:
-        try:
-            df = pd.read_csv("/cluster/work/fuge/AISCO/wp1_cfd_ai/results/metrics.csv")
-        except FileNotFoundError:
-            df = pd.read_csv("/home/aisco/results/metrics.csv")
-        for _, row in df.iterrows():
-            setup_dict = ast.literal_eval(row["setup"])
-            if str(setup_dict.get("id")) == str(self.cfd_config["model_id"]):
-                path_dict = ast.literal_eval(row["path"])
-                return path_dict.get("ckpt_path")
-        raise ValueError("Wrong ID for GAOT-Model")
+        csv_path = self.cfd_config["metrics_csv_path"][
+            {
+                Environment.WSL: "_wsl",
+                Environment.EULER: "_euler",
+                Environment.AISCO_BEAST: "_beast",
+                Environment.SLURM: "_euler",
+            }[detect_environment()]
+        ]
+        model_id = str(self.cfd_config["model_id"])
+        df = pd.read_csv(csv_path)
+        df = pd.read_csv(csv_path, header=None) if df.empty else df
+        legacy = "setup" not in df.columns or "path" not in df.columns
+        ckpt = next(
+            (
+                ast.literal_eval(str((row.iloc[4] if legacy else row["path"]))).get("ckpt_path")
+                for _, row in df.iterrows()
+                if str(ast.literal_eval(str(row.iloc[0] if legacy else row["setup"])).get("id")) == model_id
+            ),
+            None,
+        )
+        return (
+            ckpt
+            if ckpt is not None
+            else (_ for _ in ()).throw(
+                ValueError(f"No GAOT checkpoint found for model_id={model_id} in metrics file: {csv_path}")
+            )
+        )
 
     def _load_model(self) -> None:
         config_path = self.model_path.replace("model.pt", "config.yaml")
@@ -460,7 +478,8 @@ class ModelLoader:
 
         self._check_watertightness(mesh_verts, mesh_faces)
 
-        wandb.log({"cfd/Aero-resolution": mesh_verts.shape[0]}, step=self.epoch_name)
+        if wandb.run is not None:
+            wandb.log({"cfd/Aero-resolution": mesh_verts.shape[0]}, step=self.epoch_name)
 
         batch = self._reformat_data(mesh_verts, mesh_faces)
 
@@ -518,8 +537,9 @@ class ModelLoader:
             "n_input_faces": int(mesh_faces.shape[0]),
             "normals_flipped_count": int(getattr(self, "_normals_flipped_count", 0)),
         }
-        wandb.log({"cfd/Shearforce:": shearforce}, step=self.epoch_name)
-        wandb.log({"cfd/int_drag_f": int_drag_f}, step=self.epoch_name)
+        if wandb.run is not None:
+            wandb.log({"cfd/Shearforce:": shearforce}, step=self.epoch_name)
+            wandb.log({"cfd/int_drag_f": int_drag_f}, step=self.epoch_name)
         return int_drag_f + shearforce
 
     def _reformat_data(self, mesh_verts: torch.Tensor, mesh_faces: torch.Tensor) -> Batch:
@@ -538,7 +558,8 @@ class ModelLoader:
             sdf_values = self.sdf_model(face_centers + face_normals * 50).squeeze(-1)
         normals_flipped = sdf_values < 0
         self._normals_flipped_count = int(normals_flipped.sum().item())
-        wandb.log({"cfd/unhealthy normals:": self._normals_flipped_count}, step=self.epoch_name)
+        if wandb.run is not None:
+            wandb.log({"cfd/unhealthy normals:": self._normals_flipped_count}, step=self.epoch_name)
 
         num_verts = optim_verts.shape[0]
         all_idx = mesh_faces.reshape(-1)
@@ -575,4 +596,5 @@ class ModelLoader:
         v = verts.shape[0]
         f = faces.shape[0]
         d = v - f / 2
-        wandb.log({"cfd/Mesh Quality (Target:2)": d}, step=self.epoch_name)
+        if wandb.run is not None:
+            wandb.log({"cfd/Mesh Quality (Target:2)": d}, step=self.epoch_name)

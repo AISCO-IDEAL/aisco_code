@@ -11,9 +11,9 @@
     <p style="color:var(--muted); margin:0; font-size:0.9rem;">What would you like to do?</p>
   </div>
 
-  <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; width:100%; max-width:760px;">
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; width:100%; max-width:760px; align-items:stretch;">
 
-    <a href="/launcher/assembly-selection?pipeline=live" style="text-decoration:none; color:inherit;">
+    <a id="liveCardLink" href="/launcher/assembly-selection?pipeline=live" style="text-decoration:none; color:inherit; display:block;">
       <div style="
         background:var(--theme-gradient-intro-card);
         border:2px solid var(--theme-surface-large);
@@ -23,18 +23,22 @@
         cursor:pointer;
         transition:border-color .2s, box-shadow .2s;
         box-shadow:0 0 0 0 color-mix(in srgb, var(--theme-surface-large) 0%, transparent);
+        height:100%; box-sizing:border-box;
       " onmouseover="this.style.borderColor='var(--theme-title-2)';this.style.boxShadow='0 0 18px 2px color-mix(in srgb, var(--theme-surface-large) 45%, transparent)';"
         onmouseout="this.style.borderColor='var(--theme-surface-large)';this.style.boxShadow='none';">
         <div style="font-size:2.4rem; margin-bottom:14px;">&#9654;</div>
-        <div style="font-size:1.15rem; font-weight:800; letter-spacing:.08em; color:var(--theme-title-2); margin-bottom:10px;">LIVE
+        <div
+          style="font-size:1.15rem; font-weight:800; letter-spacing:.08em; color:var(--theme-title-2); margin-bottom:10px;">
+          LIVE
           OPTIMISATION</div>
         <div style="font-size:0.82rem; color:var(--theme-muted); line-height:1.5;">
           Configure geometry, set overrides,<br>launch a WP4 run, and watch it live.
         </div>
+        <div id="liveCardError" style="margin-top:10px; font-size:0.78rem; color:var(--accent); min-height:1.2em;"></div>
       </div>
     </a>
 
-    <a href="/launcher/assembly-selection?pipeline=completed" style="text-decoration:none; color:inherit;">
+    <a href="/viewer/latent-explorer" style="text-decoration:none; color:inherit; display:block;">
       <div style="
         background:var(--theme-gradient-intro-card);
         border:2px solid var(--theme-sel-green);
@@ -44,13 +48,15 @@
         cursor:pointer;
         transition:border-color .2s, box-shadow .2s;
         box-shadow:0 0 0 0 color-mix(in srgb, var(--theme-sel-green) 0%, transparent);
+        height:100%; box-sizing:border-box;
       " onmouseover="this.style.borderColor='color-mix(in srgb, var(--theme-sel-green) 70%, var(--theme-white) 30%)';this.style.boxShadow='0 0 18px 2px color-mix(in srgb, var(--theme-sel-green) 45%, transparent)';"
         onmouseout="this.style.borderColor='var(--theme-sel-green)';this.style.boxShadow='none';">
         <div style="font-size:2.4rem; margin-bottom:14px;">&#9638;</div>
-        <div style="font-size:1.15rem; font-weight:800; letter-spacing:.08em; color:var(--theme-sel-green); margin-bottom:10px;">
+        <div
+          style="font-size:1.15rem; font-weight:800; letter-spacing:.08em; color:var(--theme-sel-green); margin-bottom:10px;">
           COMPLETED RUNS</div>
         <div style="font-size:0.82rem; color:var(--theme-muted); line-height:1.5;">
-          Browse finished run directories,<br>inspect GIFs, meshes, and artifacts.
+          Explore the pretrained latent space<br>and extract geometry variants.
         </div>
       </div>
     </a>
@@ -58,4 +64,49 @@
   </div>
 
 </div>
+
+<script>
+  // ── M1: Wizard session creation on Live Optimisation card click ───────────────
+  (function () {
+    const LS_FOLDER      = "aiscoOverrideFolderV3";
+    const LS_ASM_FROZEN  = "aiscoAssemblyFrozenV3";
+    const LS_CFG_FROZEN  = "aiscoConfigFrozenV3";
+    const LS_RUN_LAUNCHED = "aiscoRunLaunchedV3";
+    const LS_PENDING_ID  = "aiscoPendingAssemblyIdV3";
+    const LS_RETURN_URL  = "aiscoReturnUrlV3";
+
+    const link     = document.getElementById("liveCardLink");
+    const errorEl  = document.getElementById("liveCardError");
+
+    link.addEventListener("click", async (e) => {
+      e.preventDefault();
+      link.style.pointerEvents = "none";
+      link.style.opacity = "0.6";
+      errorEl.textContent = "Creating session\u2026";
+
+      try {
+        const r = await fetch("/launcher/api/config-overrides/init", { method: "POST" });
+        if (!r.ok) {
+          const d = await r.json();
+          throw new Error(d.detail?.message || String(r.status));
+        }
+        const d = await r.json();
+        // Always overwrite any previously stored session key — prior sessions
+        // are preserved on disk and do not need to be resumed.
+        localStorage.setItem(LS_FOLDER, d.folder);
+        localStorage.removeItem(LS_ASM_FROZEN);
+        localStorage.removeItem(LS_CFG_FROZEN);
+        localStorage.removeItem(LS_RUN_LAUNCHED);
+        localStorage.removeItem(LS_PENDING_ID);
+        localStorage.removeItem(LS_RETURN_URL);
+        console.info("[AISCO] Session created:", d.folder);
+        window.location.href = "/launcher/assembly-selection?pipeline=live";
+      } catch (err) {
+        errorEl.textContent = "Error: " + err.message;
+        link.style.pointerEvents = "";
+        link.style.opacity = "";
+      }
+    });
+  }());
+</script>
 {% endblock %}

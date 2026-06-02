@@ -37,7 +37,6 @@ export function initMeshViewer(containerEl, options = {}) {
     }
 
     const meshBgHex = hexToInt(cssVar("--theme-mesh-bg", "#F1F7F3"), 0xf1f7f3);
-    const sliderAccent = cssVar("--theme-slider-accent", "#C33531");
     const controlTextColor = cssVar("--theme-control-text", "#000000");
     const fallbackMeshHex = hexToInt(cssVar("--theme-mesh-fallback", "#99A3A4"), 0x99a3a4);
 
@@ -125,33 +124,8 @@ export function initMeshViewer(containerEl, options = {}) {
         return true;
     }
 
-    function ensureOpacitySliderStyles() {
-        const styleId = "glb-opacity-slider-styles";
-        if (document.getElementById(styleId)) {
-            return;
-        }
-        const style = document.createElement("style");
-        style.id = styleId;
-        style.textContent = `
-            .glb-opacity-slider {
-                -webkit-appearance: auto;
-                appearance: auto;
-                height: 14px;
-                background: transparent;
-                padding: 0;
-                margin: 0;
-                outline: none;
-                accent-color: ${sliderAccent};
-            }
-        `;
-        document.head.appendChild(style);
-    }
-
-    function paintOpacitySliderBar(slider) {
-        if (!slider) {
-            return;
-        }
-        slider.style.accentColor = sliderAccent;
+    function defaultOpacityForComponent(name) {
+        return name === "sdf_mesh" ? 0.65 : 1.0;
     }
 
     const hemisphereLight = new HemisphereLight(0xffffff, 0x444444, 1.0);
@@ -333,7 +307,13 @@ export function initMeshViewer(containerEl, options = {}) {
         if (!glbControlsHost) {
             return;
         }
-        ensureOpacitySliderStyles();
+        // Per-user request: hide all component controls (toggles and opacity sliders)
+        // in both live output and archive viewers.
+        glbControlsHost.innerHTML = "";
+        glbControlsHost.style.display = "none";
+        return;
+
+        /*
         glbControlsHost.innerHTML = "";
         const components = getMeshComponents();
         if (!components.length) {
@@ -374,30 +354,15 @@ export function initMeshViewer(containerEl, options = {}) {
             name.style.overflow = "hidden";
             name.style.textOverflow = "ellipsis";
 
-            const opacity = document.createElement("input");
-            opacity.type = "range";
-            opacity.min = "0";
-            opacity.max = "1";
-            opacity.step = "0.01";
-            opacity.value = String(component.opacity);
-            opacity.className = "glb-opacity-slider";
-            opacity.style.gridColumn = "1 / span 2";
-            opacity.style.width = "100%";
-            paintOpacitySliderBar(opacity);
-
             visible.addEventListener("change", () => {
                 setMeshComponentState(component.key, { visible: visible.checked });
-            });
-            opacity.addEventListener("input", () => {
-                setMeshComponentState(component.key, { opacity: parseFloat(opacity.value) });
-                paintOpacitySliderBar(opacity);
             });
 
             cell.appendChild(visible);
             cell.appendChild(name);
-            cell.appendChild(opacity);
             glbControlsHost.appendChild(cell);
         });
+        */
     }
 
     function setGlbControlsHost(hostEl) {
@@ -406,7 +371,7 @@ export function initMeshViewer(containerEl, options = {}) {
     }
 
     function frameScaledObject(sizeVec) {
-        const vFovHalf = 25 * Math.PI / 180; // half of the 50° FOV
+        const vFovHalf = 25 * Math.PI / 180; // half of the 50deg FOV
         const aspect = containerEl.clientWidth / Math.max(containerEl.clientHeight, 1);
         const hFovHalf = Math.atan(Math.tan(vFovHalf) * aspect);
         const dFitW = (sizeVec.x / 2) / Math.tan(hFovHalf);
@@ -427,18 +392,57 @@ export function initMeshViewer(containerEl, options = {}) {
         if (!usesTurntableControls) {
             camera.quaternion.identity();
         }
-        // Suppress the callback so framing a newly-loaded mesh never broadcasts
-        // the reset view to a synced viewer (would clobber the user's camera).
         suppressControlsCallback = true;
         controls.update();
         suppressControlsCallback = false;
-        // Force controls to sync their internal state with the camera.
         const currentState = getViewState();
         setViewState(currentState);
     }
 
+    function _fitBoxFromPreferredGlbMeshes(root) {
+        const outerBboxPreferred = [];
+        const sdfPreferred = [];
+        const preferred = [];
+        const fallback = [];
+        root.traverse((node) => {
+            if (!node.isMesh || !node.geometry) {
+                return;
+            }
+            const name = String(node.name || "").toLowerCase();
+            if (name === "outer_bbox") {
+                outerBboxPreferred.push(node);
+            }
+            // Helper geometry (bbox / cone) should not drive framing because it
+            // makes the actual body appear too small versus scalar fields.
+            const isHelper =
+                name === "outer_bbox" ||
+                name === "vision_cone" ||
+                name.includes("bbox") ||
+                name.includes("cone");
+
+            fallback.push(node);
+            if (name === "sdf_mesh") {
+                sdfPreferred.push(node);
+            }
+            if (!isHelper) {
+                preferred.push(node);
+            }
+        });
+
+        // For GLB aeroshell views, outer_bbox is the intended global frame and
+        // avoids over-zooming into just the sdf shell.
+        const meshes = outerBboxPreferred.length
+            ? outerBboxPreferred
+            : (sdfPreferred.length ? sdfPreferred : (preferred.length ? preferred : fallback));
+        const box = new Box3();
+        meshes.forEach((mesh) => {
+            box.expandByObject(mesh);
+        });
+        return box;
+    }
+
     function fitGlbCamera(root) {
-        const box = new Box3().setFromObject(root);
+        const box = _fitBoxFromPreferredGlbMeshes(root);
         const center = box.getCenter(new Vector3());
         const size = box.getSize(new Vector3());
         const maxDim = Math.max(size.x, size.y, size.z);
@@ -507,8 +511,7 @@ export function initMeshViewer(containerEl, options = {}) {
                         if (!node.geometry.hasAttribute("normal")) {
                             node.geometry.computeVertexNormals();
                         }
-                        const srcMat = Array.isArray(node.material) ? node.material[0] : node.material;
-                        const baseAlpha = typeof srcMat?.opacity === "number" ? srcMat.opacity : 1.0;
+                        const baseAlpha = defaultOpacityForComponent(node.name);
                         const hasVtxColors = node.geometry.hasAttribute("color");
 
                         // Apply outer_lines_only style when configured for outer_bbox.
@@ -522,6 +525,8 @@ export function initMeshViewer(containerEl, options = {}) {
                             const edgesGeo = new EdgesGeometry(node.geometry, _visConfig.outer_lines_threshold ?? 15);
                             const linesMat = new LineBasicMaterial({
                                 color: new Color(lc[0], lc[1], lc[2]),
+                                transparent: baseAlpha < 0.99,
+                                opacity: baseAlpha,
                             });
                             const lines = new LineSegments(edgesGeo, linesMat);
                             lines.name = node.name;
@@ -540,6 +545,8 @@ export function initMeshViewer(containerEl, options = {}) {
                             const edgesGeo = new EdgesGeometry(node.geometry, _visConfig.cone_lines_threshold ?? 15);
                             const linesMat = new LineBasicMaterial({
                                 color: new Color(lc[0], lc[1], lc[2]),
+                                transparent: baseAlpha < 0.99,
+                                opacity: baseAlpha,
                             });
                             const lines = new LineSegments(edgesGeo, linesMat);
                             lines.name = node.name;
@@ -689,8 +696,19 @@ export function initMeshViewer(containerEl, options = {}) {
         renderGlbControls();
     }
 
+    function clearMesh() {
+        if (currentObj) {
+            scene.remove(currentObj);
+            disposeObject(currentObj);
+            currentObj = null;
+        }
+        currentGlbComponents = [];
+        currentMeshType = null;
+    }
+
     return {
         loadMesh,
+        clearMesh,
         getViewState,
         setViewState,
         setOnControlsChange,

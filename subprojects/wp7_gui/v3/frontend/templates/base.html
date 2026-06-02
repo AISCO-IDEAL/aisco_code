@@ -10,13 +10,14 @@
   <link rel="stylesheet" href="/static/css/arcade.css">
   <style>
     :root {
-{{ theme_css_vars | default("") | safe }}
+      {{ theme_css_vars | default("") | safe }}
     }
   </style>
   <script>
-    window.AISCO_GUI_THEME = {{ gui_theme_json | default('{}') | safe }};
+    window.AISCO_GUI_THEME = {{ gui_theme_json | default ('{}') | safe }};
   </script>
   <script src="/static/js/utils.js"></script>
+  <script src="/static/js/page_help.js"></script>
   {% block head %}{% endblock %}
 </head>
 
@@ -42,45 +43,90 @@
           <a href="/launcher/assembly-selection?pipeline=live" class="mode-btn mode-btn--active">Live</a>
           <nav class="sub-nav" aria-label="Live sub-navigation">
             <a href="/launcher/assembly-selection?pipeline=live"
-              class="{% if active_page == 'assembly-selection' %}active{% endif %}">Assembly Selection</a>
+              class="{% if active_page == 'assembly-selection' %}active{% endif %}">1 - Assembly Selection</a>
             <a href="/launcher/config-overrides?pipeline=live"
-              class="{% if active_page == 'config-overrides' %}active{% endif %}">Config Overrides</a>
-            <a href="/launcher/optimization?pipeline=live"
-              class="{% if active_page == 'optimization' %}active{% endif %}">Live Run</a>
+              class="{% if active_page == 'config-overrides' %}active{% endif %}">2 - Configure &amp; Run</a>
             <a href="/launcher/output?pipeline=live"
-              class="{% if active_page == 'output' %}active{% endif %}">Output</a>
-          </nav>
+              class="{% if active_page == 'output' %}active{% endif %}">3 - Output</a>            <a href="/launcher/leaderboard?pipeline=live"
+              class="{% if active_page == 'leaderboard' %}active{% endif %}">4 - Live Leaderboard</a>          </nav>
           {% elif active_mode == 'launcher' and _pl == 'completed' %}
-          <a href="/launcher/assembly-selection?pipeline=completed" class="mode-btn mode-btn--active">Completed</a>
+          <a href="/viewer/latent-explorer" class="mode-btn mode-btn--active">Completed</a>
           <nav class="sub-nav" aria-label="Completed sub-navigation">
-            <a href="/launcher/assembly-selection?pipeline=completed"
-              class="{% if active_page == 'assembly-selection' %}active{% endif %}">Assembly Selection</a>
-            <a href="/launcher/config-overrides?pipeline=completed"
-              class="{% if active_page == 'config-overrides' %}active{% endif %}">Config Overrides</a>
-            <a href="/launcher/output?pipeline=completed"
-              class="{% if active_page == 'output' %}active{% endif %}">Output</a>
+            <a href="/viewer/latent-explorer" class="{% if active_page == 'latent-explorer' %}active{% endif %}">Latent
+              Explorer</a>
           </nav>
           {% elif active_mode == 'viewer' %}
           <a href="/viewer" class="mode-btn mode-btn--active">Archive</a>
           <nav class="sub-nav" aria-label="Archive sub-navigation">
             <a href="/viewer" class="{% if active_page == 'runs' %}active{% endif %}">Finished Runs</a>
-            <a href="/viewer/pretraining" class="{% if active_page == 'pretraining' %}active{% endif %}">Pretraining
-              GIFs</a>
           </nav>
           {% endif %}
         </div>
 
         {% if active_mode == 'viewer' %}
         <a href="/" class="mode-btn">Home</a>
-        {% else %}
-        <a href="/viewer" class="mode-btn">Archive</a>
         {% endif %}
       </aside>
+
+      <script>
+      // ── M4/M5: Sidebar nav lock + step counter + Archive passthrough ──────────
+      (function () {
+        const folder       = localStorage.getItem("aiscoOverrideFolderV3") || "";
+        const activeModeVal = "{{ active_mode | default('') }}";
+        const pipelineVal  = "{{ pipeline | default('') }}";
+        const activePageVal = "{{ active_page | default('') }}";
+
+        // M4: Lock the sub-nav while inside a live wizard session
+        if (folder && activeModeVal === "launcher" && pipelineVal === "live") {
+          const aside = document.querySelector("aside");
+          if (aside) {
+            aside.classList.add("nav-locked");
+
+            // Add step counter (N/4) to the active sub-nav link
+            const stepMap = {
+              "assembly-selection": 1,
+              "config-overrides":   2,
+              "output":             3,
+              "leaderboard":        4,
+            };
+            const stepNum = stepMap[activePageVal];
+            if (stepNum) {
+              const activeLink = aside.querySelector(".sub-nav a.active");
+              if (activeLink) { activeLink.textContent += " (" + stepNum + "/4)"; }
+            }
+
+            // Add session label beneath the sub-nav
+            const sessionLabel = document.createElement("div");
+            sessionLabel.className = "session-label";
+            sessionLabel.textContent = folder.split("/").pop();
+            const subNav = aside.querySelector(".sub-nav");
+            if (subNav) { subNav.after(sessionLabel); }
+          }
+        }
+
+        // M5: Archive link stores return URL so Archive pages can navigate back
+        if (folder) {
+          const archiveLink = document.querySelector("aside a.mode-btn[href='/viewer']");
+          if (archiveLink) {
+            archiveLink.addEventListener("click", () => {
+              localStorage.setItem("aiscoReturnUrlV3", window.location.href);
+              console.info("[AISCO] Return URL stored:", window.location.href);
+            });
+          }
+        }
+      }());
+      </script>
 
       <section class="workspace">
         <header class="workspace-top">
           <h2>{{ page_title or "WP7 GUI" }}</h2>
           <p class="hint">{% block hint %}{% endblock %}</p>
+          <button id="pageHelpBtn" title="What is this page?"
+            style="margin-left:auto; flex-shrink:0; width:24px; height:24px; border-radius:50%;
+                   background:#c0392b;
+                   border:1px solid #e74c3c;
+                   color:#fff; font-size:0.78rem; font-weight:700;
+                   cursor:pointer; line-height:1; padding:0;">?</button>
         </header>
         <div class="workspace-body">
           {% block content %}{% endblock %}
@@ -90,6 +136,59 @@
   </main>
 
   <script src="/static/js/arcade.js"></script>
+
+  <!-- ── Page help modal ──────────────────────────────────────────────── -->
+  <div id="pageHelpOverlay"
+       style="display:none; position:fixed; inset:0; z-index:8000;
+              background:rgba(0,0,0,0.65); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px);
+              align-items:center; justify-content:center;">
+    <div style="background:var(--theme-panel, #27314A); border:1px solid var(--theme-border, #2D3A55);
+                border-radius:14px; padding:40px 48px; max-width:760px; width:90%;
+                position:relative; box-shadow:0 8px 40px rgba(0,0,0,0.55);">
+      <button id="pageHelpClose"
+              style="position:absolute; top:14px; right:18px; background:none; border:none;
+                     font-size:1.8rem; color:var(--muted, #888); cursor:pointer; line-height:1;
+                     padding:0;">&times;</button>
+      <h3 id="pageHelpTitle"
+          style="margin:0 0 16px; font-size:1.3rem; letter-spacing:0.04em;
+                 color:var(--text, #eee);"></h3>
+      <p  id="pageHelpText"
+          style="margin:0; font-size:1.05rem; color:var(--muted, #aaa); line-height:1.75;"></p>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    var btn     = document.getElementById("pageHelpBtn");
+    var overlay = document.getElementById("pageHelpOverlay");
+    var closeBtn= document.getElementById("pageHelpClose");
+    var titleEl = document.getElementById("pageHelpTitle");
+    var textEl  = document.getElementById("pageHelpText");
+    var pageId  = "{{ active_page | default('introduction') }}";
+
+    function openHelp() {
+      var help = (typeof AISCO_PAGE_HELP !== "undefined" && AISCO_PAGE_HELP[pageId])
+        ? AISCO_PAGE_HELP[pageId]
+        : { title: "Page Help", text: "No description is available for this page yet." };
+      titleEl.textContent = help.title;
+      textEl.textContent  = help.text;
+      overlay.style.display = "flex";
+    }
+
+    function closeHelp() {
+      overlay.style.display = "none";
+    }
+
+    if (btn)     btn.addEventListener("click", openHelp);
+    if (closeBtn) closeBtn.addEventListener("click", closeHelp);
+    if (overlay)  overlay.addEventListener("click", function (e) {
+      if (e.target === overlay) closeHelp();
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") closeHelp();
+    });
+  }());
+  </script>
 
 </body>
 

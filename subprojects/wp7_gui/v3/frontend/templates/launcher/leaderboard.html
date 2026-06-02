@@ -1,0 +1,571 @@
+{% extends "base.html" %}
+{% block hint %}Global run leaderboard — sorted by cruising speed (highest first).{% endblock %}
+
+{% block head %}
+<style>
+    /* ── Leaderboard layout ─────────────────────────────────────────────────── */
+    .leaderboard-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 4px 0 16px;
+    }
+
+    /* ── Table card ─────────────────────────────────────────────────────────── */
+    .lb-card {
+        background: color-mix(in srgb, var(--theme-panel) 80%, var(--theme-panel-2) 20%);
+        border: 1px solid var(--theme-border);
+        border-radius: 10px;
+        overflow: hidden;
+    }
+
+    .lb-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.92rem;
+    }
+
+    .lb-table thead th {
+        padding: 13px 20px;
+        text-align: left;
+        font-size: 0.76rem;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--theme-warning-text);
+        border-bottom: 1px solid var(--theme-border);
+        background: color-mix(in srgb, var(--theme-panel-2) 60%, transparent 40%);
+        white-space: nowrap;
+    }
+
+    .lb-table thead th.num {
+        text-align: right;
+    }
+
+    .lb-table tbody tr {
+        border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent 50%);
+        transition: background 0.12s;
+    }
+
+    .lb-table tbody tr:last-child {
+        border-bottom: none;
+    }
+
+    .lb-table tbody tr:hover {
+        background: color-mix(in srgb, var(--theme-title-2) 8%, transparent 92%);
+    }
+
+    .lb-table tbody tr.lb-current {
+        background: color-mix(in srgb, var(--theme-warning-text) 12%, transparent 88%);
+        border-left: 3px solid var(--theme-warning-text);
+    }
+
+    .lb-table tbody tr.lb-current:hover {
+        background: color-mix(in srgb, var(--theme-warning-text) 18%, transparent 82%);
+    }
+
+    .lb-table td {
+        padding: 14px 20px;
+        color: var(--theme-text);
+        vertical-align: middle;
+    }
+
+    .lb-table td.num {
+        text-align: right;
+        font-family: var(--theme-font-mono, monospace);
+        font-size: 0.96rem;
+    }
+
+    .lb-table td.lb-num-speed {
+        color: var(--theme-metric-speed-text);
+    }
+
+    .lb-table td.lb-num-drag {
+        color: var(--theme-metric-drag-text);
+    }
+
+    .lb-table td.lb-num-solar {
+        color: var(--theme-metric-solar-text);
+    }
+
+    .lb-mini-wrap {
+        display: flex;
+        gap: 4px;
+        justify-content: flex-end;
+        align-items: center;
+    }
+
+    .lb-mini {
+        width: 54px;
+        height: 18px;
+        border-radius: 3px;
+        background: color-mix(in srgb, var(--theme-panel-2) 36%, transparent 64%);
+    }
+
+    /* ── Rank cell ──────────────────────────────────────────────────────────── */
+    .lb-rank {
+        font-weight: 700;
+        font-size: 1.05rem;
+        font-family: var(--theme-font-mono, monospace);
+        color: var(--theme-muted);
+        min-width: 44px;
+    }
+
+    .lb-rank.gold   { color: #f5c842; }
+    .lb-rank.silver { color: #b0b8c8; }
+    .lb-rank.bronze { color: #cd7f32; }
+
+    /* ── Run ID ─────────────────────────────────────────────────────────────── */
+    .lb-run-id {
+        font-family: var(--theme-font-mono, monospace);
+        font-size: 0.92rem;
+        color: var(--theme-text);
+        word-break: break-all;
+    }
+
+    .lb-current .lb-run-id {
+        color: var(--theme-warning-text);
+        font-weight: 600;
+    }
+
+    /* ── Separator between top-10 and current row ───────────────────────────── */
+    .lb-separator td {
+        padding: 0;
+        border: none;
+        height: 6px;
+        background: color-mix(in srgb, var(--theme-border) 60%, transparent 40%);
+        font-size: 0;
+    }
+
+    /* ── Divider row before out-of-top-10 current entry ────────────────────── */
+    .lb-divider td {
+        padding: 6px 14px;
+        font-size: 0.68rem;
+        color: var(--theme-muted);
+        border-top: 1px dashed color-mix(in srgb, var(--theme-border) 80%, transparent 20%);
+        border-bottom: none;
+        font-style: italic;
+        text-align: center;
+        background: color-mix(in srgb, var(--theme-panel-2) 30%, transparent 70%);
+    }
+
+    /* ── Status / loading area ──────────────────────────────────────────────── */
+    #lbStatus {
+        padding: 24px;
+        text-align: center;
+        color: var(--theme-muted);
+        font-size: 0.82rem;
+    }
+
+    /* ── Footer note ────────────────────────────────────────────────────────── */
+    .lb-footer {
+        font-size: 0.72rem;
+        color: var(--theme-muted);
+        text-align: right;
+        padding: 2px 4px;
+    }
+
+    /* ── Clickable row hint ─────────────────────────────────────────────────── */
+    .lb-table tbody tr.lb-clickable {
+        cursor: pointer;
+    }
+
+    .lb-table tbody tr.lb-clickable:hover .lb-run-id {
+        color: var(--theme-title-2);
+    }
+
+    .lb-archive-arrow {
+        margin-left: 6px;
+        font-size: 0.7rem;
+        color: var(--theme-muted);
+        opacity: 0;
+        transition: opacity 0.12s;
+        vertical-align: middle;
+    }
+
+    .lb-table tbody tr.lb-clickable:hover .lb-archive-arrow {
+        opacity: 1;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="section-grid" style="grid-template-rows: auto 1fr;">
+
+    <!-- ── TOOLBAR ─────────────────────────────────────────────────────────── -->
+    <div class="dark-card toolbar">
+        <a id="backBtn" href="/launcher/output?pipeline={{ pipeline }}" class="btn secondary">← Back to Output</a>
+        {% if pipeline == 'live' %}
+        <div id="progressHost" style="flex:1; padding:0 10px; display:none;">
+            <div class="progress-bar-wrap" id="progressWrap"><div class="progress-bar-fill" id="progressFill" style="width:0%"></div></div>
+            <div id="progressLabel" style="font-size:0.78rem; color:var(--theme-muted); font-weight:600; margin-top:3px;">Idle</div>
+        </div>
+        <script>(function () {
+            var runKey = "aiscoRunLaunchedV3";
+            var host = document.getElementById("progressHost");
+            var fill = document.getElementById("progressFill");
+            var lbl  = document.getElementById("progressLabel");
+            var _es = null, _timer = null, _done = false;
+            function _show() {
+                if (host) host.style.display = "block";
+            }
+            function _hide() {
+                if (host) host.style.display = "none";
+            }
+            function _start() {
+                if (_es) { _es.close(); _es = null; }
+                if (_timer) { clearTimeout(_timer); _timer = null; }
+                _done = false;
+                _es = new EventSource("/launcher/api/run/stream/logs");
+                _es.addEventListener("epoch", function (ev) {
+                    var d = JSON.parse(ev.data);
+                    var pct = d.total > 0 ? Math.min(100, ((d.epoch + 1) / d.total) * 100) : 0;
+                    if (fill) fill.style.width = pct + "%";
+                    if (lbl) lbl.textContent = "Epoch " + (d.epoch + 1) + " / " + d.total + " (" + pct.toFixed(1) + "%)";
+                });
+                _es.addEventListener("done", function (ev) {
+                    var d = JSON.parse(ev.data);
+                    if (fill) fill.style.width = "100%";
+                    if (lbl) lbl.textContent = d.return_code === 0 ? "Completed." : "Finished (code " + d.return_code + ")";
+                    if (_es) { _es.close(); _es = null; }
+                    _done = true;
+                });
+                _es.onerror = function () {
+                    if (_timer) clearTimeout(_timer);
+                    _timer = setTimeout(function () {
+                        _timer = null;
+                        if (_done) return;
+                        fetch("/launcher/api/run/state").then(function (r) { return r.json(); }).then(function (s) {
+                            if (!s.running && s.return_code !== null) {
+                                if (fill) fill.style.width = "100%";
+                                if (lbl) lbl.textContent = s.return_code === 0 ? "Completed." : "Finished (code " + s.return_code + ")";
+                                _done = true;
+                            } else if (s.running) { _start(); }
+                        }).catch(function () {});
+                    }, 5000);
+                };
+            }
+            if (!localStorage.getItem(runKey)) {
+                _hide();
+                return;
+            }
+            _show();
+            fetch("/launcher/api/run/progress").then(function (r) { return r.json(); }).then(function (p) {
+                if (p.completed) { if (fill) fill.style.width = "100%"; if (lbl) lbl.textContent = "Completed."; _done = true; }
+                else if (p.current_epoch >= 0) {
+                    if (fill) fill.style.width = p.progress_percent + "%";
+                    if (lbl) lbl.textContent = "Epoch " + (p.current_epoch + 1) + " / " + p.num_epochs + " (" + p.progress_percent.toFixed(1) + "%)";
+                }
+            }).catch(function () {});
+            fetch("/launcher/api/run/state").then(function (r) { return r.json(); }).then(function (s) {
+                if (s.running) { _start(); }
+                else if (s.return_code !== null) { if (fill) fill.style.width = "100%"; if (lbl) lbl.textContent = "Completed."; _done = true; }
+            }).catch(function () {});
+        }());</script>
+        {% else %}
+        <span style="flex:1; font-size:0.72rem; color:var(--theme-muted); text-align:center;">Click a row to open in Archive</span>
+        {% endif %}
+        <a id="doneHomeBtn" href="/" class="btn">Home</a>
+    </div>
+
+    <!-- ── LEADERBOARD CARD ─────────────────────────────────────────────────── -->
+    <div style="overflow:auto; min-height:0; padding:2px 0;">
+        <div class="leaderboard-wrap">
+            <div class="lb-card">
+                <div id="lbStatus">Loading leaderboard&hellip;</div>
+                <table class="lb-table" id="lbTable" style="display:none;">
+                    <thead>
+                        <tr>
+                            <th style="width:52px;">Rank</th>
+                            <th>Run ID</th>
+                            <th class="num">Speed&nbsp;(km/h)</th>
+                            <th class="num">Drag&nbsp;(N)</th>
+                            <th class="num">Solar&nbsp;(W)</th>
+                            <th class="num">Trends</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lbBody"></tbody>
+                </table>
+            </div>
+            <div class="lb-footer" id="lbFooter" style="display:none;"></div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    // ── Read URL params ────────────────────────────────────────────────────────
+    const _params = new URLSearchParams(window.location.search);
+    const currentRunId = _params.get("run_id") || null;
+    const pipeline = "{{ pipeline }}";
+
+    // Update back-button to preserve run_id
+    if (currentRunId) {
+        const backBtn = document.getElementById("backBtn");
+        backBtn.href = "/launcher/output?pipeline=" + encodeURIComponent(pipeline)
+            + "&run_id=" + encodeURIComponent(currentRunId);
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+    function fmt(val, decimals) {
+        if (val === null || val === undefined) return "—";
+        return Number(val).toFixed(decimals !== undefined ? decimals : 2);
+    }
+
+    function speedKmh(speedMs) {
+        if (speedMs === null || speedMs === undefined) return null;
+        return Number(speedMs) * 3.6;
+    }
+
+    function drawMiniSpark(canvas, values, strokeColor) {
+        if (!canvas) return;
+        var ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        var w = canvas.width;
+        var h = canvas.height;
+        ctx.clearRect(0, 0, w, h);
+
+        var series = (values || []).filter(function (v) { return v !== null && v !== undefined && Number.isFinite(Number(v)); })
+            .map(function (v) { return Number(v); });
+        if (series.length < 2) return;
+
+        var minVal = Math.min.apply(null, series);
+        var maxVal = Math.max.apply(null, series);
+        var span = Math.max(1e-9, maxVal - minVal);
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (var i = 0; i < series.length; i++) {
+            var x = (i / (series.length - 1)) * (w - 2) + 1;
+            var y = h - 1 - ((series[i] - minVal) / span) * (h - 2);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+    }
+
+    function trendCell(entry, histories) {
+        var td = document.createElement("td");
+        td.className = "num";
+        var wrap = document.createElement("div");
+        wrap.className = "lb-mini-wrap";
+
+        var speedCanvas = document.createElement("canvas");
+        speedCanvas.className = "lb-mini";
+        speedCanvas.width = 68;
+        speedCanvas.height = 24;
+        var dragCanvas = document.createElement("canvas");
+        dragCanvas.className = "lb-mini";
+        dragCanvas.width = 68;
+        dragCanvas.height = 24;
+        var solarCanvas = document.createElement("canvas");
+        solarCanvas.className = "lb-mini";
+        solarCanvas.width = 68;
+        solarCanvas.height = 24;
+
+        wrap.appendChild(speedCanvas);
+        wrap.appendChild(dragCanvas);
+        wrap.appendChild(solarCanvas);
+        td.appendChild(wrap);
+
+        var h = histories && entry && entry.run_id ? histories[entry.run_id] : null;
+        var speedSeries = (h && h.cruising_speed_ms ? h.cruising_speed_ms : []).map(function (v) { return v == null ? null : Number(v) * 3.6; });
+        drawMiniSpark(speedCanvas, speedSeries, getComputedStyle(document.documentElement).getPropertyValue("--theme-metric-speed-border").trim() || "#66CC99");
+        drawMiniSpark(dragCanvas, h ? h.drag_value : [], getComputedStyle(document.documentElement).getPropertyValue("--theme-metric-drag-border").trim() || "#66A3FF");
+        drawMiniSpark(solarCanvas, h ? h.solar_power_w : [], getComputedStyle(document.documentElement).getPropertyValue("--theme-metric-solar-border").trim() || "#FFD966");
+        return td;
+    }
+
+    function rankClass(rank) {
+        if (rank === 1) return "gold";
+        if (rank === 2) return "silver";
+        if (rank === 3) return "bronze";
+        return "";
+    }
+
+    function rankLabel(rank) {
+        if (rank === 1) return "🥇 1";
+        if (rank === 2) return "🥈 2";
+        if (rank === 3) return "🥉 3";
+        if (rank === null || rank === undefined) return "—";
+        return String(rank);
+    }
+
+    function buildRow(entry, histories) {
+        var tr = document.createElement("tr");
+        if (entry.is_current) tr.classList.add("lb-current");
+        tr.classList.add("lb-clickable");
+        tr.title = "Open in Archive";
+        tr.addEventListener("click", function () {
+            window.location.href = "/viewer?run_id=" + encodeURIComponent(entry.run_id);
+        });
+
+        var tdRank = document.createElement("td");
+        tdRank.className = "lb-rank " + rankClass(entry.rank);
+        tdRank.textContent = rankLabel(entry.rank);
+        tr.appendChild(tdRank);
+
+        var tdId = document.createElement("td");
+        var span = document.createElement("span");
+        span.className = "lb-run-id";
+        span.textContent = entry.run_id;
+        if (entry.is_current) {
+            var badge = document.createElement("span");
+            badge.style.cssText =
+                "margin-left:8px;font-size:0.65rem;font-weight:700;letter-spacing:0.08em;" +
+                "background:color-mix(in srgb,var(--theme-warning-text) 18%,transparent);" +
+                "color:var(--theme-warning-text);border-radius:3px;padding:1px 5px;vertical-align:middle;";
+            badge.textContent = "YOU";
+            span.appendChild(badge);
+        }
+        var arrow = document.createElement("span");
+        arrow.className = "lb-archive-arrow";
+        arrow.textContent = "→ Archive";
+        span.appendChild(arrow);
+        tdId.appendChild(span);
+        tr.appendChild(tdId);
+
+        var tdSpeed = document.createElement("td");
+        tdSpeed.className = "num lb-num-speed";
+        tdSpeed.textContent = fmt(speedKmh(entry.cruising_speed_ms), 2);
+        tr.appendChild(tdSpeed);
+
+        var tdDrag = document.createElement("td");
+        tdDrag.className = "num lb-num-drag";
+        tdDrag.textContent = fmt(entry.drag_value, 1);
+        tr.appendChild(tdDrag);
+
+        var tdSolar = document.createElement("td");
+        tdSolar.className = "num lb-num-solar";
+        tdSolar.textContent = fmt(entry.solar_power_w, 1);
+        tr.appendChild(tdSolar);
+
+        tr.appendChild(trendCell(entry, histories));
+
+        return tr;
+    }
+
+    // ── Fetch and render ───────────────────────────────────────────────────────
+    var _lastDataJson = null;
+
+    function renderLeaderboard(data) {
+        var tbody = document.getElementById("lbBody");
+        tbody.innerHTML = "";
+
+        if (!data.entries || data.entries.length === 0) {
+            document.getElementById("lbStatus").style.display = "";
+            document.getElementById("lbStatus").textContent =
+                "No runs recorded yet. Complete a run to appear on the leaderboard.";
+            document.getElementById("lbTable").style.display = "none";
+            document.getElementById("lbFooter").style.display = "none";
+            return;
+        }
+
+        var histories = data.sparkline_histories || {};
+
+        data.entries.forEach(function (entry) {
+            tbody.appendChild(buildRow(entry, histories));
+        });
+
+        // Current run outside top 10: append divider + extra row
+        if (data.current_entry) {
+            var divRow = document.createElement("tr");
+            divRow.className = "lb-divider";
+            var divCell = document.createElement("td");
+            divCell.colSpan = 6;
+            divCell.textContent =
+                data.current_entry.rank !== null
+                    ? "\u00b7\u00b7\u00b7 your run \u2014 rank #" + data.current_entry.rank +
+                      " of " + data.total_runs + " \u00b7\u00b7\u00b7"
+                    : "\u00b7\u00b7\u00b7 your run \u2014 not yet on leaderboard \u00b7\u00b7\u00b7";
+            divRow.appendChild(divCell);
+            tbody.appendChild(divRow);
+            tbody.appendChild(buildRow(data.current_entry, histories));
+        }
+
+        document.getElementById("lbStatus").style.display = "none";
+        document.getElementById("lbTable").style.display = "";
+        document.getElementById("lbFooter").style.display = "";
+        document.getElementById("lbFooter").textContent =
+            data.total_runs + " total run" + (data.total_runs === 1 ? "" : "s") + " recorded";
+    }
+
+    async function loadLeaderboard() {
+        var url = "/launcher/api/leaderboard";
+        if (currentRunId) {
+            url += "?current_run_id=" + encodeURIComponent(currentRunId);
+        }
+        try {
+            var resp = await fetch(url, { cache: "no-store" });
+            if (!resp.ok) throw new Error("HTTP " + resp.status);
+            var data = await resp.json();
+            var runIds = [];
+            (data.entries || []).forEach(function (entry) { if (entry && entry.run_id) runIds.push(entry.run_id); });
+            if (data.current_entry && data.current_entry.run_id) runIds.push(data.current_entry.run_id);
+            if (runIds.length) {
+                var uniqueRunIds = Array.from(new Set(runIds));
+                var sparkResp = await fetch(
+                    "/launcher/api/leaderboard/sparklines?run_ids=" + encodeURIComponent(uniqueRunIds.join(",")) + "&limit=40",
+                    { cache: "no-store" },
+                );
+                if (sparkResp.ok) {
+                    var sparkData = await sparkResp.json();
+                    data.sparkline_histories = sparkData.histories || {};
+                }
+            }
+            var dataJson = JSON.stringify(data);
+            if (dataJson === _lastDataJson) return; // no change — skip re-render
+            _lastDataJson = dataJson;
+            renderLeaderboard(data);
+        } catch (err) {
+            // Only show error on first load; suppress on background refreshes
+            if (_lastDataJson === null) {
+                document.getElementById("lbStatus").textContent =
+                    "Could not load leaderboard: " + err.message;
+            }
+        }
+    }
+
+    // ── SSE-driven updates ─────────────────────────────────────────────────────
+    // Subscribe to the leaderboard change stream. The server sends a 'changed'
+    // event whenever gui_runs_summary.csv is modified, plus one immediately on
+    // connect. A fallback interval handles reconnect gaps.
+    var _lbFallbackInterval = null;
+
+    function _startLeaderboardStream() {
+        var es = new EventSource("/launcher/api/leaderboard/stream");
+        es.addEventListener("changed", function () { loadLeaderboard(); });
+        es.onerror = function () {
+            es.close();
+            // On error, keep polling at a slower rate until the stream comes back.
+            if (!_lbFallbackInterval) {
+                _lbFallbackInterval = setInterval(function () {
+                    loadLeaderboard();
+                    // Retry SSE connection.
+                    clearInterval(_lbFallbackInterval);
+                    _lbFallbackInterval = null;
+                    _startLeaderboardStream();
+                }, 5000);
+            }
+        };
+    }
+
+    _startLeaderboardStream();
+
+    // M6: Done — Home clears wizard state and stops any residual run.
+    (function () {
+      function clearWizardState() {
+        ["aiscoOverrideFolderV3", "aiscoAssemblyFrozenV3", "aiscoConfigFrozenV3",
+         "aiscoRunLaunchedV3", "aiscoPendingAssemblyIdV3", "aiscoReturnUrlV3"
+        ].forEach(k => localStorage.removeItem(k));
+        console.info("[AISCO] Wizard state cleared.");
+      }
+      document.getElementById("doneHomeBtn").addEventListener("click", async (e) => {
+        e.preventDefault();
+        try { await fetch("/launcher/api/run/home-reset", { method: "POST" }); } catch (_) {}
+        clearWizardState();
+        window.location.href = "/";
+      });
+    }());
+</script>
+{% endblock %}

@@ -1,0 +1,286 @@
+"""CSV metrics writer for per-run epoch tracking and global summary.
+
+Two outputs:
+- Per-run: ``{run_dir}/epoch_metrics.csv`` — one row per epoch, appended live.
+- Global:  ``{summary_path}``             — one row per GUI run (upserted), final
+  epoch values so every run appears at its latest known state.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import csv
+import logging
+import socket
+import threading
+from datetime import UTC, datetime
+from pathlib import Path
+
+LOGGER = logging.getLogger(__name__)
+
+_PER_RUN_FIELDS = ("epoch", "timestamp", "drag_value", "solar_power_w", "cruising_speed_ms")
+_SUMMARY_FIELDS = ("run_id", "cfg_session", "timestamp", "epoch", "drag_value", "solar_power_w", "cruising_speed_ms", "device_id")
+
+
+def _fmt(value: float | None) -> str:
+    """Format a float metric for CSV; None becomes an empty string."""
+    if value is None:
+        return ""
+    return repr(value)
+
+
+def _parse_float(raw: str) -> float | None:
+    """Parse a CSV cell back to float, returning None for empty/invalid cells."""
+    stripped = raw.strip()
+    if not stripped:
+        return None
+    with contextlib.suppress(ValueError):
+        return float(stripped)
+    return None
+
+
+class CSVMetricsWriter:
+    """Thread-safe writer for epoch metrics CSVs.
+
+    Args:
+        summary_path: Absolute path to the global ``gui_runs_summary.csv``.
+    """
+
+    def __init__(self, summary_path: Path) -> None:
+        self._summary_path = summary_path
+        self._lock = threading.Lock()
+
+    # ------------------------------------------------------------------
+    # Per-run CSV
+    # ------------------------------------------------------------------
+
+    def write_epoch_row(
+        self,
+        run_dir: Path,
+        epoch: int,
+        drag_value: float | None,
+        solar_power_w: float | None,
+        cruising_speed_ms: float | None,
+    ) -> None:
+        """Append one epoch row to ``run_dir/epoch_metrics.csv``.
+
+        Creates the file with a header on first call; appends thereafter.
+
+        Args:
+            run_dir: WP4 output directory for the current run.
+            epoch: Zero-based epoch index.
+            drag_value: Predicted drag force in Newtons, or None if unavailable.
+            solar_power_w: Solar output in Watts, or None if unavailable.
+            cruising_speed_ms: Cruising speed estimate in m/s, or None if unavailable.
+        """
+        csv_path = run_dir / "epoch_metrics.csv"
+        row = {
+            "epoch": epoch,
+            "timestamp": datetime.now(tz=UTC).isoformat(timespec="seconds"),
+            "drag_value": _fmt(drag_value),
+            "solar_power_w": _fmt(solar_power_w),
+            "cruising_speed_ms": _fmt(cruising_speed_ms),
+        }
+        with self._lock:
+            needs_header = not csv_path.exists()
+            try:
+                with csv_path.open("a", newline="", encoding="utf-8") as fh:
+                    writer = csv.DictWriter(fh, fieldnames=_PER_RUN_FIELDS)
+                    if needs_header:
+                        writer.writeheader()
+                    writer.writerow(row)
+            except OSError as exc:
+                LOGGER.warning("Could not write epoch CSV %s: %s", csv_path, exc)
+
+    # ------------------------------------------------------------------
+    # Global summary CSV
+    # ------------------------------------------------------------------
+
+    def write_summary_row(
+        self,
+        run_id: str,
+        cfg_session: str,
+        epoch: int,
+        drag_value: float | None,
+        solar_power_w: float | None,
+        cruising_speed_ms: float | None,
+        device_id: str = "",
+    ) -> None:
+        """Upsert one row in the global summary CSV.
+
+        If a row for ``run_id`` already exists it is updated in place; otherwise
+        a new row is appended.  Thread-safe via an instance-level lock.
+
+        Args:
+            run_id: Unique identifier for this run (e.g. W&B run name).
+            cfg_session: GUI override session basename (e.g. ``gui_override_20260521_123456``).
+            epoch: Current epoch (typically the latest/final epoch).
+            device_id: Hostname of the machine that produced this run.
+            drag_value: Drag force in Newtons, or None.
+            solar_power_w: Solar output in Watts, or None.
+            cruising_speed_ms: Cruising speed in m/s, or None.
+        """
+        new_row: dict[str, str] = {
+            "run_id": run_id,
+            "cfg_session": cfg_session,
+            "timestamp": datetime.now(tz=UTC).isoformat(timespec="seconds"),
+            "epoch": str(epoch),
+            "drag_value": _fmt(drag_value),
+            "solar_power_w": _fmt(solar_power_w),
+            "cruising_speed_ms": _fmt(cruising_speed_ms),
+            "device_id": device_id or socket.gethostname(),
+        }
+        with self._lock:
+            self._summary_path.parent.mkdir(parents=True, exist_ok=True)
+            existing: list[dict[str, str]] = []
+            if self._summary_path.exists():
+                try:
+                    with self._summary_path.open(newline="", encoding="utf-8") as fh:
+                        existing = list(csv.DictReader(fh))
+                except OSError as exc:
+                    LOGGER.warning("Could not read summary CSV %s: %s", self._summary_path, exc)
+
+            updated = False
+            for i, row in enumerate(existing):
+                if row.get("run_id") == run_id:
+                    existing[i] = new_row
+                    updated = True
+                    break
+            if not updated:
+                existing.append(new_row)
+
+            try:
+                with self._summary_path.open("w", newline="", encoding="utf-8") as fh:
+                    writer = csv.DictWriter(fh, fieldnames=_SUMMARY_FIELDS)
+                    writer.writeheader()
+                    writer.writerows(existing)
+            except OSError as exc:
+                LOGGER.warning("Could not write summary CSV %s: %s", self._summary_path, exc)
+
+    # ------------------------------------------------------------------
+    # Read latest metrics
+    # ------------------------------------------------------------------
+
+    def read_latest_metrics(self, run_dir: Path) -> dict[str, int | float | None]:
+        """Return the last row of ``run_dir/epoch_metrics.csv`` as a dict.
+
+        Returns an empty dict when the file does not exist or is empty.
+
+        Args:
+            run_dir: WP4 output directory for the current run.
+
+        Returns:
+            Dict with keys ``epoch``, ``drag_value``, ``solar_power_w``,
+            ``cruising_speed_ms``, or ``{}`` if unavailable.
+        """
+        csv_path = run_dir / "epoch_metrics.csv"
+        if not csv_path.exists():
+            return {}
+        try:
+            with csv_path.open(newline="", encoding="utf-8") as fh:
+                rows = list(csv.DictReader(fh))
+        except OSError as exc:
+            LOGGER.warning("Could not read epoch CSV %s: %s", csv_path, exc)
+            return {}
+        if not rows:
+            return {}
+        # Return the row with the highest valid epoch, ignoring spurious header
+        # duplicates (which produce non-integer epoch cells).
+        best_epoch: int = -1
+        best_row: dict[str, str] | None = None
+        for row in rows:
+            with contextlib.suppress(ValueError):
+                ep = int((row.get("epoch", "") or "").strip())
+                if ep > best_epoch:
+                    best_epoch = ep
+                    best_row = row
+        if best_row is None:
+            return {}
+        return {
+            "epoch": best_epoch,
+            "drag_value": _parse_float(best_row.get("drag_value", "")),
+            "solar_power_w": _parse_float(best_row.get("solar_power_w", "")),
+            "cruising_speed_ms": _parse_float(best_row.get("cruising_speed_ms", "")),
+        }
+
+    def read_metric_history(self, run_dir: Path, limit: int = 120) -> dict[str, list[float | int | None]]:
+        """Return trailing epoch-series from ``run_dir/epoch_metrics.csv``.
+
+        Args:
+            run_dir: WP4 output directory for the current run.
+            limit: Maximum number of trailing rows to return.
+
+        Returns:
+            Dict with aligned arrays: ``epoch``, ``drag_value``,
+            ``solar_power_w``, ``cruising_speed_ms``.
+        """
+        csv_path = run_dir / "epoch_metrics.csv"
+        empty: dict[str, list[float | int | None]] = {
+            "epoch": [],
+            "drag_value": [],
+            "solar_power_w": [],
+            "cruising_speed_ms": [],
+        }
+        if not csv_path.exists():
+            return empty
+        try:
+            with csv_path.open(newline="", encoding="utf-8") as fh:
+                rows = list(csv.DictReader(fh))
+        except OSError as exc:
+            LOGGER.warning("Could not read epoch history CSV %s: %s", csv_path, exc)
+            return empty
+        if not rows:
+            return empty
+
+        # Deduplicate by epoch: last occurrence of each epoch number wins.
+        # This guards against duplicate rows produced by concurrent writes.
+        seen: dict[int, dict[str, str]] = {}
+        for row in rows:
+            with contextlib.suppress(ValueError):
+                ep = int((row.get("epoch", "") or "").strip())
+                seen[ep] = row
+        if not seen:
+            return empty
+        deduped = [seen[ep] for ep in sorted(seen.keys())]
+        tail = deduped[-max(1, int(limit)) :]
+        history: dict[str, list[float | int | None]] = {
+            "epoch": [],
+            "drag_value": [],
+            "solar_power_w": [],
+            "cruising_speed_ms": [],
+        }
+        for row in tail:
+            epoch_raw = (row.get("epoch", "") or "").strip()
+            epoch: int | None = None
+            with contextlib.suppress(ValueError):
+                epoch = int(epoch_raw)
+            history["epoch"].append(epoch)
+            history["drag_value"].append(_parse_float(row.get("drag_value", "")))
+            history["solar_power_w"].append(_parse_float(row.get("solar_power_w", "")))
+            history["cruising_speed_ms"].append(_parse_float(row.get("cruising_speed_ms", "")))
+        return history
+
+    def read_histories_by_run_id(
+        self,
+        storage_root: Path,
+        run_ids: list[str],
+        limit: int = 40,
+    ) -> dict[str, dict[str, list[float | int | None]]]:
+        """Return trailing metric histories for multiple run IDs.
+
+        This method scans ``storage_root`` for ``epoch_metrics.csv`` files and
+        maps run directory names to history payloads.
+        """
+        wanted = {rid for rid in run_ids if rid}
+        out: dict[str, dict[str, list[float | int | None]]] = {}
+        if not wanted or not storage_root.exists():
+            return out
+
+        for csv_path in storage_root.rglob("epoch_metrics.csv"):
+            run_id = csv_path.parent.name
+            if run_id not in wanted:
+                continue
+            out[run_id] = self.read_metric_history(csv_path.parent, limit=limit)
+            if len(out) >= len(wanted):
+                break
+        return out

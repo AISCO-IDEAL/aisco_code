@@ -3,24 +3,35 @@
 from __future__ import annotations
 
 import json
+import uuid as uuid_module
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
+import torch
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from subprojects.wp7_gui.v3.core.settings import SETTINGS
 from subprojects.wp7_gui.v3.shared.artifact_index import list_artifacts
+from subprojects.wp7_gui.v3.shared.csv_metrics import CSVMetricsWriter
+from subprojects.wp7_gui.v3.shared.latent_explorer import (
+    extract_mesh_glb,
+    find_last_epoch_checkpoint,
+    get_leaderboard_csv_path,
+    is_checkpoint_path_allowed,
+    load_checkpoint_info,
+    resolve_named_run_path,
+)
 from subprojects.wp7_gui.v3.shared.panel_visibility import load_panel_visibility_defaults
-from subprojects.wp7_gui.v3.shared.pretraining import PretrainingService
 from subprojects.wp7_gui.v3.shared.run_paths import default_storage_root, get_storage_root_for_session, list_all_runs
 from subprojects.wp7_gui.v3.shared.theme import build_template_theme_context, get_mesh_assembly_config, load_vis_config
 
 router = APIRouter(prefix="/viewer", tags=["viewer"])
 _templates = Jinja2Templates(directory=str(SETTINGS.templates_dir))
-_pretraining = PretrainingService(SETTINGS.pretraining_storage_root)
+_csv_metrics = CSVMetricsWriter(get_leaderboard_csv_path(SETTINGS.logs_dir / "gui_runs_summary.csv"))
 
 _OVERRIDE_PREFIX = "gui_override_"
 
@@ -54,21 +65,6 @@ def viewer_index(request: Request):
             "page_title": "Viewer — Runs",
             "panel_visibility_defaults_json": json.dumps(load_panel_visibility_defaults(SETTINGS.panel_visibility_defaults_path)),
             "mesh_priority_json": SETTINGS.mesh_priority_path.read_text(encoding="utf-8"),
-            **theme_ctx,
-        },
-    )
-
-
-@router.get("/pretraining")
-def viewer_pretraining(request: Request):
-    theme_ctx = build_template_theme_context()
-    return _templates.TemplateResponse(
-        request,
-        "viewer/pretraining.html",
-        {
-            "active_mode": "viewer",
-            "active_page": "pretraining",
-            "page_title": "Viewer — Pretraining GIFs",
             **theme_ctx,
         },
     )
@@ -116,14 +112,209 @@ def api_run_artifacts(run_id: str) -> dict[str, Any]:
     return list_artifacts(run_dir, storage_root)
 
 
-# ---------------------------------------------------------------------------
-# Pretraining API
-# ---------------------------------------------------------------------------
-@router.get("/api/pretraining/gifs")
-def api_pretraining_gifs() -> dict[str, Any]:
-    return _pretraining.list_gifs()
+@router.get("/api/runs/{run_id:path}/metrics")
+def api_run_metrics(run_id: str) -> dict[str, Any]:
+    """Return epoch metrics for a finished run (reads epoch_metrics.csv).
+
+    Returns latest values and full history arrays in the same format as the
+    launcher's /api/run/metrics/latest and /api/run/metrics/history endpoints.
+
+    Args:
+        run_id: URL-encoded relative path from storage_root.
+
+    Returns:
+        JSON with ``found``, ``run_dir``, ``latest`` (dict or null), and
+        ``history`` (dict with epoch/drag_value/solar_power_w/cruising_speed_ms arrays).
+    """
+    storage_root = default_storage_root()
+    run_dir = (storage_root / unquote(run_id)).resolve()
+    try:
+        run_dir.relative_to(storage_root.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail={"message": "run_id is outside storage root"}) from None
+    if not run_dir.is_dir():
+        raise HTTPException(status_code=404, detail={"message": "Run directory not found"})
+
+    _empty_history: dict[str, list[Any]] = {
+        "epoch": [],
+        "drag_value": [],
+        "solar_power_w": [],
+        "cruising_speed_ms": [],
+    }
+    latest = _csv_metrics.read_latest_metrics(run_dir)
+    if not latest:
+        return {"found": False, "run_dir": str(run_dir), "latest": None, "history": _empty_history}
+    history = _csv_metrics.read_metric_history(run_dir)
+    return {"found": True, "run_dir": str(run_dir), "latest": latest, "history": history}
 
 
-@router.get("/api/pretraining/gif-file")
-def api_pretraining_gif_file(path: str = "") -> FileResponse:
-    return _pretraining.get_gif_response(path)
+# ---------------------------------------------------------------------------
+# Latent Explorer page + API
+# ---------------------------------------------------------------------------
+
+_LATENT_MESH_DIR = SETTINGS.cache_dir / "latent_meshes"
+_DEFAULT_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+
+class _LoadCheckpointBody(BaseModel):
+    checkpoint_path: str
+
+
+class _LoadNamedRunBody(BaseModel):
+    config: str
+    run: str
+
+
+class _QueryMeshBody(BaseModel):
+    checkpoint_path: str
+    z0: float
+    z1: float
+    resolution: int = 35
+
+
+@router.get("/latent-explorer")
+def viewer_latent_explorer(request: Request) -> Any:
+    theme_ctx = build_template_theme_context()
+    return _templates.TemplateResponse(
+        request,
+        "viewer/latent_explorer.html",
+        {
+            "active_mode": "launcher",
+            "pipeline": "completed",
+            "active_page": "latent-explorer",
+            "page_title": "Latent Explorer",
+            **theme_ctx,
+        },
+    )
+
+
+@router.post("/api/latent/load-checkpoint")
+def api_latent_load_checkpoint(body: _LoadCheckpointBody) -> JSONResponse:
+    """Load a checkpoint and return latent-space metadata.
+
+    The model is cached for subsequent mesh queries.
+    """
+    ckpt_path = Path(body.checkpoint_path)
+    if not is_checkpoint_path_allowed(ckpt_path):
+        raise HTTPException(
+            status_code=400,
+            detail={"message": f"Checkpoint path is not in an allowed directory: {ckpt_path}"},
+        )
+    try:
+        ckpt_path = find_last_epoch_checkpoint(ckpt_path)
+        device = torch.device(_DEFAULT_DEVICE)
+        info = load_checkpoint_info(ckpt_path, device)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
+    return JSONResponse(
+        content={
+            "resolved_path": str(ckpt_path),
+            "z_dim": info["z_dim"],
+            "z_radius": info["z_radius"],
+            "z_pretrained": info["z_pretrained"],
+        }
+    )
+
+
+@router.post("/api/latent/load-named-run")
+def api_latent_load_named_run(body: _LoadNamedRunBody) -> JSONResponse:
+    """Load a checkpoint for one of the 6 named runs (config + run letter A/B).
+
+    Resolves the run directory from beast_storage_dir/Completed/, finds the
+    highest-epoch checkpoint, and returns latent-space metadata.
+
+    Args:
+        body: JSON body with ``config`` (e.g. "3w-2f1b") and ``run`` ("A" or "B").
+
+    Returns:
+        JSON with resolved_path, z_dim, z_radius, z_pretrained.
+    """
+    try:
+        run_dir = resolve_named_run_path(body.config, body.run)
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
+    try:
+        ckpt_path = find_last_epoch_checkpoint(run_dir)
+        device = torch.device(_DEFAULT_DEVICE)
+        info = load_checkpoint_info(ckpt_path, device)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
+    return JSONResponse(
+        content={
+            "resolved_path": str(ckpt_path),
+            "z_dim": info["z_dim"],
+            "z_radius": info["z_radius"],
+            "z_pretrained": info["z_pretrained"],
+        }
+    )
+
+
+@router.post("/api/latent/query-mesh")
+def api_latent_query_mesh(body: _QueryMeshBody) -> JSONResponse:
+    """Extract the aeroshell mesh at the given latent point and return a URL."""
+    ckpt_path = Path(body.checkpoint_path)
+    if not is_checkpoint_path_allowed(ckpt_path):
+        raise HTTPException(
+            status_code=400,
+            detail={"message": f"Checkpoint path is not in an allowed directory: {ckpt_path}"},
+        )
+
+    if not (1 <= body.resolution <= 100):
+        raise HTTPException(status_code=400, detail={"message": "resolution must be between 1 and 100"})
+
+    _LATENT_MESH_DIR.mkdir(parents=True, exist_ok=True)
+    mesh_id = str(uuid_module.uuid4())
+    glb_path = _LATENT_MESH_DIR / f"{mesh_id}.glb"
+
+    try:
+        device = torch.device(_DEFAULT_DEVICE)
+        glb_bytes, metrics, cp_glb, solar_glb = extract_mesh_glb(
+            ckpt_path=ckpt_path,
+            z0=body.z0,
+            z1=body.z1,
+            resolution=body.resolution,
+            device=device,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail={"message": str(exc)}) from exc
+
+    glb_path.write_bytes(glb_bytes)
+    mesh_url = f"/viewer/api/latent/mesh-file?id={mesh_id}&path=mesh.glb"
+
+    cp_mesh_url: str | None = None
+    if cp_glb is not None:
+        (_LATENT_MESH_DIR / f"{mesh_id}_cp.glb").write_bytes(cp_glb)
+        cp_mesh_url = f"/viewer/api/latent/mesh-file?id={mesh_id}_cp&path=mesh.glb"
+
+    solar_mesh_url: str | None = None
+    if solar_glb is not None:
+        (_LATENT_MESH_DIR / f"{mesh_id}_solar.glb").write_bytes(solar_glb)
+        solar_mesh_url = f"/viewer/api/latent/mesh-file?id={mesh_id}_solar&path=mesh.glb"
+
+    return JSONResponse(
+        content={
+            "mesh_url": mesh_url,
+            "drag_value": metrics.get("drag_value"),
+            "solar_power_w": metrics.get("solar_power_w"),
+            "cruising_speed_ms": metrics.get("cruising_speed_ms"),
+            "cp_mesh_url": cp_mesh_url,
+            "solar_mesh_url": solar_mesh_url,
+        }
+    )
+
+
+@router.get("/api/latent/mesh-file")
+def api_latent_mesh_file(id: str = "", path: str = "") -> FileResponse:  # noqa: ARG001  # path param consumed by mesh_viewer.js extension detection, not by this handler
+    """Serve a previously generated GLB mesh file by its UUID."""
+    if not id or "/" in id or "\\" in id or ".." in id:
+        raise HTTPException(status_code=400, detail={"message": "Invalid mesh id"})
+    glb_path = (_LATENT_MESH_DIR / f"{id}.glb").resolve()
+    try:
+        glb_path.relative_to(_LATENT_MESH_DIR.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail={"message": "Invalid mesh id"}) from None
+    if not glb_path.exists():
+        raise HTTPException(status_code=404, detail={"message": "Mesh file not found"})
+    return FileResponse(str(glb_path), media_type="model/gltf-binary")
