@@ -99,6 +99,7 @@ wp7_gui = [
   "fastapi",
   "pydantic",
   "uvicorn",
+  "httplib2",
 ]
 
 testing = [
