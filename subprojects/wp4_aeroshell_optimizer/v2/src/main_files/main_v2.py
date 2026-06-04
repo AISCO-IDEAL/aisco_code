@@ -374,7 +374,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         if run_locally:
             solitary_base_dir = Path(_local_storage_root) / "pretraining" / "solitary_pretraining"
         else:
-            solitary_base_dir = Path("/cluster/work/fuge/AISCO/pretraining/solitary_pretraining")
+            solitary_base_dir = Path(general_config["storage_paths"]["storage_dir"]) / "pretraining" / "solitary_pretraining"
 
         pretrained_hash = _compute_solitary_pretrain_hash(pretraining_config, model)
         pretrained_model_path: Path = _resolve_solitary_ckpt_path(pretraining_config, model, solitary_base_dir)

@@ -1,6 +1,6 @@
 # This file is designed for external users to easily experiment with our codebase.
 
-enabled: false                          # Set to true to enable these overrides. When false, all settings here are ignored and the WP1/ WP4 config files are used.
+enabled: true                          # Set to true to enable these overrides. When false, all settings here are ignored and the WP1/ WP4 config files are used.
 
 # WP1 (CFD AI) overrides
 wp1:
