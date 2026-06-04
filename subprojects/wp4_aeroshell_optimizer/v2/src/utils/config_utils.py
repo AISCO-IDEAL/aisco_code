@@ -435,6 +435,81 @@ def load_config(v: str = "v2", cfg_name: str = "general_config.yaml") -> dict:
     return config
 
 
+def _deep_merge(base: dict, overrides: dict) -> None:
+    """Recursively merge *overrides* into *base* in place."""
+    for key, value in overrides.items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
+
+
+def _load_wp4_user_overrides() -> dict:
+    """Return the ``wp4`` section of user_overrides.yaml, or {} if absent/disabled."""
+    path = Path.home() / "AISCO_code" / "user_overrides.yaml"
+    if not path.exists():
+        return {}
+    with path.open() as f:
+        data = yaml.safe_load(f) or {}
+    if not data.get("enabled", True):
+        return {}
+    return data.get("wp4", {})
+
+
+def apply_user_overrides(config: dict) -> None:
+    """Deep-merge user_overrides.yaml[wp4][general_config] into *config* in place.
+
+    Called immediately after loading general_config, before register_all_configs.
+    Only keys nested under ``general_config:`` (or a top-level flat key that has
+    no config-file prefix) are applied here.  Per-sub-config overrides are applied
+    later by :func:`apply_user_overrides_to_registry`.
+
+    Does nothing if the file is missing or ``enabled: false`` is set.
+    """
+    wp4_overrides = _load_wp4_user_overrides()
+    general_overrides = wp4_overrides.get("general_config", {})
+    if general_overrides:
+        _deep_merge(config, general_overrides)
+
+
+def apply_user_overrides_to_registry() -> None:
+    """Deep-merge user_overrides.yaml[wp4] sub-config entries into the registry.
+
+    Must be called after :func:`register_all_configs` so the registry is populated.
+    Each key under ``wp4:`` (other than ``general_config``) is treated as a config
+    registry key (filename without ``.yaml``), e.g.::
+
+        wp4:
+          general_config:                          # → general_config.yaml
+            wandb_general:
+              entity_name: "my_username"
+          training_v0_config:                      # → training_v0_config.yaml
+            training_params:
+              learning_rate: 0.0005
+          solar_configs/solar_loss_config:         # → solar_configs/solar_loss_config.yaml
+            SolarLossConfigV3:
+              method: "new_method"
+
+    Unrecognised keys are logged as warnings and skipped.
+    Does nothing if the registry is not yet initialised.
+    """
+    if not _registry_initialised:
+        return
+    wp4_overrides = _load_wp4_user_overrides()
+    for cfg_key_raw, overrides in wp4_overrides.items():
+        if not isinstance(overrides, dict):
+            continue
+        key = _cfg_key(cfg_key_raw)
+        if key not in _config_registry:
+            warn(
+                f"user_overrides.yaml: wp4 key '{cfg_key_raw}' does not match any "
+                "registered config — skipping.",
+                stacklevel=2,
+            )
+            continue
+        _deep_merge(_config_registry[key], overrides)
+
+
 def build_optimizer(params, training_params: dict, v: str = "v2") -> torch.optim.Optimizer:
     """Load optimizer preset from optimizers.json and instantiate it.
 

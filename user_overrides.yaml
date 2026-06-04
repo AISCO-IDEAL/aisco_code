@@ -1,0 +1,15 @@
+# Set 'enabled: false' to disable all overrides without deleting this file.
+enabled: false
+
+# WP1 (CFD AI) overrides
+wp1:
+  setup:
+    wandb_entity: "aisco"
+
+# WP4 (aeroshell optimizer) overrides
+wp4:
+  general_config:
+    wandb_general:
+      entity_name: "aisco"
+      project_name: "sali"
+      wandb_dir: "/cluster/scratch/roarnold"

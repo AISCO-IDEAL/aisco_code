@@ -43,6 +43,8 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_v
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
     apply_sweep_overrides,
+    apply_user_overrides,
+    apply_user_overrides_to_registry,
     get_master_config,
     load_config,
     register_all_configs,
@@ -90,6 +92,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
     # 1. Load and register configs
     general_config: dict[str, Any] = load_config(v="v2", cfg_name="general_config.yaml")
+    apply_user_overrides(general_config)
     # Auto-detect environment: override run_locally if not on a known cluster
     if not is_cluster():
         general_config["general_info"]["run_locally"] = "True"
@@ -169,6 +172,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
     # TODO: Remove hardcoded seperate configs in the function
     register_all_configs(general_config, v="v2")
+    apply_user_overrides_to_registry()
     if wandb.run is not None:
         apply_sweep_overrides(dict(wandb.config))
         # Update wandb dashboard with the full patched master config
