@@ -17,7 +17,14 @@ from .src.models.model_baseclass import BaseModel
 from .src.models.WIRE_v2 import WIREV2
 
 # --- utils (kaolin_conversions → model_baseclass → visual_wrapper — no total_loss chain) ---
-from .src.utils.config_utils import apply_sweep_overrides, apply_user_overrides, apply_user_overrides_to_registry, get_master_config, load_config, register_all_configs
+from .src.utils.config_utils import (
+    apply_sweep_overrides,
+    apply_user_overrides,
+    apply_user_overrides_to_registry,
+    get_master_config,
+    load_config,
+    register_all_configs,
+)
 from .src.utils.dynamic_loading import dynamic_type_loading
 from .src.utils.hashing import dict_hashing
 from .src.utils.kaolin_conversions import get_diff_mesh

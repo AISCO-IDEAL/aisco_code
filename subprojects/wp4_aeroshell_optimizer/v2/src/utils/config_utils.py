@@ -502,8 +502,7 @@ def apply_user_overrides_to_registry() -> None:
         key = _cfg_key(cfg_key_raw)
         if key not in _config_registry:
             warn(
-                f"user_overrides.yaml: wp4 key '{cfg_key_raw}' does not match any "
-                "registered config — skipping.",
+                f"user_overrides.yaml: wp4 key '{cfg_key_raw}' does not match any registered config — skipping.",
                 stacklevel=2,
             )
             continue
