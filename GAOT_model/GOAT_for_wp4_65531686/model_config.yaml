@@ -1,0 +1,90 @@
+input_size: 6
+output_size: 2
+latent_tokens:
+- 128
+- 16
+- 8
+field_output_size: 1
+norm_domain:
+- - -1
+  - -1
+  - -1
+- - 1
+  - 1
+  - 1
+magno:
+  use_gno: true
+  gno_coord_dim: 3
+  neighbor_strategy: bidirectional
+  projection_channels: 220
+  in_gno_channel_mlp_hidden_layers:
+  - 64
+  - 64
+  - 64
+  out_gno_channel_mlp_hidden_layers:
+  - 64
+  lifting_channels: 13
+  gno_radius: 0.066
+  gno_use_torch_cluster: true
+  attention_type: cosine
+  use_geoembed:
+  - true
+  - false
+  embedding_method: statistical
+  encoder_feature_attr:
+  - pos
+  - c
+  mlp_type: linear
+  precompute_edges: false
+  asynchronous_graph_building: false
+  scales:
+  - 1.0
+  use_scale_weights: false
+  k_neighbors: 1
+  in_gno_transform_type: linear
+  out_gno_transform_type: linear
+  use_graph_cache: true
+  gno_use_torch_scatter: true
+  node_embedding: false
+  use_attn: null
+  pooling: max
+  sampling_strategy: null
+  max_neighbors: null
+  sample_ratio: null
+  decoder_sampling_strategy: ratio
+  decoder_sample_ratio: 0.65
+transformer:
+  patch_size: 2
+  hidden_size: 256
+  use_attn_norm: true
+  use_ffn_norm: true
+  norm_eps: 1.0e-06
+  num_layers: 5
+  positional_embedding: rope
+  use_long_range_skip: true
+  attn_config:
+    hidden_size: 256
+    num_heads: 8
+    num_kv_heads: 8
+    use_conditional_norm: false
+    cond_norm_hidden_size: 4
+    atten_dropout: 0.1
+    positional_embedding: rope
+  ffn_config:
+    hidden_size: 1024
+    use_conditional_norm: false
+    cond_norm_hidden_size: 4
+decoder:
+  hidden_features: 256
+  num_shared_layers: 3
+  output_heads: {}
+scalar_encoder:
+  enabled: true
+  features:
+  - scale_factors
+  - bbox_center
+  hidden_dim: 128
+  mode: film
+  position_aware: true
+  num_film_layers: 3
+  film_init_scale: 0.01

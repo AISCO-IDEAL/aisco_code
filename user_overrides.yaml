@@ -1,10 +1,17 @@
-# Set 'enabled: false' to disable all overrides without deleting this file.
-enabled: false
+# This file is designed for external users to easily experiment with our codebase.
+
+enabled: false                          # Set to true to enable these overrides. When false, all settings here are ignored and the WP1/ WP4 config files are used.
 
 # WP1 (CFD AI) overrides
 wp1:
   setup:
     wandb_entity: "aisco"
+  path:
+    ckpt_path: "~/AISCO_code/GAOT_model/_NAME___RUN_ID_/model.pt"
+    loss_path: "~/AISCO_code/GAOT_model/_NAME___RUN_ID_/loss.png"
+    result_path: "~/AISCO_code/GAOT_model/_NAME___RUN_ID_/results.png"
+    config_save_path: "~/AISCO_code/GAOT_model/_NAME___RUN_ID_/config.yaml"
+    database_path: "~/AISCO_code/GAOT_model/metrics.csv"
 
 # WP4 (aeroshell optimizer) overrides
 wp4:
@@ -13,3 +20,10 @@ wp4:
       entity_name: "aisco"
       project_name: "sali"
       wandb_dir: "/cluster/scratch/roarnold"
+    storage_paths:
+      storage_dir: "/cluster/scratch/roarnold/SALI"
+  losses_v0_config:
+    cfd:
+      model_id: 65531686
+      metrics_csv_path:
+        _euler: "~/AISCO_code/GAOT_model/metrics.csv"         # DO NOT CHANGE!!!
