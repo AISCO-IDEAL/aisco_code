@@ -1,6 +1,6 @@
 # This file is designed for external users to easily experiment with our codebase.
 
-enabled: true                          # Set to true to enable these overrides. When false, all settings here are ignored and the WP1/ WP4 config files are used.
+enabled: true                        # Set to true to enable these overrides. When false, all settings here are ignored and the WP1/ WP4 config files are used.
 
 # WP1 (CFD AI) overrides
 wp1:
@@ -19,9 +19,8 @@ wp4:
     wandb_general:
       entity_name: "aisco"
       project_name: "sali"
-      wandb_dir: "/cluster/scratch/roarnold"
     storage_paths:
-      storage_dir: "/cluster/scratch/roarnold/SALI"
+      storage_dir: "/cluster/scratch/roarnold/SALI2"
   losses_v0_config:
     cfd:
       model_id: 65531686
