@@ -73,7 +73,7 @@ class ModelLoader:
         ]
         csv_path = str(Path(csv_path).expanduser())
         model_id = str(self.cfd_config["model_id"])
-        print(f"[GAOT] Loading metrics CSV from: {csv_path} (model_id={model_id})", flush=True)  # temp debug
+        print(f"[GAOT] Loading metrics CSV from: {csv_path} (model_id={model_id})", flush=True)
         df = pd.read_csv(csv_path)
         df = pd.read_csv(csv_path, header=None) if df.empty else df
         legacy = "setup" not in df.columns or "path" not in df.columns
