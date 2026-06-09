@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Any
 
 import torch
-import wandb
 
+import wandb
 from subprojects.wp4_aeroshell_optimizer.v2.scripts.postprocess_gradient_conflict import build_conflict_gif
 from subprojects.wp4_aeroshell_optimizer.v2.src.GINN.diversity_manager import DiversityTrainer
 from subprojects.wp4_aeroshell_optimizer.v2.src.losses.alm import ALMManager
@@ -43,6 +43,8 @@ from subprojects.wp4_aeroshell_optimizer.v2.src.sampling_visualization.central_v
 )
 from subprojects.wp4_aeroshell_optimizer.v2.src.utils.config_utils import (
     apply_sweep_overrides,
+    apply_user_overrides,
+    apply_user_overrides_to_registry,
     get_master_config,
     load_config,
     register_all_configs,
@@ -90,6 +92,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
     # 1. Load and register configs
     general_config: dict[str, Any] = load_config(v="v2", cfg_name="general_config.yaml")
+    apply_user_overrides(general_config)
     # Auto-detect environment: override run_locally if not on a known cluster
     if not is_cluster():
         general_config["general_info"]["run_locally"] = "True"
@@ -130,7 +133,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
                 project=general_config["wandb_general"]["project_name"],
                 name=wandb_run_name,
                 config=general_config,
-                dir=general_config["wandb_general"].get("wandb_dir", "/tmp"),
+                dir=os.path.expandvars(general_config["wandb_general"].get("wandb_dir", "$SCRATCH")),
             )
             # On Euler, append job ID to wandb's auto-generated name for uniqueness
             if not run_locally:
@@ -169,6 +172,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
     # TODO: Remove hardcoded seperate configs in the function
     register_all_configs(general_config, v="v2")
+    apply_user_overrides_to_registry()
     if wandb.run is not None:
         apply_sweep_overrides(dict(wandb.config))
         # Update wandb dashboard with the full patched master config
@@ -370,7 +374,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         if run_locally:
             solitary_base_dir = Path(_local_storage_root) / "pretraining" / "solitary_pretraining"
         else:
-            solitary_base_dir = Path("/cluster/work/fuge/AISCO/pretraining/solitary_pretraining")
+            solitary_base_dir = Path(general_config["storage_paths"]["storage_dir"]) / "pretraining" / "solitary_pretraining"
 
         pretrained_hash = _compute_solitary_pretrain_hash(pretraining_config, model)
         pretrained_model_path: Path = _resolve_solitary_ckpt_path(pretraining_config, model, solitary_base_dir)

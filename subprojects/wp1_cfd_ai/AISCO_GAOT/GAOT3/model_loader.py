@@ -5,14 +5,15 @@ import copy
 import os
 import warnings
 from dataclasses import replace as _replace
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pandas as pd
 import torch
-import wandb
 import yaml
 from torch_geometric.data import Batch, Data
 
+import wandb
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.sdf_influence import compute_sdf_parameter_influence
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.shear_force import ShearForce
 from subprojects.wp1_cfd_ai.AISCO_GAOT.GAOT3.src.dataloader.metadata import DATASET_METADATA
@@ -70,7 +71,9 @@ class ModelLoader:
                 Environment.SLURM: "_euler",
             }[detect_environment()]
         ]
+        csv_path = str(Path(csv_path).expanduser())
         model_id = str(self.cfd_config["model_id"])
+        print(f"[GAOT] Loading metrics CSV from: {csv_path} (model_id={model_id})", flush=True)
         df = pd.read_csv(csv_path)
         df = pd.read_csv(csv_path, header=None) if df.empty else df
         legacy = "setup" not in df.columns or "path" not in df.columns

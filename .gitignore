@@ -27,6 +27,9 @@
 !tests/**/
 !.github/
 !.github/**/
+# Whitelist GAOT model
+!GAOT_model/
+!GAOT_model/**
 # Whitelist OpenFOAM case template (extensionless dict files have no extension, so
 # the file-type whitelist below does not cover them)
 !subprojects/**/case_template/**

@@ -5,8 +5,10 @@ import platform
 import subprocess
 import sys
 from multiprocessing import Process
+from pathlib import Path
 
 import torch
+import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -16,9 +18,31 @@ from src.trainer.training_orchestrator import TrainingOrchestrator
 main_config: dict = {}
 
 
+def _deep_merge(base: dict, overrides: dict) -> None:
+    """Recursively merge *overrides* into *base* in place."""
+    for key, value in overrides.items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
+
+
+def _load_user_overrides() -> dict:
+    """Return ~/AISCO_code/user_overrides.yaml[wp1] when enabled, else {}."""
+    path = Path.home() / "AISCO_code" / "user_overrides.yaml"
+    if not path.exists():
+        return {}
+    with path.open() as f:
+        data = yaml.safe_load(f) or {}
+    if not data.get("enabled", True):
+        return {}
+    return data.get("wp1", {})
+
+
 def run_config_file(config_file: str, overrides: dict | None = None):
     main_config.clear()
     main_config.update(ConfigHandler().load_config(config_file, overrides=overrides))
+    _deep_merge(main_config, _load_user_overrides())
     return TrainingOrchestrator(main_config).run()
 
 
