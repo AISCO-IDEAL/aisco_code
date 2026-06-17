@@ -39,10 +39,35 @@ def _load_user_overrides() -> dict:
     return data.get("wp1", {})
 
 
+def _expand_path_overrides(config: dict) -> None:
+    """Expand ~ and substitute _NAME_/_RUN_ID_ placeholders in config['path'] strings.
+
+    Must be called after user overrides are deep-merged so that tilde paths and
+    template placeholders written in user_overrides.yaml are resolved against the
+    actual run name and job ID that are already present in config['setup'].
+
+    Args:
+        config: The fully merged config dict, mutated in place.
+    """
+    path_section = config.get("path")
+    if not isinstance(path_section, dict):
+        return
+    run_name: str = str(config.get("setup", {}).get("name", ""))
+    run_id: str = str(config.get("setup", {}).get("id", ""))
+    for key, raw in path_section.items():
+        if not isinstance(raw, str):
+            continue
+        expanded = os.path.expanduser(raw)
+        expanded = expanded.replace("_NAME_", run_name)
+        expanded = expanded.replace("_RUN_ID_", run_id)
+        path_section[key] = expanded
+
+
 def run_config_file(config_file: str, overrides: dict | None = None):
     main_config.clear()
     main_config.update(ConfigHandler().load_config(config_file, overrides=overrides))
     _deep_merge(main_config, _load_user_overrides())
+    _expand_path_overrides(main_config)
     return TrainingOrchestrator(main_config).run()
 
 

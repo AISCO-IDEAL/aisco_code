@@ -41,6 +41,7 @@ class TrainingOrchestrator:
                 checkpoint_handler.load_for_training(trainer)
                 trainer.fit()
                 if self.config["setup"].get("rank", 0) == 0:
+                    checkpoint_handler.save_checkpoint(trainer)
                     checkpoint_handler.save_model_config(trainer)
                     checkpoint_handler.copy_run_config()
             if self.config["setup"]["test"]:
@@ -82,12 +83,22 @@ class TrainingOrchestrator:
         trainer.test()
 
     def _append_datarow(self) -> None:
-        if os.path.exists(self.config["path"]["database_path"]):
-            database = pd.read_csv(self.config["path"]["database_path"])
+        new_row = pd.DataFrame([self.config["datarow"]])
+        db_path = self.config["path"]["database_path"]
+        if os.path.exists(db_path):
+            existing = pd.read_csv(db_path)
+            expected_cols = set(self.config["datarow"].keys())
+            if expected_cols.issubset(set(existing.columns)):
+                database = pd.concat([existing, new_row], ignore_index=True)
+            else:
+                # Schema mismatch: legacy file has no proper header row.
+                # Discard legacy content and start a clean file so the new
+                # run's row is written without padding commas or NaN columns.
+                logging.getLogger(__name__).warning("database_path %s has incompatible schema; starting fresh.", db_path)
+                database = new_row
         else:
-            database = pd.DataFrame(columns=self.config["datarow"].keys())
-        database.loc[len(database)] = self.config["datarow"]
-        database.to_csv(self.config["path"]["database_path"], index=False)
+            database = new_row
+        database.to_csv(db_path, index=False)
 
     def fit(self, _verbose=False):
         result = self.optimizer.optimise(self)

@@ -5,24 +5,40 @@ enabled: false                        # Set to true to enable these overrides. W
 # WP1 (CFD AI) overrides
 wp1:
   setup:
-    wandb_entity: "aisco"
+    wandb_entity: ""        # SET THIS!!
+    wandb_project: ""       # SET THIS!!
+  optimizer:
+    args:
+        epoch: 300
   path:
-    ckpt_path: "~/AISCO_code/GAOT_model/_NAME___RUN_ID_/model.pt"
-    loss_path: "~/AISCO_code/GAOT_model/_NAME___RUN_ID_/loss.png"
-    result_path: "~/AISCO_code/GAOT_model/_NAME___RUN_ID_/results.png"
-    config_save_path: "~/AISCO_code/GAOT_model/_NAME___RUN_ID_/config.yaml"
-    database_path: "~/AISCO_code/GAOT_model/metrics.csv"
+    ckpt_path: "~/AISCO_code/GAOT_model/_NAME___RUN_ID_/model.pt"             # DO NOT CHANGE!!!
+    loss_path: "~/AISCO_code/GAOT_model/_NAME___RUN_ID_/loss.png"             # DO NOT CHANGE!!!
+    result_path: "~/AISCO_code/GAOT_model/_NAME___RUN_ID_/results.png"        # DO NOT CHANGE!!!
+    config_save_path: "~/AISCO_code/GAOT_model/_NAME___RUN_ID_/config.yaml"   # DO NOT CHANGE!!!
+    database_path: "~/AISCO_code/GAOT_model/metrics.csv"                      # DO NOT CHANGE!!!
 
 # WP4 (aeroshell optimizer) overrides
 wp4:
   general_config:
     wandb_general:
-      entity_name: "aisco"
-      project_name: "sali"
+      entity_name: ""       # SET THIS!!
+      project_name: ""      # SET THIS!!
     storage_paths:
-      storage_dir: "/cluster/scratch/roarnold/SALI2"
+      storage_dir: ""       # SET THIS!!
   losses_v0_config:
+    aero: # one of these needs to be set to 1 (null_loss_aero to 1 deactivates the aerodynamic loss)
+      null_loss_aero: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
+      gaot_loss: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/aerodynamic_loss/gaot_loss.py"]
+    solar: # one of these needs to be set to 1 (null_loss_solar to 1 deactivates the solar loss)
+      solar_s_r: [1, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SR.py"] # single ray
+      solar_s_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_SRRT.py"] # single ray ray tracing
+      solar_m_r: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MR.py"]  # multi ray
+      solar_m_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MRRT.py"]  # multi ray ray tracing
+      null_loss_solar: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     cfd:
-      model_id: 65531686
+      model_id: 2716682
       metrics_csv_path:
         _euler: "~/AISCO_code/GAOT_model/metrics.csv"         # DO NOT CHANGE!!!
+  training_config:
+    training_params:
+      num_epochs: 250
