@@ -1,6 +1,6 @@
 # This file is designed for external users to easily experiment with our codebase.
 
-enabled: false                        # Set to true to enable these overrides. When false, all settings here are ignored and the WP1/ WP4 config files are used.
+enabled: true                        # Set to true to enable these overrides. When false, all settings here are ignored and the WP1/ WP4 config files are used.
 
 # WP1 (CFD AI) overrides
 wp1:
@@ -9,7 +9,7 @@ wp1:
     wandb_project: ""       # SET THIS!!
   optimizer:
     args:
-        epoch: 300
+        epoch: 300          # epoch number for GAOT Training
   path:
     ckpt_path: "~/AISCO_code/GAOT_model/_NAME___RUN_ID_/model.pt"             # DO NOT CHANGE!!!
     loss_path: "~/AISCO_code/GAOT_model/_NAME___RUN_ID_/loss.png"             # DO NOT CHANGE!!!
@@ -20,11 +20,13 @@ wp1:
 # WP4 (aeroshell optimizer) overrides
 wp4:
   general_config:
+    general_info:
+      latent_space: false   # train a latent space
     wandb_general:
       entity_name: ""       # SET THIS!!
       project_name: ""      # SET THIS!!
     storage_paths:
-      storage_dir: ""       # SET THIS!!
+      storage_dir: "cluster/work/fuge/AISCO/SALI"       # SET THIS!!
   losses_v0_config:
     aero: # one of these needs to be set to 1 (null_loss_aero to 1 deactivates the aerodynamic loss)
       null_loss_aero: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
@@ -36,9 +38,9 @@ wp4:
       solar_m_r_r_t: [0, 1.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/solar_loss/solar_MRRT.py"]  # multi ray ray tracing
       null_loss_solar: [0, 0.0, "subprojects/wp4_aeroshell_optimizer/v2/src/losses/universal_null_losses.py"]
     cfd:
-      model_id: 2716682
+      model_id: 65531686
       metrics_csv_path:
         _euler: "~/AISCO_code/GAOT_model/metrics.csv"         # DO NOT CHANGE!!!
   training_config:
     training_params:
-      num_epochs: 250
+      num_epochs: 10             # epoch number for optimisation loop
