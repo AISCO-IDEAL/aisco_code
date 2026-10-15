@@ -1,8 +1,8 @@
 <div align="center">
-  <h3>AI for Solar Car Optimisation</h3>
+  <h3>AISCO</h3>
   <p>
     <strong>Artificial Intelligence for Solar Car Optimisation</strong><br />
-    A focus project of aCentauri Solar Racing and ETH Zürich's IDEAL Lab.
+    A former focus project at ETH Zürich's IDEAL Lab and aCentauri Solar Racing.
   </p>
   <p>
     <a href="https://aisco.dev/">Website</a> ·
@@ -34,7 +34,7 @@
 </table>
 
 <p align="center"><small>
-  Supported by Prof. Dr. Mark Fuge · Dr. Soheyl Massoudi · Tim Aebersold · Shizheng Wen
+  Personal support by Prof. Dr. Mark Fuge · Dr. Soheyl Massoudi · Tim Aebersold · Shizheng Wen
 </small></p>
 
 <hr />
