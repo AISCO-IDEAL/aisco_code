@@ -1,45 +1,12 @@
 <div align="center">
-  <a href="./docs/index.html">
+  <a href="https://aisco.dev/">
     <img src="https://aisco.dev/assets/69e0fea1c5dcb303f101cd6f_schweizer-fahne-kaufen.jpg.png" alt="AISCO logo" width="180" />
   </a>
   <h2>AISCO - FOCUS PROJECT</h2>
-  <h3>AI for Solar Car Optimisation</h3>
   <p>
-    <strong>Artificial Intelligence for Solar Car Optimisation</strong><br />
-    A focus project of aCentauri Solar Racing and ETH Zürich's IDEAL Lab.
-  </p>
-  <p>
-    <a href="./docs/index.html"><strong>Open repository mirror (docs/index.html)</strong></a> ·
-    <a href="https://aisco.dev/">Live website</a> ·
-    <a href="https://aisco.dev/team-aisco">Team</a> ·
-    <a href="mailto:info@aisco.dev">info@aisco.dev</a>
+    <a href="https://aisco.dev/"><strong>Visit the official website: https://aisco.dev/</strong></a>
   </p>
 </div>
-
-> This repository contains a standalone static mirror of the public AISCO website at [`docs/index.html`](./docs/index.html), styled via [`docs/style.css`](./docs/style.css), while preserving the full technical setup documentation below.
-
-<hr />
-
-## Website mirror quick preview
-
-<table>
-  <tr>
-    <td width="50%" valign="top">
-      <h3>What is mirrored</h3>
-      <ul>
-        <li>AISCO hero and “FOCUS PROJECT” framing</li>
-        <li>Six project sections (Aeroshell Optimiser, Assembler, CFD AI, GUI, Solar Estimator, LLM | aCeBot)</li>
-        <li>Compact Team and Supporters sections</li>
-        <li>Footer/contact links with <code>info@aisco.dev</code></li>
-      </ul>
-    </td>
-    <td width="50%" valign="top">
-      <a href="./docs/index.html">
-        <img src="https://aisco.dev/assets/6a1362cbe7d0227e0f20060a_team.jpg" alt="AISCO mirror preview" width="100%" />
-      </a>
-    </td>
-  </tr>
-</table>
 
 <hr />
 
