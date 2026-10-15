@@ -24,57 +24,6 @@
   AISCO predicts aerodynamic drag using a self-built CFD-AI, dynamically balances aerodynamic performance with solar power input, and respects street-legal regulations.
 </p>
 
-<h2>Project components</h2>
-
-<table>
-  <tr>
-    <td width="33%" valign="top">
-      <h3>Aeroshell Optimiser</h3>
-      <img src="https://aisco.dev/assets/6a310989b0aad0ed3ded69dd_single.gif" alt="Aeroshell optimiser" width="100%" />
-      <p>Explores new aeroshell designs by minimising weighted aerodynamic and solar-performance losses. Designs are ranked by minimal race time.</p>
-    </td>
-    <td width="33%" valign="top">
-      <h3>Assembler</h3>
-      <img src="https://aisco.dev/assets/6a1464fb50fe2242b9237fe5_assembler3.png" alt="Assembler" width="100%" />
-      <p>Transforms regulations, spatial boundaries, vision standards, and internal components into buildable, compliant geometry.</p>
-    </td>
-    <td width="33%" valign="top">
-      <h3>CFD AI</h3>
-      <img src="https://aisco.dev/assets/6a310987f03fad7253753d8f_drag.gif" alt="CFD AI drag prediction" width="100%" />
-      <p>Predicts aerodynamic drag nearly instantaneously from vehicle geometry, replacing repeated high-fidelity CFD simulations during optimisation.</p>
-    </td>
-  </tr>
-  <tr>
-    <td width="33%" valign="top">
-      <h3>GUI</h3>
-      <img src="https://aisco.dev/assets/6a146d957b7d27d1026c4960_gui.png" alt="AISCO graphical user interface" width="100%" />
-      <p>Gives engineers control over design constraints, weights, and race regulations through an intuitive graphical interface.</p>
-    </td>
-    <td width="33%" valign="top">
-      <h3>Solar Estimator</h3>
-      <img src="https://aisco.dev/assets/6a3109868b98ff02cfc9ad9b_solar.gif" alt="Solar estimator" width="100%" />
-      <p>Models geometry-dependent solar effects and feeds estimated solar power back into the optimiser as a core loss function.</p>
-    </td>
-    <td width="33%" valign="top">
-      <h3>LLM · aCeBot</h3>
-      <img src="https://aisco.dev/assets/6a14648a76aae6da7ce5659f_llm2.png" alt="aCeBot" width="100%" />
-      <p>Provides structured access to internal documentation, chats, and project history to support knowledge transfer.</p>
-    </td>
-  </tr>
-</table>
-
-<h2>The team</h2>
-
-<p align="center">
-  <img src="https://aisco.dev/assets/6a1362cbe7d0227e0f20060a_team.jpg" alt="AISCO team" width="65%" />
-</p>
-
-<p align="center"><small>
-  9 ETH Focus Students and 9 Freelancers<br />
-  <strong>Back row:</strong> Emanuel Schärer · Clemens Huber · Kolja Diehl · Robin Arnold · Federico Sanchez<br />
-  <strong>Front row:</strong> Elias Huber · Tippi Engel · Alex Althaus · Victor Diekmann
-</small></p>
-
 <h2>Supporters</h2>
 
 <table>
