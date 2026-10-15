@@ -1,149 +1,122 @@
-# Setup and Usage Instructions for the AISCO_code Repository
+# AISCO Code
 
-## Setup
-Before starting, please make sure that you have set up Euler correctly and know the Euler workflows.
+Monorepo for AISCO workflows, including:
+- WP1: GAOT model training
+- WP4: aeroshell optimization loop
+- WP7: GUI for launching and viewing runs
+- supporting subprojects for geometry, meshing, and analysis
 
-* **1. Open a Terminal and log in to an Euler Login Node:**
-ssh username@euler.ethz.ch
+This README is a **first-time visitor guide** focused on getting a working run quickly.
 
-The Terminal then shows something like: `username@eu-login-XX:~$`
+## Repository map
 
+- `/subprojects/wp1_cfd_ai/` — GAOT training components
+- `/subprojects/wp2_assembler/` — no-build-zone/assembly geometry generation
+- `/subprojects/wp3_solar_estimator/` — solar and meshing-related tooling
+- `/subprojects/wp4_aeroshell_optimizer/` — optimization workflows (active)
+- `/subprojects/wp5/` — additional tooling and experiments
+- `/subprojects/wp7_gui/` — web GUI for run orchestration/viewing
+- `/user_overrides.yaml` — your user-level runtime overrides (critical)
 
-* **2. Clone the AISCO_code repository:**
-git clone git@github.com:IDEALLab/AISCO_code.git
+## Quickstart (Euler)
 
-* **3. Install the Virtual Environment `aisco_env`:**
-1. Request an SRUN-Job with an RTX Pro 6000:
+> Prerequisite: you can log in to Euler and run standard SLURM workflows.
+
+1) Log in:
+
+```bash
+ssh <username>@euler.ethz.ch
+```
+
+2) Clone this repository:
+
+```bash
+git clone git@github.com:AISCO-IDEAL/aisco_code.git
+cd aisco_code
+```
+
+3) Request an interactive GPU job for setup:
+
+```bash
 srun --cpus-per-task=1 --mem-per-cpu=8G --time=4:00:00 --gpus=pro_6000:1 --pty bash
+```
 
-2. Move to the previously cloned AISCO_code folder:
-cd ~/AISCO_code
+4) Install the virtual environment:
 
-3. Make the script executable:
+```bash
 chmod +x setup_euler_working.sh
+./setup_euler_working.sh
+```
 
-4. Install the Virtual Environment:
-~/AISCO_code/setup_euler_working.sh
+5) Activate the environment (every new terminal/session):
 
----
+```bash
+source aisco_env/bin/activate
+```
 
-## Usage
-The only file needed to change is `~/AISCO_code/user_overrides.yaml`.
+## First-run configuration (`user_overrides.yaml`)
 
-**Required parameter changes:**
-Running the AISCO_code repository requires the following changes to the `user_overrides.yaml` file.
+Before launching workflows, update `/user_overrides.yaml`:
 
-* Set the **enabled** flag on top of the `user_overrides.yaml` to **true**
-* Add your wandb setting for: `wp1.setup.wandb_entity`, `wp1.setup.wandb_project`, `wp4.general_config.wandb_general.entity_name`, and `wp4.general_config.wandb_general.project_name`
-* Add your storage path: `wp4.general_config.storage_paths.storage_dir`, e.g. `/cluster/work/fuge/AISCO/report_temp`
+### Required
+- Set top-level `enabled: true`
+- Set wandb values:
+  - `wp1.setup.wandb_entity`
+  - `wp1.setup.wandb_project`
+  - `wp4.general_config.wandb_general.entity_name`
+  - `wp4.general_config.wandb_general.project_name`
+- Set storage output path:
+  - `wp4.general_config.storage_paths.storage_dir`
+  - Example: `/cluster/work/fuge/AISCO/report_temp`
 
-**Optional parameter changes:**
-With the following keys you can tune the outcome of your GAOT model or the optimisation loop.
+### Common optional tuning
+- `wp1.optimizer.args.epoch` (GAOT training epochs)
+- `wp4.training_config.training_params.num_epochs` (optimization epochs)
+- `wp4.general_config.general_info.latent_space` (enable/disable latent-space training)
+- `wp4.losses_v0_config.aero` (choose GAOT aero loss vs null aero loss)
+- `wp4.losses_v0_config.solar` (choose active solar loss variant vs null solar loss)
 
-* `wp1.optimizer.args.epoch`: Epoch number for the GAOT model training
-* `wp4.general_config.general_info.latent_space`: Activate or deactivate the training of a latent space (true/ false)
-* `wp4.losses_v0_config.aero`: Decide whether to use the (set `gaot_loss` to 1) or deactivate (set `null_loss_aero` to 1) the aero loss, exactly one of the two losses needs to be set to 1, the other one to 0
-* `wp4.losses_v0_config.solar`: Decide which version of the solar loss to use or deactivate (set `null_loss_solar` to 1). Exactly one of these five loss versions needs to be set to 1, the others need to be 0: `solar_s_r` (one single sun ray without ray tracing), `solar_s_r_r_t` (single sun ray with active ray tracing), `solar_m_r` (multiple sun rays without ray tracing), and `solar_m_r_r_t` (multiple sun rays with active ray tracing).
-* `wp4.training_config.training_params.num_epochs`: Epoch number for the optimisation loop
+## Main workflows
 
-You can mainly do two things:
-* **Train a GAOT model** (requires permisson to access `cluster/work/fuge/AISCO/subprojects/wp1_cfd_ai`):
-sbatch ~/AISCO_codesubprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/slurm_scripts/wp1_main.sh
-(Optional parameter changes in the `user_overrides.yaml` file under WP1)
+### 1) Train a GAOT model (WP1)
 
-* **Run an optimisation loop:**
-sbatch ~/AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/slurm_scripts/main_testing.sh
-(Optional parameter changes in the `user_overrides.yaml` file under WP4)
+```bash
+sbatch ~/aisco_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/slurm_scripts/wp1_main.sh
+```
 
-If you want to change other settings, feel free to have a look at the configs yourself. The current active configs are:
+Notes:
+- Requires access to project storage used by WP1 data/workflows.
+- Tune WP1-related overrides in `/user_overrides.yaml` first.
 
-* GAOT Training: `~AISCO_code/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/main_config.yaml`.
-* Optimisation loop: all configs under `~AISCO_code/subprojects/wp4_aeroshell_optimizer/v2/configs`
+### 2) Run aeroshell optimization loop (WP4)
 
-Make sure to still activate the `user_overrides.yaml` for the required parameter changes to take action.
+```bash
+sbatch ~/aisco_code/subprojects/wp4_aeroshell_optimizer/v2/slurm_scripts/main_testing.sh
+```
 
+Notes:
+- Tune WP4-related overrides in `/user_overrides.yaml` first.
 
-----------------------------------------------------------------------------------------------------
+## Active config locations
 
+- WP1 GAOT training config:
+  - `/subprojects/wp1_cfd_ai/AISCO_GAOT/GAOT3/config/main_config.yaml`
+- WP4 optimization configs:
+  - `/subprojects/wp4_aeroshell_optimizer/v2/configs/`
 
-# OLD README, DO NOT USE THIS ANYMORE!
-# Welcome to AISCO_code
-You only find technical infos to get you coding here. All conceptual information can be found in `01 Knowledge Base/00 IT Tutorials / AISCO_code` on Obsidian.
+## Additional setup notes
 
-Lets clone the AISCO_code Repo via SSH:
-`git clone git@github.com:IDEALLab/AISCO_code.git`
+- BEAST setup notes: `/BEAST_SETUP_WORKING.md`
+- Alternative/legacy setup scripts exist in repository root:
+  - `setup_beast.sh`
+  - `setup_euler_new.sh`
+  - `setup_euler_old.sh`
+  - `setup_wsl.sh`
 
-## VS Code Plugins
-- install `python`
-- install `Git graph`
-	- click on `Git Graph` at the bottom left to open the plugin
-- install `ruff`
-- install `mypy type checker`
-- install 'PLY Viewer'
+## New contributor checklist
 
-## Important VS Code settings
-- open settings `ctrl + ,` -> enter `git blame` -> enable
-	- shows who edited what line of code => no tags necessary
-- open settings `ctrl + ,` -> enter `format on save` -> enable
-	- activates ruff, to make your code look nice and work well
-	- reduces ruff errors later on
-
-## hide unnecessary folders
-- open VS Code
-- `strg + , ` to open settings
-- search for `hide folders`
-- click on `add pattern`
-- add folder name starting with `**/`
-
-## Install entire aisco_env
-log in into Login Node
-start srun job
-`srun --cpus-per-task=1 --mem-per-cpu=8G --time=4:00:00 --gpus=pro_6000:1 --pty bash`
-Move to the AISCO_code folder
-`cd ~/AISCO_code`
-run
-`chmod +x setup_euler_working.sh`
-`~/AISCO_code/setup_euler_working.sh`
-Wait for approximately 15 mins until the setup finishes, and then cancel your srun job
--> congrats, you are all set!
-
-## Legacy Tutorial to install Setup whitout Blackwell-Architecture
-Temporarily change in the pyproject.toml the following dependencies to the following older versions:
-torch: 2.4.0,
-torchvision: 0.19.0,
-
-Install entire aisco_env
-on Matthews PC use setup_wsl.sh
-any outdated setup files can be found at commit 64f74931
-6. log in into Login Node
-7. start srun job
-
-`srun --cpus-per-task=1 --mem-per-cpu=8G --time=4:00:00 --gpus=1 --pty bash`
-Move to the AISCO_code folder
-cd ~/AISCO_code
-run
-`chmod +x ~/AISCO_code/setup_euler_old.sh`
-execute `~/AISCO_code/setup_euler_old.sh`
-make sure to install both, Kaolin and DISO when prompted
-after the script has finished run
-`module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6 eth_proxy`
-`source aisco_env/bin/activate`
-`python3 -m pip install -e '.[all]' --no-build-isolation`
-To fix a the setup problem in WP1 also run this at the end:
-`module purge`
-`module load stack/2024-06 gcc/12.2.0 cuda/12.1.1 python_cuda/3.11.6 eth_proxy`
-`source /cluster/home/$USER/AISCO_code/aisco_env/bin/activate`
-`python -m pip uninstall -y torch-cluster`
-`python -m pip install --no-cache-dir torch-cluster -f https://data.pyg.org/whl/torch-2.4.0+cu121.html`
--> congrats, you are all set!
-
-Add .so Files Manually
-On fresh install of aisco_env on Euler, you must add four .so files manually. This is due to incompatible GPUs of Euler and AISCO-BEAST.
-a) in /cluster/home/kdiehl/AISCO_code/subprojects/pydevelopability/pydevelopability add _devcore.cpython-311-x86_64-linux-gnu.so
-b) in /cluster/home/kdiehl/AISCO_code/subprojects/fixed_renderer/cuda add create_texture_image.cpython-311-x86_64-linux-gnu.so, load_textures.cpython-311-x86_64-linux-gnu.so and rasterize.cpython-311-x86_64-linux-gnu.so
-All these files are stored in /cluster/work/fuge/AISCO.
-
-
-## Environment Activation Guide (do this every time you open a new terminal)
-for AISCO, please activate myenv in the `cd ~/AISCO_code/` folder:
-`source aisco_env/bin/activate`
+1. Clone repository and create environment.
+2. Activate `aisco_env`.
+3. Update `/user_overrides.yaml` required fields.
+4. Launch either WP1 training or WP4 optimization via SLURM.
+5. Check logs/artifacts in your configured storage location.
