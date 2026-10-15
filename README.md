@@ -1,5 +1,4 @@
 <div align="center">
-  <img src="https://aisco.dev/assets/69e0fea1c5dcb303f101cd6f_schweizer-fahne-kaufen.jpg.png" alt="AISCO logo" width="180" />
   <h3>AI for Solar Car Optimisation</h3>
   <p>
     <strong>Artificial Intelligence for Solar Car Optimisation</strong><br />
@@ -17,11 +16,11 @@
 ## About AISCO
 
 <p align="center">
-  AISCO revolutionises the design process of solar race cars by exploring a diverse range of aeroshells, estimating their drag and solar performance, and ranking generated concepts by minimal race time.
+  AISCO revolutionised the design process of solar race cars by exploring a diverse range of aeroshells, estimating their drag and solar performance, and ranking generated concepts by minimal race time.
 </p>
 
 <p align="center">
-  AISCO predicts aerodynamic drag using a self-built CFD-AI, dynamically balances aerodynamic performance with solar power input, and respects street-legal regulations.
+  AISCO predicted aerodynamic drag using a self-built CFD-AI, dynamically balanced aerodynamic performance with solar power input, and respected street-legal regulations.
 </p>
 
 <h2>Supporters</h2>
