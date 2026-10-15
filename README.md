@@ -1,3 +1,110 @@
+# AISCO – AI for Solar Car Optimisation
+
+> **AISCO – Artificial Intelligence for Solar Car Optimisation** is a focus project of aCentauri Solar Racing and ETH Zürich's IDEAL Lab.
+>
+> This introduction is adapted from the project website at [aisco.dev](https://aisco.dev/).
+
+![Swiss flag](https://aisco.dev/assets/69e0fea1c5dcb303f101cd6f_schweizer-fahne-kaufen.jpg.png)
+
+## General introduction
+
+AISCO revolutionizes the design process of solar race cars. It accelerates car design by exploring a diverse range of aeroshells, estimating their drag and solar performance, and ranking generated aeroshell concepts by minimal race time.
+
+AISCO predicts aerodynamic drag using a self-built CFD-AI, dynamically balances the trade-off with solar power input, and respects street-legal regulations. The project focuses on exploring diverse car design concepts quickly.
+
+## Project components
+
+### Aeroshell Optimiser
+
+![Aeroshell optimiser](https://aisco.dev/assets/6a310989b0aad0ed3ded69dd_single.gif)
+
+Our vision is to explore a variety of new aeroshell designs. The optimiser maximises performance by minimising a cost function consisting of multiple weighted losses, ranging from aerodynamic performance to solar power efficiency. By weighting each loss separately, we can generate entirely new aeroshell forms. We then rank designs by minimal race time to drastically accelerate the team's exploration process.
+
+The Aeroshell Optimiser architecture is based on Geometry Informed Neural Networks and Wavelet Implicit Neural Representations.
+
+### Assembler
+
+![Assembler](https://aisco.dev/assets/6a1464fb50fe2242b9237fe5_assembler3.png)
+
+The assembler bridges engineering constraints and AI-driven design. Our aeroshell must fit within precise spatial boundaries, including World Solar Challenge regulations such as vision standards and internal physical components such as the battery pack. The assembler takes these regulations as inputs and intelligently positions components, transforming abstract constraints into buildable, compliant geometry.
+
+### CFD AI
+
+![CFD AI](https://aisco.dev/assets/6a310987f03fad7253753d8f_drag.gif)
+
+High-fidelity Reynolds-averaged Navier–Stokes simulations are computationally intensive and can take hours to converge on a single design. This bottleneck makes it impractical to iterate through the many geometries required for optimal aerodynamic performance.
+
+To overcome this limitation, we use deep learning to build surrogate models. Instead of repeatedly solving flow equations, the AI predicts aerodynamic drag nearly instantaneously from vehicle geometry. The prediction is integrated directly into the aeroshell optimiser as a loss function, creating a rapid feedback loop in which designs can be evaluated extremely quickly.
+
+### GUI
+
+![AISCO GUI](https://aisco.dev/assets/6a146d957b7d27d1026c4960_gui.png)
+
+We want users of the aeroshell optimisation model to remain in full control of their engineering designs. To achieve this, we are developing an intuitive graphical user interface (GUI) that allows team members to adjust specific constraints, weights, and race regulations. This interactive control panel will be particularly relevant and impactful for the upcoming Focus Rollout.
+
+### Solar Estimator
+
+![Solar estimator](https://aisco.dev/assets/6a3109868b98ff02cfc9ad9b_solar.gif)
+
+Solar power input depends on factors such as incidence angle, weather, deck incline, cell placement, and string arrangement. Almost all of these factors are directly dependent on the aeroshell geometry itself. To maximise efficiency, we model these variables and feed the estimated solar power back into the main aeroshell optimiser as a core loss function, ensuring that energy generation is prioritised.
+
+### LLM | aCeBot
+
+![aCeBot](https://aisco.dev/assets/6a14648a76aae6da7ce5659f_llm2.png)
+
+As a student-led team with more than four years of racing history, managing member turnover and knowledge transfer is critical to our long-term success. To address this, we are developing an internal knowledge tool called **aCeBot**. This large language model is trained on internal documentation, chats, and project history to provide fast, structured access to information and prevent the team from repeating past mistakes.
+
+## The team
+
+![AISCO team](https://aisco.dev/assets/6a1362cbe7d0227e0f20060a_team.jpg)
+
+The AISCO team consists of 9 ETH Focus Students and 9 Freelancers. The LLM team operates as an independent subsidiary led entirely by Freelancers, while the AISCO Focus Project is driven by Focus Students with support from Freelancers and under the supervision of Prof. Fuge's IDEAL Lab.
+
+**Back row (left to right):** Emanuel Schärer, Clemens Huber, Kolja Diehl, Robin Arnold, Federico Sanchez  
+**Front row (left to right):** Elias Huber, Tippi Engel, Alex Althaus, Victor Diekmann
+
+More information is available on the [AISCO team page](https://aisco.dev/team-aisco).
+
+## Supporters
+
+Thank you to our supporters!
+
+### IDEAL Lab
+
+Institute for Design, Engineering and Learning.
+
+### Hasler Foundation
+
+Promoting information and communications technology (ICT) for the well-being and benefit of Switzerland.
+
+### D-MAVT
+
+Department of Mechanical and Process Engineering, Sustainability Fund.
+
+### Academic and project support
+
+- Prof. Dr. Mark Fuge
+- Dr. Soheyl Massoudi
+- Tim Aebersold
+- Shizheng Wen
+
+![Prof. Dr. Mark Fuge](https://aisco.dev/assets/6a1362cabd624b7655df4f81_mafuge.jpeg)
+![Dr. Soheyl Massoudi](https://aisco.dev/assets/6a1362cab4c33bf17f647473_smassoudi.jpeg)
+![Tim Aebersold](https://aisco.dev/assets/6a1369e21d9ac9bc9d9d0351_taebersold.jpg)
+![Shizheng Wen](https://aisco.dev/assets/6a1369996a7695c7cb4e3929_1777925846586.jpeg)
+
+## Contact and links
+
+- [AISCO website](https://aisco.dev/)
+- [AISCO team](https://aisco.dev/team-aisco)
+- Contact: [info@acentauri.ch](mailto:info@acentauri.ch)
+- aCentauri Solar Racing, Wangenstrasse 72, 8600 Dübendorf, Switzerland
+- [aCentauri Solar Racing impressum](https://www.acentauri.ch/impressum)
+
+© 2026 aCentauri Solar Racing – ETH Student Project
+
+---
+
 # Setup and Usage Instructions for the AISCO_code Repository
 
 ## Setup
@@ -42,8 +149,8 @@ With the following keys you can tune the outcome of your GAOT model or the optim
 
 * `wp1.optimizer.args.epoch`: Epoch number for the GAOT model training
 * `wp4.general_config.general_info.latent_space`: Activate or deactivate the training of a latent space (true/ false)
-* `wp4.losses_v0_config.aero`: Decide whether to use the (set `gaot_loss` to 1) or deactivate (set `null_loss_aero` to 1) the aero loss, exactly one of the two losses needs to be set to 1, the other one to 0
-* `wp4.losses_v0_config.solar`: Decide which version of the solar loss to use or deactivate (set `null_loss_solar` to 1). Exactly one of these five loss versions needs to be set to 1, the others need to be 0: `solar_s_r` (one single sun ray without ray tracing), `solar_s_r_r_t` (single sun ray with active ray tracing), `solar_m_r` (multiple sun rays without ray tracing), and `solar_m_r_r_t` (multiple sun rays with active ray tracing).
+* `wp4.losses_v0_config.aero`: Decide whether to use the (set `gaot_loss` to 1) or deactivate (set `null_loss_aero` to 1) the aero loss, exactly one of the two losses needs to be set to 1, the oth[...]
+* `wp4.losses_v0_config.solar`: Decide which version of the solar loss to use or deactivate (set `null_loss_solar` to 1). Exactly one of these five loss versions needs to be set to 1, the others n[...]
 * `wp4.training_config.training_params.num_epochs`: Epoch number for the optimisation loop
 
 You can mainly do two things:
@@ -76,17 +183,17 @@ Lets clone the AISCO_code Repo via SSH:
 ## VS Code Plugins
 - install `python`
 - install `Git graph`
-	- click on `Git Graph` at the bottom left to open the plugin
+\t- click on `Git Graph` at the bottom left to open the plugin
 - install `ruff`
 - install `mypy type checker`
 - install 'PLY Viewer'
 
 ## Important VS Code settings
 - open settings `ctrl + ,` -> enter `git blame` -> enable
-	- shows who edited what line of code => no tags necessary
+\t- shows who edited what line of code => no tags necessary
 - open settings `ctrl + ,` -> enter `format on save` -> enable
-	- activates ruff, to make your code look nice and work well
-	- reduces ruff errors later on
+\t- activates ruff, to make your code look nice and work well
+\t- reduces ruff errors later on
 
 ## hide unnecessary folders
 - open VS Code
@@ -137,10 +244,11 @@ To fix a the setup problem in WP1 also run this at the end:
 `python -m pip install --no-cache-dir torch-cluster -f https://data.pyg.org/whl/torch-2.4.0+cu121.html`
 -> congrats, you are all set!
 
+
 Add .so Files Manually
 On fresh install of aisco_env on Euler, you must add four .so files manually. This is due to incompatible GPUs of Euler and AISCO-BEAST.
 a) in /cluster/home/kdiehl/AISCO_code/subprojects/pydevelopability/pydevelopability add _devcore.cpython-311-x86_64-linux-gnu.so
-b) in /cluster/home/kdiehl/AISCO_code/subprojects/fixed_renderer/cuda add create_texture_image.cpython-311-x86_64-linux-gnu.so, load_textures.cpython-311-x86_64-linux-gnu.so and rasterize.cpython-311-x86_64-linux-gnu.so
+b) in /cluster/home/kdiehl/AISCO_code/subprojects/fixed_renderer/cuda add create_texture_image.cpython-311-x86_64-linux-gnu.so, load_textures.cpython-311-x86_64-linux-gnu.so and rasterize.cpython[...]
 All these files are stored in /cluster/work/fuge/AISCO.
 
 
