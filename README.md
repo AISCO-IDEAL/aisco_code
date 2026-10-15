@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  AISCO predicted aerodynamic drag using a self-built CFD-AI, dynamically balanced aerodynamic performance with solar power input, and respected street-legal regulations.
+  AISCO predicted aerodynamic drag using a self-built CFD-AI, dynamically balanced aerodynamic performance with solar power input while respecting street-legal regulations.
 </p>
 
 <h2>Supporters</h2>
