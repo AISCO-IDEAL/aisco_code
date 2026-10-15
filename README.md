@@ -1,93 +1,45 @@
 <div align="center">
-  <img src="https://aisco.dev/assets/69e0fea1c5dcb303f101cd6f_schweizer-fahne-kaufen.jpg.png" alt="AISCO logo" width="180" />
+  <a href="./docs/index.html">
+    <img src="https://aisco.dev/assets/69e0fea1c5dcb303f101cd6f_schweizer-fahne-kaufen.jpg.png" alt="AISCO logo" width="180" />
+  </a>
+  <h2>AISCO - FOCUS PROJECT</h2>
   <h3>AI for Solar Car Optimisation</h3>
   <p>
     <strong>Artificial Intelligence for Solar Car Optimisation</strong><br />
     A focus project of aCentauri Solar Racing and ETH Zürich's IDEAL Lab.
   </p>
   <p>
-    <a href="https://aisco.dev/">Website</a> ·
+    <a href="./docs/index.html"><strong>Open repository mirror (docs/index.html)</strong></a> ·
+    <a href="https://aisco.dev/">Live website</a> ·
     <a href="https://aisco.dev/team-aisco">Team</a> ·
-    <a href="mailto:info@aisco.dev">Contact</a>
+    <a href="mailto:info@aisco.dev">info@aisco.dev</a>
   </p>
 </div>
 
+> This repository contains a standalone static mirror of the public AISCO website at [`docs/index.html`](./docs/index.html), styled via [`docs/style.css`](./docs/style.css), while preserving the full technical setup documentation below.
+
 <hr />
 
-## About AISCO
-
-<p align="center">
-  AISCO revolutionises the design process of solar race cars by exploring a diverse range of aeroshells, estimating their drag and solar performance, and ranking generated concepts by minimal race time.
-</p>
-
-<p align="center">
-  AISCO predicts aerodynamic drag using a self-built CFD-AI, dynamically balances aerodynamic performance with solar power input, and respects street-legal regulations.
-</p>
-
-<h2>Project components</h2>
+## Website mirror quick preview
 
 <table>
   <tr>
-    <td width="33%" valign="top">
-      <h3>Aeroshell Optimiser</h3>
-      <img src="https://aisco.dev/assets/6a310989b0aad0ed3ded69dd_single.gif" alt="Aeroshell optimiser" width="100%" />
-      <p>Explores new aeroshell designs by minimising weighted aerodynamic and solar-performance losses. Designs are ranked by minimal race time.</p>
+    <td width="50%" valign="top">
+      <h3>What is mirrored</h3>
+      <ul>
+        <li>AISCO hero and “FOCUS PROJECT” framing</li>
+        <li>Six project sections (Aeroshell Optimiser, Assembler, CFD AI, GUI, Solar Estimator, LLM | aCeBot)</li>
+        <li>Compact Team and Supporters sections</li>
+        <li>Footer/contact links with <code>info@aisco.dev</code></li>
+      </ul>
     </td>
-    <td width="33%" valign="top">
-      <h3>Assembler</h3>
-      <img src="https://aisco.dev/assets/6a1464fb50fe2242b9237fe5_assembler3.png" alt="Assembler" width="100%" />
-      <p>Transforms regulations, spatial boundaries, vision standards, and internal components into buildable, compliant geometry.</p>
-    </td>
-    <td width="33%" valign="top">
-      <h3>CFD AI</h3>
-      <img src="https://aisco.dev/assets/6a310987f03fad7253753d8f_drag.gif" alt="CFD AI drag prediction" width="100%" />
-      <p>Predicts aerodynamic drag nearly instantaneously from vehicle geometry, replacing repeated high-fidelity CFD simulations during optimisation.</p>
-    </td>
-  </tr>
-  <tr>
-    <td width="33%" valign="top">
-      <h3>GUI</h3>
-      <img src="https://aisco.dev/assets/6a146d957b7d27d1026c4960_gui.png" alt="AISCO graphical user interface" width="100%" />
-      <p>Gives engineers control over design constraints, weights, and race regulations through an intuitive graphical interface.</p>
-    </td>
-    <td width="33%" valign="top">
-      <h3>Solar Estimator</h3>
-      <img src="https://aisco.dev/assets/6a3109868b98ff02cfc9ad9b_solar.gif" alt="Solar estimator" width="100%" />
-      <p>Models geometry-dependent solar effects and feeds estimated solar power back into the optimiser as a core loss function.</p>
-    </td>
-    <td width="33%" valign="top">
-      <h3>LLM · aCeBot</h3>
-      <img src="https://aisco.dev/assets/6a14648a76aae6da7ce5659f_llm2.png" alt="aCeBot" width="100%" />
-      <p>Provides structured access to internal documentation, chats, and project history to support knowledge transfer.</p>
+    <td width="50%" valign="top">
+      <a href="./docs/index.html">
+        <img src="https://aisco.dev/assets/6a1362cbe7d0227e0f20060a_team.jpg" alt="AISCO mirror preview" width="100%" />
+      </a>
     </td>
   </tr>
 </table>
-
-<h2>The team</h2>
-
-<p align="center">
-  <img src="https://aisco.dev/assets/6a1362cbe7d0227e0f20060a_team.jpg" alt="AISCO team" width="65%" />
-</p>
-
-<p align="center"><small>
-  9 ETH Focus Students and 9 Freelancers<br />
-  <strong>Back row:</strong> Emanuel Schärer · Clemens Huber · Kolja Diehl · Robin Arnold · Federico Sanchez<br />
-  <strong>Front row:</strong> Elias Huber · Tippi Engel · Alex Althaus · Victor Diekmann
-</small></p>
-
-<h2>Supporters</h2>
-
-<table>
-  <tr>
-    <td width="33%" align="center"><strong>IDEAL Lab</strong><br /><small>Institute for Design, Engineering and Learning.</small></td>
-    <td width="33%" align="center"><strong>Hasler Foundation</strong><br /><small>Supporting ICT for the benefit of Switzerland.</small></td>
-    <td width="33%" align="center"><strong>D-MAVT</strong><br /><small>Department of Mechanical and Process Engineering, Sustainability Fund.</small></td>
-  </tr>
-</table>
-
-<p align="center"><small>
-  Supported by Prof. Dr. Mark Fuge · Dr. Soheyl Massoudi · Tim Aebersold · Shizheng Wen
-</small></p>
 
 <hr />
 

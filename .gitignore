@@ -22,6 +22,8 @@
 # Whitelist specific directories and all child directories
 !subprojects/
 !subprojects/**/
+!/docs/
+!/docs/**/
 !subprojects/fixed_renderer/build/**
 !tests/
 !tests/**/
