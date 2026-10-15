@@ -120,3 +120,29 @@ Notes:
 3. Update `/user_overrides.yaml` required fields.
 4. Launch either WP1 training or WP4 optimization via SLURM.
 5. Check logs/artifacts in your configured storage location.
+
+---
+
+## Legacy README (retained and adjusted)
+
+This section preserves the previous README guidance in a cleaned format for existing users who still rely on older workflows.
+
+### Legacy context
+- Conceptual documentation was historically maintained in Obsidian (`01 Knowledge Base/00 IT Tutorials / AISCO_code`).
+- Older setup variants exist for non-current hardware/software combinations.
+
+### Legacy VS Code recommendations
+- Extensions: `python`, `Git Graph`, `ruff`, `mypy type checker`, `PLY Viewer`
+- Settings:
+  - enable `git blame`
+  - enable `format on save`
+
+### Legacy setup without Blackwell architecture (reference only)
+- Historically, users pinned older torch/torchvision versions and used `setup_euler_old.sh`.
+- If you need this path, use:
+  - `./setup_euler_old.sh`
+  - and consult repository history for full legacy command details.
+
+### Legacy manual `.so` note (reference only)
+- Previous installs sometimes required manual `.so` placement for `pydevelopability` and `fixed_renderer` due to GPU incompatibilities across systems.
+- Keep this as historical context; prefer current setup scripts first.
